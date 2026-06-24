@@ -1,0 +1,20 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+### Changed
+### Fixed
+
+## [0.1.0] - 2026-06-25
+
+### Added
+- プロジェクト初期化
+- `ops-scripts-template/tools/` から 8 ツールを移植
+  (aws-instance-audit / cert-check / collect-snapshot / log-collector /
+   network-check / perf-monitor / port-inventory / server-snapshot)

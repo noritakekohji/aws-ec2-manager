@@ -1,0 +1,13 @@
+# common.gitignore の内容も必ず併せて使うこと
+
+# ========== PowerShell ==========
+# Pester テスト出力
+TestResults.xml
+coverage.xml
+
+# モジュールビルド成果物
+Output/
+publish/
+
+# PSScriptAnalyzer キャッシュ
+.psscriptanalyzer/

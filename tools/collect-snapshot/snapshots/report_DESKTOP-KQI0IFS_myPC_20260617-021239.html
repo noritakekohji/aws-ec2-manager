@@ -1,0 +1,652 @@
+<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
+<title>Snapshot Report - DESKTOP-KQI0IFS</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;background:#f0f2f5;color:#222}
+.header{background:#1e293b;color:#fff;padding:20px 24px}
+.header h1{font-size:20px;font-weight:600}
+.header .sub{font-size:12px;color:#94a3b8;margin-top:4px}
+.header .nav{margin-top:10px;font-size:12px;color:#93c5fd}
+.summary{display:flex;gap:12px;padding:16px 24px;flex-wrap:wrap}
+.card{background:#fff;border-radius:8px;padding:16px 20px;text-align:center;flex:1;min-width:110px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.card .num{font-size:28px;font-weight:700}.card .lbl{font-size:11px;color:#64748b;margin-top:2px}
+.card .num{color:#1e40af}
+.info{display:flex;gap:12px;padding:0 24px 16px;flex-wrap:wrap}
+.info-card{background:#fff;border-radius:8px;padding:12px 16px;flex:1;box-shadow:0 1px 3px rgba(0,0,0,.1);font-size:12px}
+.info-card .lbl{font-size:11px;color:#64748b;margin-bottom:4px}
+.cat{background:#fff;margin:0 24px 16px;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.cat h2{font-size:15px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.badge{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600}
+.bok{background:#dcfce7;color:#16a34a}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{background:#f1f5f9;padding:7px 10px;text-align:left;font-weight:600;color:#475569;border-bottom:2px solid #e2e8f0}
+td{padding:6px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top;word-break:break-all}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#f8fafc}
+td.key{width:30%;font-weight:500;color:#334155}
+.filter-bar{padding:8px 24px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.filter-bar label{font-size:12px;color:#64748b;margin-right:4px}
+.filter-bar input{font-size:12px;padding:4px 12px;border:1px solid #cbd5e1;border-radius:4px}
+.footer{text-align:center;padding:16px;font-size:11px;color:#94a3b8}
+</style></head><body>
+<div class="header">
+  <h1>&#128202; Snapshot Report</h1>
+  <div class="sub">Generated: 2026-06-24 01:17:00</div>
+  <div class="nav">OS | Network | Services | Packages | Users | Filesystem | Environment | Security | Port Inventory</div>
+</div>
+<div class="info">
+  <div class="info-card"><div class="lbl">HOST</div><strong>DESKTOP-KQI0IFS</strong></div>
+  <div class="info-card"><div class="lbl">COLLECTED</div><strong>2026-06-17T02:12:53+09:00</strong></div>
+  <div class="info-card"><div class="lbl">SOURCE</div><code style="font-size:11px">DESKTOP-KQI0IFS_myPC_20260617-021239.zip</code></div>
+</div>
+<div class="summary">
+  <div class="card"><div class="num">299</div><div class="lbl">Services</div></div>
+  <div class="card"><div class="num">72</div><div class="lbl">Packages</div></div>
+  <div class="card"><div class="num">64</div><div class="lbl">Ports</div></div>
+  <div class="card"><div class="num">-</div><div class="lbl">Patches</div></div>
+</div>
+<div class="filter-bar">
+  <label>Filter:</label>
+  <input type="text" id="tblFilter" placeholder="Type to filter tables..." oninput="filterTables(this.value)">
+</div>
+<section class="cat">
+  <h2>OS</h2>
+  <table><thead><tr><th>Property</th><th>Value</th></tr></thead>
+  <tbody><tr><td class='key'>architecture</td><td>64 ビット</td></tr>
+<tr><td class='key'>cpu_cores</td><td>2</td></tr>
+<tr><td class='key'>cpu_logical_procs</td><td>4</td></tr>
+<tr><td class='key'>cpu_model</td><td>Intel(R) Core(TM) i5-7300U CPU @ 2.60GHz</td></tr>
+<tr><td class='key'>cpu_sockets</td><td>1</td></tr>
+<tr><td class='key'>cpu_speed_mhz</td><td>2712</td></tr>
+<tr><td class='key'>domain</td><td>WORKGROUP</td></tr>
+<tr><td class='key'>free_memory_gb</td><td>1.28</td></tr>
+<tr><td class='key'>hostname</td><td>DESKTOP-KQI0IFS</td></tr>
+<tr><td class='key'>install_date</td><td>2024-06-24</td></tr>
+<tr><td class='key'>last_boot</td><td>2026-06-15 21:58:46</td></tr>
+<tr><td class='key'>locale</td><td>ja-JP</td></tr>
+<tr><td class='key'>os_build</td><td>22631</td></tr>
+<tr><td class='key'>os_name</td><td>Microsoft Windows 11 Pro</td></tr>
+<tr><td class='key'>os_version</td><td>10.0.22631</td></tr>
+<tr><td class='key'>timezone</td><td>Tokyo Standard Time</td></tr>
+<tr><td class='key'>total_memory_gb</td><td>7.89</td></tr>
+<tr><td class='key'>used_memory_gb</td><td>6.61</td></tr>
+</tbody></table>
+</section><section class="cat">
+  <h2>Network - Interfaces</h2>
+  <table><thead><tr><th>Name</th><th>Address</th><th>Prefix</th></tr></thead>
+  <tbody><tr><td>vEthernet (WSL (Hyper-V firewall))</td><td>172.28.160.1</td><td>20</td></tr>
+<tr><td>Bluetooth ネットワーク接続 2</td><td>169.254.176.212</td><td>16</td></tr>
+<tr><td>vEthernet (Default Switch)</td><td>172.27.80.1</td><td>20</td></tr>
+<tr><td>イーサネット 2</td><td>169.254.50.168</td><td>16</td></tr>
+<tr><td>ローカル エリア接続* 12</td><td>169.254.50.20</td><td>16</td></tr>
+<tr><td>ローカル エリア接続* 11</td><td>169.254.155.35</td><td>16</td></tr>
+<tr><td>Wi-Fi 2</td><td>192.168.1.231</td><td>24</td></tr>
+</tbody></table>
+</section><section class="cat">
+  <h2>Network - DNS</h2>
+  <table><thead><tr><th>Interface</th><th>Servers</th></tr></thead>
+  <tbody><tr><td>Wi-Fi 2</td><td>192.168.1.1</td></tr>
+</tbody></table>
+</section><section class="cat">
+  <h2>Network - Routes</h2>
+  <table><thead><tr><th>Destination</th><th>Gateway</th><th>Interface</th><th>Metric</th></tr></thead>
+  <tbody><tr><td>224.0.0.0/4</td><td>0.0.0.0</td><td>vEthernet (WSL (Hyper-V firewall))</td><td></td></tr>
+<tr><td>224.0.0.0/4</td><td>0.0.0.0</td><td>ローカル エリア接続* 12</td><td></td></tr>
+<tr><td>224.0.0.0/4</td><td>0.0.0.0</td><td>vEthernet (Default Switch)</td><td></td></tr>
+<tr><td>224.0.0.0/4</td><td>0.0.0.0</td><td>ローカル エリア接続* 11</td><td></td></tr>
+<tr><td>224.0.0.0/4</td><td>0.0.0.0</td><td>Wi-Fi 2</td><td></td></tr>
+<tr><td>224.0.0.0/4</td><td>0.0.0.0</td><td>Bluetooth ネットワーク接続 2</td><td></td></tr>
+<tr><td>224.0.0.0/4</td><td>0.0.0.0</td><td>イーサネット 2</td><td></td></tr>
+<tr><td>224.0.0.0/4</td><td>0.0.0.0</td><td>Loopback Pseudo-Interface 1</td><td></td></tr>
+<tr><td>192.168.1.255/32</td><td>0.0.0.0</td><td>Wi-Fi 2</td><td></td></tr>
+<tr><td>192.168.1.231/32</td><td>0.0.0.0</td><td>Wi-Fi 2</td><td></td></tr>
+<tr><td>192.168.1.0/24</td><td>0.0.0.0</td><td>Wi-Fi 2</td><td></td></tr>
+<tr><td>172.28.175.255/32</td><td>0.0.0.0</td><td>vEthernet (WSL (Hyper-V firewall))</td><td></td></tr>
+<tr><td>172.28.160.1/32</td><td>0.0.0.0</td><td>vEthernet (WSL (Hyper-V firewall))</td><td></td></tr>
+<tr><td>172.28.160.0/20</td><td>0.0.0.0</td><td>vEthernet (WSL (Hyper-V firewall))</td><td></td></tr>
+<tr><td>172.27.95.255/32</td><td>0.0.0.0</td><td>vEthernet (Default Switch)</td><td></td></tr>
+<tr><td>172.27.80.1/32</td><td>0.0.0.0</td><td>vEthernet (Default Switch)</td><td></td></tr>
+<tr><td>172.27.80.0/20</td><td>0.0.0.0</td><td>vEthernet (Default Switch)</td><td></td></tr>
+<tr><td>127.255.255.255/32</td><td>0.0.0.0</td><td>Loopback Pseudo-Interface 1</td><td></td></tr>
+<tr><td>127.0.0.1/32</td><td>0.0.0.0</td><td>Loopback Pseudo-Interface 1</td><td></td></tr>
+<tr><td>127.0.0.0/8</td><td>0.0.0.0</td><td>Loopback Pseudo-Interface 1</td><td></td></tr>
+<tr><td>0.0.0.0/0</td><td>192.168.1.1</td><td>Wi-Fi 2</td><td></td></tr>
+</tbody></table>
+</section><section class="cat">
+  <h2>Services <span class="badge bok">299</span></h2>
+  <table><thead><tr><th>Name</th><th>Status</th><th>Start Type</th></tr></thead>
+  <tbody><tr><td>AarSvc_85d16</td><td>stopped</td><td>manual</td></tr>
+<tr><td>AJRouter</td><td>stopped</td><td>manual</td></tr>
+<tr><td>ALG</td><td>stopped</td><td>manual</td></tr>
+<tr><td>AppIDSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>Appinfo</td><td>running</td><td>manual</td></tr>
+<tr><td>AppMgmt</td><td>running</td><td>manual</td></tr>
+<tr><td>AppReadiness</td><td>stopped</td><td>manual</td></tr>
+<tr><td>AppVClient</td><td>stopped</td><td>disabled</td></tr>
+<tr><td>AppXSvc</td><td>running</td><td>manual</td></tr>
+<tr><td>AssignedAccessManagerSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>AudioEndpointBuilder</td><td>running</td><td>automatic</td></tr>
+<tr><td>Audiosrv</td><td>running</td><td>automatic</td></tr>
+<tr><td>autotimesvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>AxInstSV</td><td>stopped</td><td>manual</td></tr>
+<tr><td>BcastDVRUserService_85d16</td><td>stopped</td><td>manual</td></tr>
+<tr><td>BDESVC</td><td>stopped</td><td>manual</td></tr>
+<tr><td>BFE</td><td>running</td><td>automatic</td></tr>
+<tr><td>BITS</td><td>stopped</td><td>manual</td></tr>
+<tr><td>BluetoothUserService_85d16</td><td>running</td><td>manual</td></tr>
+<tr><td>brave</td><td>stopped</td><td>automatic</td></tr>
+<tr><td>BraveElevationService</td><td>stopped</td><td>manual</td></tr>
+<tr><td>bravem</td><td>stopped</td><td>manual</td></tr>
+<tr><td>BrokerInfrastructure</td><td>running</td><td>automatic</td></tr>
+<tr><td>BTAGService</td><td>running</td><td>manual</td></tr>
+<tr><td>BthAvctpSvc</td><td>running</td><td>manual</td></tr>
+<tr><td>bthserv</td><td>running</td><td>manual</td></tr>
+<tr><td>camsvc</td><td>running</td><td>manual</td></tr>
+<tr><td>CaptureService_85d16</td><td>stopped</td><td>manual</td></tr>
+<tr><td>cbdhsvc_85d16</td><td>running</td><td>automatic</td></tr>
+<tr><td>CDPSvc</td><td>running</td><td>automatic</td></tr>
+<tr><td>CDPUserSvc_85d16</td><td>running</td><td>automatic</td></tr>
+<tr><td>CertPropSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>ClickToRunSvc</td><td>running</td><td>automatic</td></tr>
+<tr><td>ClipSVC</td><td>stopped</td><td>manual</td></tr>
+<tr><td>CloudBackupRestoreSvc_85d16</td><td>stopped</td><td>manual</td></tr>
+<tr><td>cloudidsvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>com.docker.service</td><td>stopped</td><td>manual</td></tr>
+<tr><td>COMSysApp</td><td>stopped</td><td>manual</td></tr>
+<tr><td>ConsentUxUserSvc_85d16</td><td>stopped</td><td>manual</td></tr>
+<tr><td>CoreMessagingRegistrar</td><td>running</td><td>automatic</td></tr>
+<tr><td>CoworkVMService</td><td>running</td><td>automatic</td></tr>
+<tr><td>cphs</td><td>running</td><td>manual</td></tr>
+<tr><td>cplspcon</td><td>running</td><td>automatic</td></tr>
+<tr><td>CredentialEnrollmentManagerUserSvc_85d16</td><td>stopped</td><td>manual</td></tr>
+<tr><td>CryptSvc</td><td>running</td><td>automatic</td></tr>
+<tr><td>CscService</td><td>stopped</td><td>manual</td></tr>
+<tr><td>DcomLaunch</td><td>running</td><td>automatic</td></tr>
+<tr><td>dcsvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>defragsvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>DeviceAssociationBrokerSvc_85d16</td><td>stopped</td><td>manual</td></tr>
+<tr><td>DeviceAssociationService</td><td>running</td><td>automatic</td></tr>
+<tr><td>DeviceInstall</td><td>stopped</td><td>manual</td></tr>
+<tr><td>DevicePickerUserSvc_85d16</td><td>stopped</td><td>manual</td></tr>
+<tr><td>DevicesFlowUserSvc_85d16</td><td>running</td><td>manual</td></tr>
+<tr><td>DevQueryBroker</td><td>running</td><td>manual</td></tr>
+<tr><td>Dhcp</td><td>running</td><td>automatic</td></tr>
+<tr><td>diagnosticshub.standardcollector.service</td><td>stopped</td><td>manual</td></tr>
+<tr><td>diagsvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>DiagTrack</td><td>running</td><td>automatic</td></tr>
+<tr><td>DialogBlockingService</td><td>stopped</td><td>disabled</td></tr>
+<tr><td>DispBrokerDesktopSvc</td><td>running</td><td>automatic</td></tr>
+<tr><td>DisplayEnhancementService</td><td>running</td><td>manual</td></tr>
+<tr><td>DmEnrollmentSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>dmwappushservice</td><td>stopped</td><td>automatic</td></tr>
+<tr><td>Dnscache</td><td>running</td><td>automatic</td></tr>
+<tr><td>DoSvc</td><td>running</td><td>automatic</td></tr>
+<tr><td>dot3svc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>DPS</td><td>running</td><td>automatic</td></tr>
+<tr><td>DsmSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>DsSvc</td><td>running</td><td>manual</td></tr>
+<tr><td>DusmSvc</td><td>running</td><td>automatic</td></tr>
+<tr><td>EapHost</td><td>stopped</td><td>manual</td></tr>
+<tr><td>edgeupdate</td><td>stopped</td><td>automatic</td></tr>
+<tr><td>edgeupdatem</td><td>stopped</td><td>manual</td></tr>
+<tr><td>EFS</td><td>stopped</td><td>manual</td></tr>
+<tr><td>embeddedmode</td><td>stopped</td><td>manual</td></tr>
+<tr><td>ENLS</td><td>running</td><td>automatic</td></tr>
+<tr><td>EntAppSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>esifsvc</td><td>running</td><td>automatic</td></tr>
+<tr><td>EventLog</td><td>running</td><td>automatic</td></tr>
+<tr><td>EventSystem</td><td>running</td><td>automatic</td></tr>
+<tr><td>fdPHost</td><td>running</td><td>manual</td></tr>
+<tr><td>FDResPub</td><td>running</td><td>manual</td></tr>
+<tr><td>fhsvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>FileSyncHelper</td><td>running</td><td>manual</td></tr>
+<tr><td>FontCache</td><td>running</td><td>automatic</td></tr>
+<tr><td>FontCache3.0.0.0</td><td>running</td><td>manual</td></tr>
+<tr><td>FrameServer</td><td>stopped</td><td>manual</td></tr>
+<tr><td>FrameServerMonitor</td><td>stopped</td><td>manual</td></tr>
+<tr><td>GameInputSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>GoogleUpdaterInternalService150.0.7863.0</td><td>stopped</td><td>automatic</td></tr>
+<tr><td>GoogleUpdaterService150.0.7863.0</td><td>stopped</td><td>automatic</td></tr>
+<tr><td>gpsvc</td><td>running</td><td>automatic</td></tr>
+<tr><td>GraphicsPerfSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>HgClientService</td><td>stopped</td><td>manual</td></tr>
+<tr><td>hidserv</td><td>running</td><td>manual</td></tr>
+<tr><td>hns</td><td>running</td><td>manual</td></tr>
+<tr><td>HvHost</td><td>running</td><td>manual</td></tr>
+<tr><td>icssvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>igfxCUIService2.0.0.0</td><td>running</td><td>automatic</td></tr>
+<tr><td>IKEEXT</td><td>stopped</td><td>manual</td></tr>
+<tr><td>InstallService</td><td>running</td><td>manual</td></tr>
+<tr><td>InventorySvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>iphlpsvc</td><td>running</td><td>automatic</td></tr>
+<tr><td>IpxlatCfgSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>KeyIso</td><td>running</td><td>manual</td></tr>
+<tr><td>KtmRm</td><td>stopped</td><td>manual</td></tr>
+<tr><td>LanmanServer</td><td>running</td><td>automatic</td></tr>
+<tr><td>LanmanWorkstation</td><td>running</td><td>automatic</td></tr>
+<tr><td>lfsvc</td><td>running</td><td>manual</td></tr>
+<tr><td>LicenseManager</td><td>running</td><td>manual</td></tr>
+<tr><td>lltdsvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>lmhosts</td><td>running</td><td>manual</td></tr>
+<tr><td>LSM</td><td>running</td><td>automatic</td></tr>
+<tr><td>LxpSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>LxssManager</td><td>stopped</td><td>manual</td></tr>
+<tr><td>MapsBroker</td><td>stopped</td><td>automatic</td></tr>
+<tr><td>McpManagementService</td><td>stopped</td><td>manual</td></tr>
+<tr><td>MDCoreSvc</td><td>running</td><td>automatic</td></tr>
+<tr><td>MessagingService_85d16</td><td>stopped</td><td>manual</td></tr>
+<tr><td>MicrosoftCopilotElevationService</td><td>stopped</td><td>manual</td></tr>
+<tr><td>MicrosoftEdgeElevationService</td><td>stopped</td><td>manual</td></tr>
+<tr><td>MixedRealityOpenXRSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>MozillaMaintenance</td><td>stopped</td><td>manual</td></tr>
+<tr><td>mpssvc</td><td>running</td><td>automatic</td></tr>
+<tr><td>MSDTC</td><td>stopped</td><td>manual</td></tr>
+<tr><td>MSiSCSI</td><td>stopped</td><td>manual</td></tr>
+<tr><td>msiserver</td><td>stopped</td><td>manual</td></tr>
+<tr><td>MsKeyboardFilter</td><td>stopped</td><td>disabled</td></tr>
+<tr><td>NaturalAuthentication</td><td>stopped</td><td>manual</td></tr>
+<tr><td>NcaSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>NcbService</td><td>running</td><td>manual</td></tr>
+<tr><td>NcdAutoSetup</td><td>running</td><td>manual</td></tr>
+<tr><td>Netlogon</td><td>stopped</td><td>manual</td></tr>
+<tr><td>Netman</td><td>stopped</td><td>manual</td></tr>
+<tr><td>netprofm</td><td>running</td><td>manual</td></tr>
+<tr><td>NetSetupSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>NetTcpPortSharing</td><td>stopped</td><td>disabled</td></tr>
+<tr><td>NgcCtnrSvc</td><td>running</td><td>manual</td></tr>
+<tr><td>NgcSvc</td><td>running</td><td>manual</td></tr>
+<tr><td>NlaSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>NPSMSvc_85d16</td><td>running</td><td>manual</td></tr>
+<tr><td>nsi</td><td>running</td><td>automatic</td></tr>
+<tr><td>nvagent</td><td>running</td><td>manual</td></tr>
+<tr><td>OneDrive Updater Service</td><td>stopped</td><td>manual</td></tr>
+<tr><td>OneSyncSvc_85d16</td><td>running</td><td>automatic</td></tr>
+<tr><td>ose64</td><td>stopped</td><td>manual</td></tr>
+<tr><td>p2pimsvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>p2psvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>P9RdrService_85d16</td><td>stopped</td><td>manual</td></tr>
+<tr><td>PcaSvc</td><td>running</td><td>automatic</td></tr>
+<tr><td>PeerDistSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>PenService_85d16</td><td>running</td><td>manual</td></tr>
+<tr><td>perceptionsimulation</td><td>stopped</td><td>manual</td></tr>
+<tr><td>PerfHost</td><td>stopped</td><td>manual</td></tr>
+<tr><td>PhoneSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>PIEServiceNew</td><td>running</td><td>manual</td></tr>
+<tr><td>PimIndexMaintenanceSvc_85d16</td><td>running</td><td>manual</td></tr>
+<tr><td>pla</td><td>stopped</td><td>manual</td></tr>
+<tr><td>PlugPlay</td><td>running</td><td>manual</td></tr>
+<tr><td>PMBDeviceInfoProvider</td><td>running</td><td>automatic</td></tr>
+<tr><td>PNRPAutoReg</td><td>stopped</td><td>manual</td></tr>
+<tr><td>PNRPsvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>PolicyAgent</td><td>stopped</td><td>manual</td></tr>
+<tr><td>Power</td><td>running</td><td>automatic</td></tr>
+<tr><td>PrintNotify</td><td>stopped</td><td>manual</td></tr>
+<tr><td>PrintWorkflowUserSvc_85d16</td><td>stopped</td><td>manual</td></tr>
+<tr><td>ProfSvc</td><td>running</td><td>automatic</td></tr>
+<tr><td>PushToInstall</td><td>stopped</td><td>manual</td></tr>
+<tr><td>QWAVE</td><td>stopped</td><td>manual</td></tr>
+<tr><td>RasAuto</td><td>stopped</td><td>manual</td></tr>
+<tr><td>RasMan</td><td>running</td><td>manual</td></tr>
+<tr><td>RemoteAccess</td><td>stopped</td><td>disabled</td></tr>
+<tr><td>RemoteRegistry</td><td>stopped</td><td>disabled</td></tr>
+<tr><td>RetailDemo</td><td>stopped</td><td>manual</td></tr>
+<tr><td>RmSvc</td><td>running</td><td>manual</td></tr>
+<tr><td>RpcEptMapper</td><td>running</td><td>automatic</td></tr>
+<tr><td>RpcLocator</td><td>stopped</td><td>manual</td></tr>
+<tr><td>RpcSs</td><td>running</td><td>automatic</td></tr>
+<tr><td>SamSs</td><td>running</td><td>automatic</td></tr>
+<tr><td>SCardSvr</td><td>stopped</td><td>manual</td></tr>
+<tr><td>ScDeviceEnum</td><td>stopped</td><td>manual</td></tr>
+<tr><td>Schedule</td><td>running</td><td>automatic</td></tr>
+<tr><td>SCPolicySvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>SDRSVC</td><td>stopped</td><td>manual</td></tr>
+<tr><td>seclogon</td><td>stopped</td><td>manual</td></tr>
+<tr><td>SecurityHealthService</td><td>running</td><td>manual</td></tr>
+<tr><td>SEMgrSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>SENS</td><td>running</td><td>automatic</td></tr>
+<tr><td>Sense</td><td>stopped</td><td>manual</td></tr>
+<tr><td>SensorDataService</td><td>stopped</td><td>manual</td></tr>
+<tr><td>SensorService</td><td>running</td><td>manual</td></tr>
+<tr><td>SensrSvc</td><td>running</td><td>manual</td></tr>
+<tr><td>SessionEnv</td><td>stopped</td><td>manual</td></tr>
+<tr><td>SharedAccess</td><td>running</td><td>manual</td></tr>
+<tr><td>SharedRealitySvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>ShellHWDetection</td><td>running</td><td>automatic</td></tr>
+<tr><td>shpamsvc</td><td>stopped</td><td>disabled</td></tr>
+<tr><td>smphost</td><td>stopped</td><td>manual</td></tr>
+<tr><td>SmsRouter</td><td>stopped</td><td>manual</td></tr>
+<tr><td>SNMPTrap</td><td>stopped</td><td>manual</td></tr>
+<tr><td>spectrum</td><td>stopped</td><td>manual</td></tr>
+<tr><td>Spooler</td><td>running</td><td>automatic</td></tr>
+<tr><td>sppsvc</td><td>stopped</td><td>automatic</td></tr>
+<tr><td>SSDPSRV</td><td>running</td><td>manual</td></tr>
+<tr><td>ssh-agent</td><td>stopped</td><td>disabled</td></tr>
+<tr><td>SstpSvc</td><td>running</td><td>manual</td></tr>
+<tr><td>StateRepository</td><td>running</td><td>automatic</td></tr>
+<tr><td>Steam Client Service</td><td>running</td><td>manual</td></tr>
+<tr><td>StiSvc</td><td>running</td><td>automatic</td></tr>
+<tr><td>StorSvc</td><td>running</td><td>automatic</td></tr>
+<tr><td>svsvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>SwiService</td><td>running</td><td>automatic</td></tr>
+<tr><td>swprv</td><td>stopped</td><td>manual</td></tr>
+<tr><td>SynTPEnhService</td><td>running</td><td>automatic</td></tr>
+<tr><td>SysMain</td><td>running</td><td>automatic</td></tr>
+<tr><td>SystemEventsBroker</td><td>running</td><td>automatic</td></tr>
+<tr><td>TapiSrv</td><td>running</td><td>manual</td></tr>
+<tr><td>TermService</td><td>stopped</td><td>manual</td></tr>
+<tr><td>TextInputManagementService</td><td>running</td><td>automatic</td></tr>
+<tr><td>Themes</td><td>running</td><td>automatic</td></tr>
+<tr><td>TieringEngineService</td><td>stopped</td><td>manual</td></tr>
+<tr><td>TimeBrokerSvc</td><td>running</td><td>manual</td></tr>
+<tr><td>TokenBroker</td><td>running</td><td>manual</td></tr>
+<tr><td>TrkWks</td><td>running</td><td>automatic</td></tr>
+<tr><td>TroubleshootingSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>TrustedInstaller</td><td>stopped</td><td>manual</td></tr>
+<tr><td>tzautoupdate</td><td>stopped</td><td>disabled</td></tr>
+<tr><td>UdkUserSvc_85d16</td><td>running</td><td>manual</td></tr>
+<tr><td>UevAgentService</td><td>stopped</td><td>disabled</td></tr>
+<tr><td>uhssvc</td><td>stopped</td><td>disabled</td></tr>
+<tr><td>UmRdpService</td><td>stopped</td><td>manual</td></tr>
+<tr><td>UnistoreSvc_85d16</td><td>running</td><td>manual</td></tr>
+<tr><td>unsvc</td><td>stopped</td><td>automatic</td></tr>
+<tr><td>upnphost</td><td>stopped</td><td>manual</td></tr>
+<tr><td>UserDataSvc_85d16</td><td>running</td><td>manual</td></tr>
+<tr><td>UserManager</td><td>running</td><td>automatic</td></tr>
+<tr><td>UsoSvc</td><td>running</td><td>automatic</td></tr>
+<tr><td>VacSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>valWBFPolicyService</td><td>running</td><td>automatic</td></tr>
+<tr><td>VaultSvc</td><td>running</td><td>manual</td></tr>
+<tr><td>vds</td><td>stopped</td><td>manual</td></tr>
+<tr><td>vmcompute</td><td>running</td><td>manual</td></tr>
+<tr><td>vmicguestinterface</td><td>stopped</td><td>manual</td></tr>
+<tr><td>vmicheartbeat</td><td>stopped</td><td>manual</td></tr>
+<tr><td>vmickvpexchange</td><td>stopped</td><td>manual</td></tr>
+<tr><td>vmicrdv</td><td>stopped</td><td>manual</td></tr>
+<tr><td>vmicshutdown</td><td>stopped</td><td>manual</td></tr>
+<tr><td>vmictimesync</td><td>stopped</td><td>manual</td></tr>
+<tr><td>vmicvmsession</td><td>stopped</td><td>manual</td></tr>
+<tr><td>vmicvss</td><td>stopped</td><td>manual</td></tr>
+<tr><td>vmms</td><td>running</td><td>automatic</td></tr>
+<tr><td>VSS</td><td>stopped</td><td>manual</td></tr>
+<tr><td>W32Time</td><td>running</td><td>automatic</td></tr>
+<tr><td>WaaSMedicSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>WalletService</td><td>stopped</td><td>manual</td></tr>
+<tr><td>WarpJITSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>wbengine</td><td>stopped</td><td>manual</td></tr>
+<tr><td>WbioSrvc</td><td>stopped</td><td>automatic</td></tr>
+<tr><td>Wcmsvc</td><td>running</td><td>automatic</td></tr>
+<tr><td>wcncsvc</td><td>running</td><td>manual</td></tr>
+<tr><td>WdiServiceHost</td><td>stopped</td><td>manual</td></tr>
+<tr><td>WdiSystemHost</td><td>running</td><td>manual</td></tr>
+<tr><td>WdNisSvc</td><td>running</td><td>manual</td></tr>
+<tr><td>WebClient</td><td>stopped</td><td>manual</td></tr>
+<tr><td>webthreatdefsvc</td><td>running</td><td>manual</td></tr>
+<tr><td>webthreatdefusersvc_85d16</td><td>running</td><td>automatic</td></tr>
+<tr><td>Wecsvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>WEPHOSTSVC</td><td>stopped</td><td>manual</td></tr>
+<tr><td>wercplsupport</td><td>stopped</td><td>manual</td></tr>
+<tr><td>WerSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>WFDSConMgrSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>WiaRpc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>WinDefend</td><td>running</td><td>automatic</td></tr>
+<tr><td>WinHttpAutoProxySvc</td><td>running</td><td>manual</td></tr>
+<tr><td>Winmgmt</td><td>running</td><td>automatic</td></tr>
+<tr><td>WinRM</td><td>stopped</td><td>manual</td></tr>
+<tr><td>wisvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>WlanSvc</td><td>running</td><td>automatic</td></tr>
+<tr><td>wlidsvc</td><td>running</td><td>manual</td></tr>
+<tr><td>wlpasvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>WManSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>wmiApSrv</td><td>stopped</td><td>manual</td></tr>
+<tr><td>WMPNetworkSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>workfolderssvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>WpcMonSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>WPDBusEnum</td><td>stopped</td><td>manual</td></tr>
+<tr><td>WpnService</td><td>running</td><td>automatic</td></tr>
+<tr><td>WpnUserService_85d16</td><td>running</td><td>automatic</td></tr>
+<tr><td>wscsvc</td><td>running</td><td>automatic</td></tr>
+<tr><td>WSearch</td><td>running</td><td>automatic</td></tr>
+<tr><td>WslInstaller</td><td>stopped</td><td>automatic</td></tr>
+<tr><td>WSLService</td><td>running</td><td>automatic</td></tr>
+<tr><td>wuauserv</td><td>stopped</td><td>manual</td></tr>
+<tr><td>WwanSvc</td><td>running</td><td>automatic</td></tr>
+<tr><td>XblAuthManager</td><td>running</td><td>manual</td></tr>
+<tr><td>XblGameSave</td><td>stopped</td><td>manual</td></tr>
+<tr><td>XboxGipSvc</td><td>stopped</td><td>manual</td></tr>
+<tr><td>XboxNetApiSvc</td><td>stopped</td><td>manual</td></tr>
+</tbody></table>
+</section><section class="cat">
+  <h2>Packages <span class="badge bok">72</span></h2>
+  <table><thead><tr><th>Name</th><th>Version</th><th>Vendor</th></tr></thead>
+  <tbody><tr><td>Android Studio</td><td>2025.2</td><td>Google LLC</td></tr>
+<tr><td>Brave</td><td>149.1.91.172</td><td>Brave 開発者</td></tr>
+<tr><td>calibre 64bit</td><td>8.12.0</td><td>Kovid Goyal</td></tr>
+<tr><td>Chocolatey GUI</td><td>2.1.1.0</td><td>Chocolatey</td></tr>
+<tr><td>Copilot</td><td>149.0.4022.66</td><td>Microsoft Corporation</td></tr>
+<tr><td>Docker Desktop</td><td>4.72.0</td><td>Docker Inc.</td></tr>
+<tr><td>Explzh for Windows (64bit)</td><td>9.8.4.0</td><td>pon software</td></tr>
+<tr><td>ffftp</td><td>5.8.0.0</td><td>Kurata Sayuri</td></tr>
+<tr><td>Git</td><td>2.47.1</td><td>The Git Development Community</td></tr>
+<tr><td>GitHub CLI</td><td>2.92.0</td><td>GitHub, Inc.</td></tr>
+<tr><td>Google Drive</td><td>126.0.5.0</td><td>Google LLC</td></tr>
+<tr><td>ImgDrive 2.2.3</td><td>2.2.3</td><td>Yubsoft</td></tr>
+<tr><td>Intel(R) Processor Graphics</td><td>21.20.16.4821</td><td>Intel Corporation</td></tr>
+<tr><td>IrfanView 4.72 (64-bit)</td><td>4.72</td><td>Irfan Skiljan</td></tr>
+<tr><td>MergeModule_x64</td><td>11.0.00</td><td>Sony Corporation</td></tr>
+<tr><td>MergeModule_x86</td><td>11.0.00</td><td>Sony Corporation</td></tr>
+<tr><td>Microsoft .NET Host - 8.0.16 (x64)</td><td>64.64.32758</td><td>Microsoft Corporation</td></tr>
+<tr><td>Microsoft .NET Host FX Resolver - 8.0.16 (x64)</td><td>64.64.32758</td><td>Microsoft Corporation</td></tr>
+<tr><td>Microsoft .NET Runtime - 8.0.16 (x64)</td><td>64.64.32758</td><td>Microsoft Corporation</td></tr>
+<tr><td>Microsoft Access database engine 2010 (English)</td><td>14.0.7015.1000</td><td>Microsoft Corporation</td></tr>
+<tr><td>Microsoft Edge</td><td>149.0.4022.69</td><td>Microsoft Corporation</td></tr>
+<tr><td>Microsoft Edge WebView2 Runtime</td><td>149.0.4022.69</td><td>Microsoft Corporation</td></tr>
+<tr><td>Microsoft Office Professional Plus 2019 - ja-jp</td><td>16.0.19127.20302</td><td>Microsoft Corporation</td></tr>
+<tr><td>Microsoft OneDrive</td><td>26.095.0519.0003</td><td>Microsoft Corporation</td></tr>
+<tr><td>Microsoft Update Health Tools</td><td>5.72.0.0</td><td>Microsoft Corporation</td></tr>
+<tr><td>Microsoft Visual C++ 2008 Redistributable - x64 9.0.30729.6161</td><td>9.0.30729.6161</td><td>Microsoft Corporation</td></tr>
+<tr><td>Microsoft Visual C++ 2008 Redistributable - x86 9.0.30729.6161</td><td>9.0.30729.6161</td><td>Microsoft Corporation</td></tr>
+<tr><td>Microsoft Visual C++ 2010  x64 Redistributable - 10.0.40219</td><td>10.0.40219</td><td>Microsoft Corporation</td></tr>
+<tr><td>Microsoft Visual C++ 2013 Redistributable (x64) - 12.0.40664</td><td>12.0.40664.0</td><td>Microsoft Corporation</td></tr>
+<tr><td>Microsoft Visual C++ 2013 x64 Additional Runtime - 12.0.40664</td><td>12.0.40664</td><td>Microsoft Corporation</td></tr>
+<tr><td>Microsoft Visual C++ 2013 x64 Minimum Runtime - 12.0.40664</td><td>12.0.40664</td><td>Microsoft Corporation</td></tr>
+<tr><td>Microsoft Visual C++ 2015-2019 Redistributable (x86) - 14.28.29334</td><td>14.28.29334.0</td><td>Microsoft Corporation</td></tr>
+<tr><td>Microsoft Visual C++ 2015-2022 Redistributable (x64) - 14.42.34438</td><td>14.42.34438.0</td><td>Microsoft Corporation</td></tr>
+<tr><td>Microsoft Visual C++ 2019 X86 Additional Runtime - 14.28.29334</td><td>14.28.29334</td><td>Microsoft Corporation</td></tr>
+<tr><td>Microsoft Visual C++ 2019 X86 Minimum Runtime - 14.28.29334</td><td>14.28.29334</td><td>Microsoft Corporation</td></tr>
+<tr><td>Microsoft Visual C++ 2022 X64 Additional Runtime - 14.42.34438</td><td>14.42.34438</td><td>Microsoft Corporation</td></tr>
+<tr><td>Microsoft Visual C++ 2022 X64 Minimum Runtime - 14.42.34438</td><td>14.42.34438</td><td>Microsoft Corporation</td></tr>
+<tr><td>Microsoft Visual Studio Code</td><td>1.119.0</td><td>Microsoft Corporation</td></tr>
+<tr><td>Microsoft Windows Desktop Runtime - 8.0.16 (x64)</td><td>64.64.32786</td><td>Microsoft Corporation</td></tr>
+<tr><td>Mozilla Firefox (x64 en-US)</td><td>135.0.1</td><td>Mozilla</td></tr>
+<tr><td>Mozilla Maintenance Service</td><td>135.0</td><td>Mozilla</td></tr>
+<tr><td>Node.js</td><td>24.16.0</td><td>Node.js Foundation</td></tr>
+<tr><td>Office 16 Click-to-Run Extensibility Component</td><td>16.0.19127.20154</td><td>Microsoft Corporation</td></tr>
+<tr><td>Office 16 Click-to-Run Licensing Component</td><td>16.0.19029.20208</td><td>Microsoft Corporation</td></tr>
+<tr><td>Office 16 Click-to-Run Localization Component</td><td>16.0.19127.20154</td><td>Microsoft Corporation</td></tr>
+<tr><td>Ootake ver3.04</td><td></td><td>Kitao Nakamura</td></tr>
+<tr><td>PDF-Viewer</td><td>2.5.322.10</td><td>Tracker Software Products Ltd</td></tr>
+<tr><td>Pencil 1.1.63</td><td>1.1.63</td><td></td></tr>
+<tr><td>PlayMemories Home</td><td>6.0.00.12211</td><td>Sony Corporation</td></tr>
+<tr><td>PMB_ModeEditor</td><td>11.0.00</td><td>Sony Corporation</td></tr>
+<tr><td>PMB_ServiceUploader</td><td>11.0.00</td><td>Sony Corporation</td></tr>
+<tr><td>PuTTYrv 0.83 (2025-02-09) (64-bit)</td><td>0.83.1008.1</td><td>Ranvis Software</td></tr>
+<tr><td>Realtek High Definition Audio Driver</td><td>6.0.9107.1</td><td>Realtek Semiconductor Corp.</td></tr>
+<tr><td>Realtek PC Camera Driver</td><td>10.0.10586.11211</td><td>Realtek Semiconductor Corp.</td></tr>
+<tr><td>RetroArch</td><td>1.21.0.0</td><td>Libretro</td></tr>
+<tr><td>RPGツクール2000 ランタイムパッケージ</td><td></td><td></td></tr>
+<tr><td>RPGﾂｸｰﾙ2003 ﾗﾝﾀｲﾑﾊﾟｯｹｰｼﾞ</td><td></td><td></td></tr>
+<tr><td>SAKURA Editor(サクラエディタ) 2.4.2.6048 (x86)</td><td>2.4.2.6048</td><td>サクラエディタ開発チーム</td></tr>
+<tr><td>Sierra Wireless Panasonic Mobile Broadband INF Package</td><td>7.33.4624.0003</td><td>Sierra Wireless</td></tr>
+<tr><td>Steam</td><td>2.10.91.91</td><td>Valve Corporation</td></tr>
+<tr><td>Synaptics Pointing Device Driver</td><td>19.3.10.23</td><td>Synaptics Incorporated</td></tr>
+<tr><td>THE KING OF FIGHTERS 2002 UNLIMITED MATCH</td><td></td><td>SNK CORPORATION</td></tr>
+<tr><td>THE KING OF FIGHTERS '98 ULTIMATE MATCH FINAL EDITION</td><td></td><td>SNK CORPORATION</td></tr>
+<tr><td>VLC media player</td><td>3.0.21</td><td>VideoLAN</td></tr>
+<tr><td>Vulkan Run Time Libraries 1.0.33.0</td><td>1.0.33.0</td><td>LunarG, Inc.</td></tr>
+<tr><td>Win32DiskImager version 1.0.0</td><td>1.0.0</td><td>ImageWriter Developers</td></tr>
+<tr><td>Windows Subsystem for Linux</td><td>2.3.26.0</td><td>Microsoft Corporation</td></tr>
+<tr><td>WinSCP 6.5.3</td><td>6.5.3</td><td>Martin Prikryl</td></tr>
+<tr><td>ゲーム発展国++</td><td></td><td>Kairosoft Co.,Ltd</td></tr>
+<tr><td>ダスクパブ - Adult Only</td><td></td><td>YellowDuckWorks</td></tr>
+<tr><td>緊急告知ユーティリティ</td><td></td><td>Panasonic</td></tr>
+<tr><td>女拳主義F-IST</td><td></td><td>Happy Monster Studio</td></tr>
+</tbody></table>
+</section><section class="cat">
+  <h2>Users - Local Users</h2>
+  <table><thead><tr><th>Name</th><th>Enabled</th><th>Full Name</th></tr></thead>
+  <tbody><tr><td>Administrator</td><td>False</td><td></td></tr>
+<tr><td>CodexSandboxOffline</td><td>True</td><td>CodexSandboxOffline</td></tr>
+<tr><td>CodexSandboxOnline</td><td>True</td><td>CodexSandboxOnline</td></tr>
+<tr><td>DefaultAccount</td><td>False</td><td></td></tr>
+<tr><td>Guest</td><td>False</td><td></td></tr>
+<tr><td>iori</td><td>True</td><td></td></tr>
+<tr><td>kohji</td><td>True</td><td></td></tr>
+<tr><td>norit</td><td>False</td><td></td></tr>
+<tr><td>norit_vl</td><td>True</td><td></td></tr>
+<tr><td>user</td><td>True</td><td></td></tr>
+<tr><td>WDAGUtilityAccount</td><td>False</td><td></td></tr>
+</tbody></table>
+</section><section class="cat">
+  <h2>Users - Local Groups</h2>
+  <table><thead><tr><th>Name</th><th>Members</th></tr></thead>
+  <tbody><tr><td>Access Control Assistance Operators</td><td></td></tr>
+<tr><td>Administrators</td><td>DESKTOP-KQI0IFS\Administrator, DESKTOP-KQI0IFS\iori, DESKTOP-KQI0IFS\kohji, DESKTOP-KQI0IFS\norit_vl</td></tr>
+<tr><td>Backup Operators</td><td></td></tr>
+<tr><td>CodexSandboxUsers</td><td>DESKTOP-KQI0IFS\CodexSandboxOffline, DESKTOP-KQI0IFS\CodexSandboxOnline</td></tr>
+<tr><td>Cryptographic Operators</td><td></td></tr>
+<tr><td>Device Owners</td><td></td></tr>
+<tr><td>Distributed COM Users</td><td></td></tr>
+<tr><td>docker-users</td><td>DESKTOP-KQI0IFS\kohji</td></tr>
+<tr><td>Event Log Readers</td><td></td></tr>
+<tr><td>Guests</td><td>DESKTOP-KQI0IFS\Guest</td></tr>
+<tr><td>Hyper-V Administrators</td><td></td></tr>
+<tr><td>IIS_IUSRS</td><td>NT AUTHORITY\IUSR</td></tr>
+<tr><td>Network Configuration Operators</td><td></td></tr>
+<tr><td>Performance Log Users</td><td></td></tr>
+<tr><td>Performance Monitor Users</td><td></td></tr>
+<tr><td>Power Users</td><td></td></tr>
+<tr><td>Remote Desktop Users</td><td></td></tr>
+<tr><td>Remote Management Users</td><td></td></tr>
+<tr><td>Replicator</td><td></td></tr>
+<tr><td>System Managed Accounts Group</td><td>DESKTOP-KQI0IFS\DefaultAccount</td></tr>
+<tr><td>Users</td><td>DESKTOP-KQI0IFS\CodexSandboxOffline, DESKTOP-KQI0IFS\CodexSandboxOnline, DESKTOP-KQI0IFS\iori, DESKTOP-KQI0IFS\kohji, DESKTOP-KQI0IFS\norit, DESKTOP-KQI0IFS\norit_vl, DESKTOP-KQI0IFS\user, NT AUTHORITY\Authenticated Users, NT AUTHORITY\INTERACTIVE</td></tr>
+</tbody></table>
+</section><section class="cat">
+  <h2>Filesystem - Drives</h2>
+  <table><thead><tr><th>Drive</th><th>Total GB</th><th>Used GB</th><th>Free GB</th><th>Used %</th><th>FS Type</th><th>Label</th></tr></thead>
+  <tbody><tr><td>B</td><td>3662.88</td><td>3095.28</td><td>567.61</td><td>84.5</td><td></td><td></td></tr>
+<tr><td>C</td><td>322.32</td><td>166.16</td><td>156.16</td><td>51.6</td><td>NTFS</td><td></td></tr>
+<tr><td>D</td><td>153.6</td><td>24.84</td><td>128.76</td><td>16.2</td><td>NTFS</td><td>Data</td></tr>
+<tr><td>F</td><td>0</td><td>0</td><td>0</td><td>0</td><td></td><td></td></tr>
+<tr><td>G</td><td>322.32</td><td>173.97</td><td>148.35</td><td>54</td><td></td><td></td></tr>
+<tr><td>H</td><td>3662.88</td><td>3095.28</td><td>567.61</td><td>84.5</td><td></td><td></td></tr>
+<tr><td>M</td><td>3662.88</td><td>3095.28</td><td>567.61</td><td>84.5</td><td></td><td></td></tr>
+<tr><td>P</td><td>3662.88</td><td>3095.28</td><td>567.61</td><td>84.5</td><td></td><td></td></tr>
+<tr><td>S</td><td>3662.88</td><td>3095.28</td><td>567.61</td><td>84.5</td><td></td><td></td></tr>
+<tr><td>Z</td><td>0</td><td>0</td><td>0</td><td>0</td><td></td><td></td></tr>
+</tbody></table>
+</section><section class="cat">
+  <h2>Environment - Machine</h2>
+  <table><thead><tr><th>Key</th><th>Value</th></tr></thead>
+  <tbody><tr><td class='key'>ChocolateyInstall</td><td>C:\ProgramData\chocolatey</td></tr>
+<tr><td class='key'>ComSpec</td><td>C:\Windows\system32\cmd.exe</td></tr>
+<tr><td class='key'>DriverData</td><td>C:\Windows\System32\Drivers\DriverData</td></tr>
+<tr><td class='key'>NUMBER_OF_PROCESSORS</td><td>4</td></tr>
+<tr><td class='key'>OS</td><td>Windows_NT</td></tr>
+<tr><td class='key'>Path</td><td>C:\Windows\system32;C:\Windows;C:\Windows\System32\Wbem;C:\Windows\System32\WindowsPowerShell\v1.0\;C:\Windows\System32\OpenSSH\;C:\Program Files\Calibre2\;C:\Program Files\Git\cmd;C:\ProgramData\chocolatey\bin;C:\Program Files\PuTTY\;C:\Program Files\dotnet\;C:\Program Files\GitHub CLI\;C:\Program Files\Docker\Docker\resources\bin;C:\Program Files\Microsoft VS Code\bin;C:\Program Files\nodejs\</td></tr>
+<tr><td class='key'>PATHEXT</td><td>.COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC</td></tr>
+<tr><td class='key'>PROCESSOR_ARCHITECTURE</td><td>AMD64</td></tr>
+<tr><td class='key'>PROCESSOR_IDENTIFIER</td><td>Intel64 Family 6 Model 142 Stepping 9, GenuineIntel</td></tr>
+<tr><td class='key'>PROCESSOR_LEVEL</td><td>6</td></tr>
+<tr><td class='key'>PROCESSOR_REVISION</td><td>8e09</td></tr>
+<tr><td class='key'>PSModulePath</td><td>C:\Program Files\WindowsPowerShell\Modules;C:\Windows\system32\WindowsPowerShell\v1.0\Modules</td></tr>
+<tr><td class='key'>TEMP</td><td>C:\Windows\TEMP</td></tr>
+<tr><td class='key'>TMP</td><td>C:\Windows\TEMP</td></tr>
+<tr><td class='key'>USERNAME</td><td>SYSTEM</td></tr>
+<tr><td class='key'>windir</td><td>C:\Windows</td></tr>
+</tbody></table>
+</section><section class="cat">
+  <h2>Security - Firewall Profiles</h2>
+  <table><thead><tr><th>Name</th><th>Enabled</th><th>Inbound</th><th>Outbound</th></tr></thead>
+  <tbody><tr><td>Domain</td><td>True</td><td>NotConfigured</td><td>NotConfigured</td></tr>
+<tr><td>Private</td><td>True</td><td>NotConfigured</td><td>NotConfigured</td></tr>
+<tr><td>Public</td><td>True</td><td>NotConfigured</td><td>NotConfigured</td></tr>
+</tbody></table>
+</section><section class="cat">
+  <h2>Port Inventory <span class="badge bok">64</span></h2>
+  <table><thead><tr><th>Port</th><th>Proto</th><th>Address</th><th>Process</th><th>PID</th><th>Status</th></tr></thead>
+  <tbody><tr><td>135</td><td>tcp</td><td>::</td><td>svchost</td><td>1268</td><td>INFO</td></tr>
+<tr><td>139</td><td>tcp</td><td>192.168.1.231</td><td>System</td><td>4</td><td>INFO</td></tr>
+<tr><td>445</td><td>tcp</td><td>::</td><td>System</td><td>4</td><td>INFO</td></tr>
+<tr><td>2179</td><td>tcp</td><td>::</td><td>vmms</td><td>2936</td><td>INFO</td></tr>
+<tr><td>2869</td><td>tcp</td><td>::</td><td>System</td><td>4</td><td>INFO</td></tr>
+<tr><td>5040</td><td>tcp</td><td>0.0.0.0</td><td>svchost</td><td>7172</td><td>INFO</td></tr>
+<tr><td>5357</td><td>tcp</td><td>::</td><td>System</td><td>4</td><td>INFO</td></tr>
+<tr><td>7679</td><td>tcp</td><td>::1</td><td>GoogleDriveFS</td><td>7744</td><td>INFO</td></tr>
+<tr><td>7680</td><td>tcp</td><td>::</td><td>svchost</td><td>8184</td><td>INFO</td></tr>
+<tr><td>8384</td><td>tcp</td><td>127.0.0.1</td><td>syncthing</td><td>6828</td><td>INFO</td></tr>
+<tr><td>22000</td><td>tcp</td><td>::</td><td>syncthing</td><td>6828</td><td>INFO</td></tr>
+<tr><td>27036</td><td>tcp</td><td>0.0.0.0</td><td>steam</td><td>7524</td><td>INFO</td></tr>
+<tr><td>27060</td><td>tcp</td><td>127.0.0.1</td><td>steam</td><td>7524</td><td>INFO</td></tr>
+<tr><td>42050</td><td>tcp</td><td>::1</td><td>OneDrive.Sync.Service</td><td>4600</td><td>INFO</td></tr>
+<tr><td>49664</td><td>tcp</td><td>::</td><td>lsass</td><td>684</td><td>INFO</td></tr>
+<tr><td>49665</td><td>tcp</td><td>::</td><td>wininit</td><td>880</td><td>INFO</td></tr>
+<tr><td>49666</td><td>tcp</td><td>::</td><td>svchost</td><td>2108</td><td>INFO</td></tr>
+<tr><td>49667</td><td>tcp</td><td>::</td><td>svchost</td><td>3148</td><td>INFO</td></tr>
+<tr><td>49670</td><td>tcp</td><td>::</td><td>spoolsv</td><td>4816</td><td>INFO</td></tr>
+<tr><td>49674</td><td>tcp</td><td>::</td><td>services</td><td>484</td><td>INFO</td></tr>
+<tr><td>53340</td><td>tcp</td><td>127.0.0.1</td><td>steam</td><td>7524</td><td>INFO</td></tr>
+<tr><td>53341</td><td>tcp</td><td>127.0.0.1</td><td>steam</td><td>7524</td><td>INFO</td></tr>
+<tr><td>53</td><td>udp</td><td>0.0.0.0</td><td>svchost</td><td>4152</td><td>INFO</td></tr>
+<tr><td>67</td><td>udp</td><td>172.27.80.1</td><td>svchost</td><td>4152</td><td>INFO</td></tr>
+<tr><td>68</td><td>udp</td><td>172.27.80.1</td><td>svchost</td><td>4152</td><td>INFO</td></tr>
+<tr><td>123</td><td>udp</td><td>::</td><td>svchost</td><td>13088</td><td>INFO</td></tr>
+<tr><td>137</td><td>udp</td><td>192.168.1.231</td><td>System</td><td>4</td><td>INFO</td></tr>
+<tr><td>138</td><td>udp</td><td>192.168.1.231</td><td>System</td><td>4</td><td>INFO</td></tr>
+<tr><td>1900</td><td>udp</td><td>fe80::bd75:e1a6:1946:6196%56</td><td>svchost</td><td>3512</td><td>INFO</td></tr>
+<tr><td>3702</td><td>udp</td><td>::</td><td>svchost</td><td>17068</td><td>INFO</td></tr>
+<tr><td>5050</td><td>udp</td><td>0.0.0.0</td><td>svchost</td><td>7172</td><td>INFO</td></tr>
+<tr><td>5353</td><td>udp</td><td>::</td><td>brave</td><td>1616</td><td>INFO</td></tr>
+<tr><td>5355</td><td>udp</td><td>::</td><td>svchost</td><td>2772</td><td>INFO</td></tr>
+<tr><td>21027</td><td>udp</td><td>::</td><td>syncthing</td><td>6828</td><td>INFO</td></tr>
+<tr><td>22000</td><td>udp</td><td>::</td><td>syncthing</td><td>6828</td><td>INFO</td></tr>
+<tr><td>27036</td><td>udp</td><td>192.168.1.231</td><td>steam</td><td>7524</td><td>INFO</td></tr>
+<tr><td>49623</td><td>udp</td><td>::</td><td>svchost</td><td>2772</td><td>INFO</td></tr>
+<tr><td>51121</td><td>udp</td><td>0.0.0.0</td><td>svchost</td><td>7108</td><td>INFO</td></tr>
+<tr><td>51122</td><td>udp</td><td>::</td><td>svchost</td><td>7108</td><td>INFO</td></tr>
+<tr><td>53548</td><td>udp</td><td>::</td><td>svchost</td><td>2772</td><td>INFO</td></tr>
+<tr><td>57353</td><td>udp</td><td>0.0.0.0</td><td>dasHost</td><td>2652</td><td>INFO</td></tr>
+<tr><td>57354</td><td>udp</td><td>::</td><td>dasHost</td><td>2652</td><td>INFO</td></tr>
+<tr><td>57391</td><td>udp</td><td>127.0.0.1</td><td>svchost</td><td>5480</td><td>INFO</td></tr>
+<tr><td>57596</td><td>udp</td><td>::</td><td>syncthing</td><td>6828</td><td>INFO</td></tr>
+<tr><td>57597</td><td>udp</td><td>0.0.0.0</td><td>syncthing</td><td>6828</td><td>INFO</td></tr>
+<tr><td>62169</td><td>udp</td><td>0.0.0.0</td><td>svchost</td><td>4152</td><td>INFO</td></tr>
+<tr><td>62170</td><td>udp</td><td>0.0.0.0</td><td>svchost</td><td>4152</td><td>INFO</td></tr>
+<tr><td>62171</td><td>udp</td><td>::</td><td>svchost</td><td>4152</td><td>INFO</td></tr>
+<tr><td>63789</td><td>udp</td><td>0.0.0.0</td><td>dasHost</td><td>2652</td><td>INFO</td></tr>
+<tr><td>63790</td><td>udp</td><td>::</td><td>dasHost</td><td>2652</td><td>INFO</td></tr>
+<tr><td>64013</td><td>udp</td><td>fe80::a219:ab91:daf9:2c6d%12</td><td>svchost</td><td>3512</td><td>INFO</td></tr>
+<tr><td>64014</td><td>udp</td><td>::1</td><td>svchost</td><td>3512</td><td>INFO</td></tr>
+<tr><td>64015</td><td>udp</td><td>fe80::ac40:8d1b:66d1:7f76%9</td><td>svchost</td><td>3512</td><td>INFO</td></tr>
+<tr><td>64016</td><td>udp</td><td>fe80::bd75:e1a6:1946:6196%56</td><td>svchost</td><td>3512</td><td>INFO</td></tr>
+<tr><td>64017</td><td>udp</td><td>192.168.1.231</td><td>svchost</td><td>3512</td><td>INFO</td></tr>
+<tr><td>64018</td><td>udp</td><td>127.0.0.1</td><td>svchost</td><td>3512</td><td>INFO</td></tr>
+<tr><td>64019</td><td>udp</td><td>172.27.80.1</td><td>svchost</td><td>3512</td><td>INFO</td></tr>
+<tr><td>64020</td><td>udp</td><td>172.28.160.1</td><td>svchost</td><td>3512</td><td>INFO</td></tr>
+<tr><td>64021</td><td>udp</td><td>0.0.0.0</td><td>svchost</td><td>4152</td><td>INFO</td></tr>
+<tr><td>64022</td><td>udp</td><td>::</td><td>svchost</td><td>4152</td><td>INFO</td></tr>
+<tr><td>64883</td><td>udp</td><td>0.0.0.0</td><td>svchost</td><td>17068</td><td>INFO</td></tr>
+<tr><td>64884</td><td>udp</td><td>::</td><td>svchost</td><td>17068</td><td>INFO</td></tr>
+<tr><td>65358</td><td>udp</td><td>0.0.0.0</td><td>svchost</td><td>17068</td><td>INFO</td></tr>
+<tr><td>65359</td><td>udp</td><td>::</td><td>svchost</td><td>17068</td><td>INFO</td></tr>
+</tbody></table>
+</section>
+<div class="footer">ReportSnapshot.ps1 &bull; 2026-06-24 01:17:00</div>
+<script>
+function filterTables(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('.cat tbody tr').forEach(function(r) {
+    r.style.display = r.textContent.toLowerCase().indexOf(q) >= 0 ? '' : 'none';
+  });
+}
+</script></body></html>
