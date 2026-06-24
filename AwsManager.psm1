@@ -3,7 +3,7 @@
     AWS EC2 / Security Group / SSM operations module.
 .DESCRIPTION
     Wraps the aws CLI to expose EC2 lifecycle, security group, and SSM Run Command
-    operations as PowerShell functions. All functions take a -ProfileName parameter
+    operations as PowerShell functions. All functions take a -Profile parameter
     that maps to `aws --profile <name>`.
     PowerShell 5.1 compatible.
 #>
@@ -47,10 +47,10 @@ function Get-Ec2Instances {
     [OutputType([PSCustomObject[]])]
     param(
         [Parameter(Mandatory = $true)]
-        [string]$ProfileName
+        [string]$Profile
     )
 
-    $result = Invoke-AwsCli -Arguments @('ec2', 'describe-instances', '--profile', $ProfileName, '--output', 'json')
+    $result = Invoke-AwsCli -Arguments @('ec2', 'describe-instances', '--profile', $Profile, '--output', 'json')
     if (-not $result.Success) {
         Write-Error "aws ec2 describe-instances failed: $($result.Output)"
         return , @()
@@ -118,11 +118,11 @@ function Start-Ec2Instance {
     [CmdletBinding(SupportsShouldProcess = $true)]
     [OutputType([bool])]
     param(
-        [Parameter(Mandatory = $true)][string]$ProfileName,
+        [Parameter(Mandatory = $true)][string]$Profile,
         [Parameter(Mandatory = $true)][string]$InstanceId
     )
     if (-not $PSCmdlet.ShouldProcess($InstanceId, 'Start EC2 instance')) { return $false }
-    $r = Invoke-AwsCli -Arguments @('ec2', 'start-instances', '--profile', $ProfileName, '--instance-ids', $InstanceId, '--output', 'json')
+    $r = Invoke-AwsCli -Arguments @('ec2', 'start-instances', '--profile', $Profile, '--instance-ids', $InstanceId, '--output', 'json')
     return $r.Success
 }
 
@@ -130,11 +130,11 @@ function Stop-Ec2Instance {
     [CmdletBinding(SupportsShouldProcess = $true)]
     [OutputType([bool])]
     param(
-        [Parameter(Mandatory = $true)][string]$ProfileName,
+        [Parameter(Mandatory = $true)][string]$Profile,
         [Parameter(Mandatory = $true)][string]$InstanceId
     )
     if (-not $PSCmdlet.ShouldProcess($InstanceId, 'Stop EC2 instance')) { return $false }
-    $r = Invoke-AwsCli -Arguments @('ec2', 'stop-instances', '--profile', $ProfileName, '--instance-ids', $InstanceId, '--output', 'json')
+    $r = Invoke-AwsCli -Arguments @('ec2', 'stop-instances', '--profile', $Profile, '--instance-ids', $InstanceId, '--output', 'json')
     return $r.Success
 }
 
@@ -142,11 +142,11 @@ function Restart-Ec2Instance {
     [CmdletBinding(SupportsShouldProcess = $true)]
     [OutputType([bool])]
     param(
-        [Parameter(Mandatory = $true)][string]$ProfileName,
+        [Parameter(Mandatory = $true)][string]$Profile,
         [Parameter(Mandatory = $true)][string]$InstanceId
     )
     if (-not $PSCmdlet.ShouldProcess($InstanceId, 'Reboot EC2 instance')) { return $false }
-    $r = Invoke-AwsCli -Arguments @('ec2', 'reboot-instances', '--profile', $ProfileName, '--instance-ids', $InstanceId, '--output', 'json')
+    $r = Invoke-AwsCli -Arguments @('ec2', 'reboot-instances', '--profile', $Profile, '--instance-ids', $InstanceId, '--output', 'json')
     return $r.Success
 }
 
@@ -155,13 +155,13 @@ function Get-VpcSecurityGroups {
     [CmdletBinding()]
     [OutputType([PSCustomObject[]])]
     param(
-        [Parameter(Mandatory = $true)][string]$ProfileName,
+        [Parameter(Mandatory = $true)][string]$Profile,
         [Parameter(Mandatory = $true)][string]$VpcId
     )
 
     $r = Invoke-AwsCli -Arguments @(
         'ec2', 'describe-security-groups',
-        '--profile', $ProfileName,
+        '--profile', $Profile,
         '--filters', "Name=vpc-id,Values=$VpcId",
         '--output', 'json'
     )
@@ -194,7 +194,7 @@ function Set-InstanceSecurityGroups {
     [CmdletBinding(SupportsShouldProcess = $true)]
     [OutputType([bool])]
     param(
-        [Parameter(Mandatory = $true)][string]$ProfileName,
+        [Parameter(Mandatory = $true)][string]$Profile,
         [Parameter(Mandatory = $true)][string]$InstanceId,
         [Parameter(Mandatory = $true)][string[]]$GroupIds
     )
@@ -203,7 +203,7 @@ function Set-InstanceSecurityGroups {
 
     $cliArgs = New-Object System.Collections.Generic.List[string]
     $cliArgs.Add('ec2'); $cliArgs.Add('modify-instance-attribute')
-    $cliArgs.Add('--profile'); $cliArgs.Add($ProfileName)
+    $cliArgs.Add('--profile'); $cliArgs.Add($Profile)
     $cliArgs.Add('--instance-id'); $cliArgs.Add($InstanceId)
     $cliArgs.Add('--groups')
     foreach ($g in $GroupIds) { $cliArgs.Add($g) }
@@ -288,7 +288,7 @@ function Invoke-SsmTask {
     [CmdletBinding()]
     [OutputType([PSCustomObject])]
     param(
-        [Parameter(Mandatory = $true)][string]$ProfileName,
+        [Parameter(Mandatory = $true)][string]$Profile,
         [Parameter(Mandatory = $true)][string]$InstanceId,
         [Parameter(Mandatory = $true)][string]$YamlPath,
         [ValidateSet('Linux', 'Windows')]
@@ -333,7 +333,7 @@ function Invoke-SsmTask {
 
     $sendArgs = @(
         'ssm', 'send-command',
-        '--profile', $ProfileName,
+        '--profile', $Profile,
         '--instance-ids', $InstanceId,
         '--document-name', $document,
         '--parameters', $paramJson,
@@ -355,7 +355,7 @@ function Invoke-SsmTask {
     while ($true) {
         $invResult = Invoke-AwsCli -Arguments @(
             'ssm', 'get-command-invocation',
-            '--profile', $ProfileName,
+            '--profile', $Profile,
             '--command-id', $commandId,
             '--instance-id', $InstanceId,
             '--output', 'json'

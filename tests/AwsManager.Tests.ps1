@@ -49,7 +49,7 @@ Describe 'AwsManager' {
                 [PSCustomObject]@{ ExitCode = 0; Output = $fakeJson; Success = $true }
             }
 
-            $list = Get-Ec2Instances -ProfileName 'dev'
+            $list = Get-Ec2Instances -Profile 'dev'
             $list.Count | Should -Be 2
 
             $a = $list[0]
@@ -79,7 +79,7 @@ Describe 'AwsManager' {
                 [PSCustomObject]@{ ExitCode = 0; Output = '{}'; Success = $true }
             }
 
-            Start-Ec2Instance -ProfileName 'dev' -InstanceId 'i-123' | Should -BeTrue
+            Start-Ec2Instance -Profile 'dev' -InstanceId 'i-123' | Should -BeTrue
             Assert-MockCalled -ModuleName AwsManager -CommandName Invoke-AwsCli -Times 1 -Exactly
         }
 
@@ -89,7 +89,7 @@ Describe 'AwsManager' {
             } -MockWith {
                 [PSCustomObject]@{ ExitCode = 0; Output = '{}'; Success = $true }
             }
-            Stop-Ec2Instance -ProfileName 'dev' -InstanceId 'i-123' | Should -BeTrue
+            Stop-Ec2Instance -Profile 'dev' -InstanceId 'i-123' | Should -BeTrue
         }
 
         It 'Restart-Ec2Instance uses reboot-instances' {
@@ -98,14 +98,14 @@ Describe 'AwsManager' {
             } -MockWith {
                 [PSCustomObject]@{ ExitCode = 0; Output = ''; Success = $true }
             }
-            Restart-Ec2Instance -ProfileName 'dev' -InstanceId 'i-123' | Should -BeTrue
+            Restart-Ec2Instance -Profile 'dev' -InstanceId 'i-123' | Should -BeTrue
         }
 
         It 'returns false when aws cli fails' {
             Mock -ModuleName AwsManager Invoke-AwsCli {
                 [PSCustomObject]@{ ExitCode = 255; Output = 'err'; Success = $false }
             }
-            Start-Ec2Instance -ProfileName 'dev' -InstanceId 'i-bad' | Should -BeFalse
+            Start-Ec2Instance -Profile 'dev' -InstanceId 'i-bad' | Should -BeFalse
         }
     }
 
@@ -120,7 +120,7 @@ Describe 'AwsManager' {
             Mock -ModuleName AwsManager Invoke-AwsCli {
                 [PSCustomObject]@{ ExitCode = 0; Output = $fake; Success = $true }
             }
-            $sgs = Get-VpcSecurityGroups -ProfileName 'dev' -VpcId 'vpc-1'
+            $sgs = Get-VpcSecurityGroups -Profile 'dev' -VpcId 'vpc-1'
             $sgs.Count | Should -Be 2
             $sgs[0].GroupId | Should -Be 'sg-1'
             $sgs[1].GroupName | Should -Be 'db'
@@ -135,7 +135,7 @@ Describe 'AwsManager' {
                 [PSCustomObject]@{ ExitCode = 0; Output = ''; Success = $true }
             }
 
-            Set-InstanceSecurityGroups -ProfileName 'dev' -InstanceId 'i-1' -GroupIds @('sg-a','sg-b','sg-c') | Should -BeTrue
+            Set-InstanceSecurityGroups -Profile 'dev' -InstanceId 'i-1' -GroupIds @('sg-a','sg-b','sg-c') | Should -BeTrue
 
             $idx = [Array]::IndexOf($script:capturedArgs, '--groups')
             $idx | Should -BeGreaterThan -1
@@ -177,7 +177,7 @@ script: |
                 [PSCustomObject]@{ ExitCode = 0; Output = $invResp; Success = $true }
             }
 
-            $r = Invoke-SsmTask -ProfileName 'dev' -InstanceId 'i-1' -YamlPath $tmp
+            $r = Invoke-SsmTask -Profile 'dev' -InstanceId 'i-1' -YamlPath $tmp
             $r.Status | Should -Be 'Success'
             $r.Output | Should -Be 'hi'
             $r.OutputType | Should -Be 'text'
@@ -211,7 +211,7 @@ script: |
                 }
             }
 
-            $r = Invoke-SsmTask -ProfileName 'dev' -InstanceId 'i-1' -YamlPath $tmp
+            $r = Invoke-SsmTask -Profile 'dev' -InstanceId 'i-1' -YamlPath $tmp
             $r.OutputType | Should -Be 'html'
 
             Remove-Item -LiteralPath $tmp -Force
@@ -241,7 +241,7 @@ script: |
                 [PSCustomObject]@{ ExitCode = 0; Output = '{ "Status": "Success", "StandardOutputContent": "", "StandardErrorContent": "" }'; Success = $true }
             }
 
-            Invoke-SsmTask -ProfileName 'dev' -InstanceId 'i-1' -YamlPath $tmp | Out-Null
+            Invoke-SsmTask -Profile 'dev' -InstanceId 'i-1' -YamlPath $tmp | Out-Null
             $script:doc | Should -Be 'AWS-RunPowerShellScript'
 
             Remove-Item -LiteralPath $tmp -Force
@@ -284,7 +284,7 @@ script: |
                 }
             }
 
-            $r = Invoke-SsmTask -ProfileName 'dev' -InstanceId 'i-1' -YamlPath $tmp
+            $r = Invoke-SsmTask -Profile 'dev' -InstanceId 'i-1' -YamlPath $tmp
             $r.Status | Should -Be 'Success'
             $r.Output | Should -Be 'done'
             $script:pollCount | Should -BeGreaterOrEqual 2
@@ -318,7 +318,7 @@ script: |
                 [PSCustomObject]@{ ExitCode = 0; Output = '{ "Status": "InProgress" }'; Success = $true }
             }
 
-            $r = Invoke-SsmTask -ProfileName 'dev' -InstanceId 'i-1' -YamlPath $tmp
+            $r = Invoke-SsmTask -Profile 'dev' -InstanceId 'i-1' -YamlPath $tmp
             $r.Status | Should -Be 'TimedOut'
 
             Remove-Item -LiteralPath $tmp -Force
