@@ -89,16 +89,14 @@ Describe 'AwsConfig' {
     Context 'Test-SsoToken' {
         It 'returns true when aws cli exits 0' {
             Mock -ModuleName AwsConfig Invoke-AwsCli {
-                $global:LASTEXITCODE = 0
-                return '{"Account":"123"}'
+                [PSCustomObject]@{ ExitCode = 0; Output = '{"Account":"123"}'; Success = $true }
             }
             Test-SsoToken -Name 'dev' | Should -BeTrue
         }
 
         It 'returns false when aws cli exits non-zero' {
             Mock -ModuleName AwsConfig Invoke-AwsCli {
-                $global:LASTEXITCODE = 255
-                return 'error'
+                [PSCustomObject]@{ ExitCode = 255; Output = 'error'; Success = $false }
             }
             Test-SsoToken -Name 'dev' | Should -BeFalse
         }

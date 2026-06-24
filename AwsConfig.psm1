@@ -117,13 +117,21 @@ function Get-AwsProfileDetail {
 
 function Invoke-AwsCli {
     [CmdletBinding()]
+    [OutputType([PSCustomObject])]
     param(
         [Parameter(ValueFromRemainingArguments = $true)]
         [string[]]$Arguments
     )
 
     $output = & aws @Arguments
-    return $output
+    $exitCode = [int]$LASTEXITCODE
+    $joined = if ($null -eq $output) { '' } else { ($output -join [Environment]::NewLine) }
+
+    return [PSCustomObject]@{
+        ExitCode = $exitCode
+        Output   = $joined
+        Success  = ($exitCode -eq 0)
+    }
 }
 
 function Test-SsoToken {
@@ -134,8 +142,7 @@ function Test-SsoToken {
         [string]$Name
     )
 
-    $null = Invoke-AwsCli -Arguments @('sts', 'get-caller-identity', '--profile', $Name, '--output', 'json')
-    return ($global:LASTEXITCODE -eq 0)
+    return (Invoke-AwsCli @('sts', 'get-caller-identity', '--profile', $Name, '--output', 'json')).Success
 }
 
 Export-ModuleMember -Function Get-AwsProfiles, Get-AwsProfileDetail, Test-SsoToken
