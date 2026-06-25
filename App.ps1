@@ -132,7 +132,15 @@ $refreshInstancesButton.Add_Click({
             $statusBarText.Text = '取得中…'
             & $pumpUi
             $items = @(Get-Ec2Instances -Profile $name)
+            $prevId = $null
+            if ($null -ne $instancesGrid.SelectedItem) {
+                $prevId = $instancesGrid.SelectedItem.InstanceId
+            }
             $instancesGrid.ItemsSource = $items
+            if ($null -ne $prevId) {
+                $match = $items | Where-Object { $_.InstanceId -eq $prevId } | Select-Object -First 1
+                if ($null -ne $match) { $instancesGrid.SelectedItem = $match }
+            }
             $statusBarText.Text = "$($items.Count) 件"
         }
         catch {
