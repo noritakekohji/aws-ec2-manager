@@ -9,6 +9,10 @@
 Set-StrictMode -Version Latest
 
 function Get-DefaultConfigPath {
+    # AWS CLI と同様、$env:AWS_CONFIG_FILE があれば優先する
+    if (-not [string]::IsNullOrWhiteSpace($env:AWS_CONFIG_FILE)) {
+        return $env:AWS_CONFIG_FILE
+    }
     return (Join-Path $env:USERPROFILE '.aws/config')
 }
 

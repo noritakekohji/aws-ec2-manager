@@ -11,8 +11,15 @@ $ErrorActionPreference = 'Stop'
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml
 
+Import-Module -Force (Join-Path $PSScriptRoot 'AppSettings.psm1')
 Import-Module -Force (Join-Path $PSScriptRoot 'AwsConfig.psm1')
 Import-Module -Force (Join-Path $PSScriptRoot 'AwsManager.psm1')
+
+# 設定を読み込み、AWS CLI サブプロセスに継承させる
+$appSettings = Get-AppSettings
+if (-not [string]::IsNullOrWhiteSpace($appSettings.AwsConfigPath)) {
+    $env:AWS_CONFIG_FILE = $appSettings.AwsConfigPath
+}
 
 $xamlPath = Join-Path $PSScriptRoot 'MainWindow.xaml'
 [xml]$xaml = Get-Content -LiteralPath $xamlPath -Raw
@@ -33,23 +40,126 @@ $profileComboBox = Find-Control -Name 'ProfileComboBox'
 $profileInfoText = Find-Control -Name 'ProfileInfoText'
 $checkTokenButton = Find-Control -Name 'CheckTokenButton'
 $openSsoButton = Find-Control -Name 'OpenSsoButton'
+$settingsButton = Find-Control -Name 'SettingsButton'
 $statusBarText = Find-Control -Name 'StatusBarText'
 
-# Populate profiles
-try {
-    # Get-AwsProfiles は string[] を返す。@() で包むと WPF から「1 要素 = 配列まるごと」に見えるため使わない
-    [string[]]$profiles = Get-AwsProfiles
-    if ($null -eq $profiles) { $profiles = @() }
-    $profileComboBox.ItemsSource = $profiles
-    if ($profiles.Length -gt 0) {
-        $profileComboBox.SelectedIndex = 0
+function Update-ProfileComboBox {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper.')]
+    [CmdletBinding()]
+    param()
+    try {
+        # Get-AwsProfiles は string[] を返す。@() で包むと WPF から「1 要素 = 配列まるごと」に見えるため使わない
+        [string[]]$profiles = Get-AwsProfiles
+        if ($null -eq $profiles) { $profiles = @() }
+        $profileComboBox.ItemsSource = $profiles
+        if ($profiles.Length -gt 0) {
+            $profileComboBox.SelectedIndex = 0
+            $statusBarText.Text = "プロファイル $($profiles.Length) 件"
+        }
+        else {
+            $configPath = Get-EffectiveAwsConfigPath
+            $statusBarText.Text = "プロファイルが見つかりません ($configPath を確認)"
+        }
     }
-    else {
-        $statusBarText.Text = 'プロファイルが見つかりません (~/.aws/config を確認)'
+    catch {
+        $statusBarText.Text = "プロファイル読込エラー: $($_.Exception.Message)"
     }
 }
-catch {
-    $statusBarText.Text = "プロファイル読込エラー: $($_.Exception.Message)"
+
+Update-ProfileComboBox
+
+function Show-SettingsDialog {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper.')]
+    [CmdletBinding()]
+    param()
+
+    $settingsXaml = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="aws-ec2-manager 設定"
+        Width="640" Height="220"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <TextBlock Grid.Row="0" Text="AWS CLI config ファイルのパス" FontWeight="Bold" Margin="0,0,0,4" />
+        <TextBlock Grid.Row="1" Text="空欄でデフォルト (~/.aws/config or $env:AWS_CONFIG_FILE)" Foreground="Gray" Margin="0,0,0,8" />
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="ConfigPathTextBox" Grid.Column="0" VerticalAlignment="Center" Padding="4,4" />
+            <Button x:Name="BrowseButton" Grid.Column="1" Content="参照..." Padding="10,4" Margin="6,0,0,0" />
+        </Grid>
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="OkButton" Content="OK" Width="90" Padding="0,4" Margin="0,0,8,0" IsDefault="True" />
+            <Button x:Name="CancelButton" Content="キャンセル" Width="90" Padding="0,4" IsCancel="True" />
+        </StackPanel>
+    </Grid>
+</Window>
+'@
+
+    [xml]$xamlDoc = $settingsXaml
+    $reader2 = New-Object System.Xml.XmlNodeReader $xamlDoc
+    $dialog = [Windows.Markup.XamlReader]::Load($reader2)
+    $dialog.Owner = $window
+
+    $configPathTextBox = $dialog.FindName('ConfigPathTextBox')
+    $browseButton = $dialog.FindName('BrowseButton')
+    $okButton = $dialog.FindName('OkButton')
+    $cancelButton = $dialog.FindName('CancelButton')
+
+    $current = Get-AppSettings
+    if (-not [string]::IsNullOrWhiteSpace($current.AwsConfigPath)) {
+        $configPathTextBox.Text = $current.AwsConfigPath
+    }
+
+    $browseButton.Add_Click({
+            $ofd = New-Object Microsoft.Win32.OpenFileDialog
+            $ofd.Title = 'AWS config ファイルを選択'
+            $ofd.Filter = 'All files (*.*)|*.*'
+            if (-not [string]::IsNullOrWhiteSpace($configPathTextBox.Text)) {
+                $initDir = Split-Path -Parent $configPathTextBox.Text
+                if ((-not [string]::IsNullOrWhiteSpace($initDir)) -and (Test-Path -LiteralPath $initDir)) {
+                    $ofd.InitialDirectory = $initDir
+                }
+            }
+            if ($ofd.ShowDialog($dialog)) {
+                $configPathTextBox.Text = $ofd.FileName
+            }
+        })
+
+    $okButton.Add_Click({
+            $dialog.DialogResult = $true
+            $dialog.Close()
+        })
+
+    $cancelButton.Add_Click({
+            $dialog.DialogResult = $false
+            $dialog.Close()
+        })
+
+    $result = $dialog.ShowDialog()
+    if ($result -eq $true) {
+        $newPath = $configPathTextBox.Text
+        Save-AppSettings -AwsConfigPath $newPath
+        if ([string]::IsNullOrWhiteSpace($newPath)) {
+            Remove-Item Env:\AWS_CONFIG_FILE -ErrorAction SilentlyContinue
+            $statusBarText.Text = '設定を保存しました（デフォルトパスを使用）'
+        }
+        else {
+            $env:AWS_CONFIG_FILE = $newPath
+            $statusBarText.Text = "設定を保存しました: $newPath"
+        }
+        Update-ProfileComboBox
+    }
 }
 
 $profileComboBox.Add_SelectionChanged({
@@ -99,23 +209,32 @@ $checkTokenButton.Add_Click({
 
 $openSsoButton.Add_Click({
         try {
-            $awsDir = Join-Path $env:USERPROFILE '.aws'
-            $configPath = Join-Path $awsDir 'config'
+            $configPath = Get-EffectiveAwsConfigPath
+            $configDir = Split-Path -Parent $configPath
             if (Test-Path -LiteralPath $configPath) {
                 Start-Process -FilePath 'notepad.exe' -ArgumentList @($configPath) | Out-Null
-                $statusBarText.Text = "~/.aws/config を notepad で開きました"
+                $statusBarText.Text = "$configPath を notepad で開きました"
             }
-            elseif (Test-Path -LiteralPath $awsDir) {
-                Start-Process -FilePath 'explorer.exe' -ArgumentList @($awsDir) | Out-Null
-                $statusBarText.Text = "~/.aws/ をエクスプローラで開きました（config が見つかりません）"
+            elseif (-not [string]::IsNullOrWhiteSpace($configDir) -and (Test-Path -LiteralPath $configDir)) {
+                Start-Process -FilePath 'explorer.exe' -ArgumentList @($configDir) | Out-Null
+                $statusBarText.Text = "$configDir をエクスプローラで開きました（config ファイルが見つかりません）"
             }
             else {
-                $statusBarText.Text = "~/.aws/ ディレクトリが存在しません"
+                $statusBarText.Text = "config パスが存在しません: $configPath"
             }
         }
         catch {
             $statusBarText.Text = "エラー: $($_.Exception.Message)"
             return
+        }
+    })
+
+$settingsButton.Add_Click({
+        try {
+            Show-SettingsDialog
+        }
+        catch {
+            $statusBarText.Text = "設定エラー: $($_.Exception.Message)"
         }
     })
 

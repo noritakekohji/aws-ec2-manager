@@ -14,7 +14,8 @@
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="8">
             <TextBlock Text="プロファイル:" VerticalAlignment="Center" Margin="0,0,8,0" />
             <ComboBox x:Name="ProfileComboBox" Width="250" VerticalAlignment="Center" />
-            <Button x:Name="OpenSsoButton" Content="開く" Padding="8,2" Margin="6,0,0,0" VerticalAlignment="Center" ToolTip="~/.aws/config を notepad で開く（無ければ ~/.aws/ をエクスプローラで開く）" />
+            <Button x:Name="OpenSsoButton" Content="開く" Padding="8,2" Margin="6,0,0,0" VerticalAlignment="Center" ToolTip="現在の AWS config を notepad で開く（無ければそのディレクトリをエクスプローラで開く）" />
+            <Button x:Name="SettingsButton" Content="設定" Padding="8,2" Margin="6,0,0,0" VerticalAlignment="Center" ToolTip="AWS config ファイルのパスを変更" />
             <TextBlock x:Name="ProfileInfoText" VerticalAlignment="Center" Margin="12,0,12,0" />
             <Button x:Name="CheckTokenButton" Content="トークン確認" Padding="8,2" VerticalAlignment="Center" />
         </StackPanel>
