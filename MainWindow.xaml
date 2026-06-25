@@ -51,7 +51,42 @@
                 </Grid>
             </TabItem>
             <TabItem Header="セキュリティグループ">
-                <TextBlock Text="Tab2: SG 管理（未実装）" Margin="12" />
+                <Grid Margin="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Text="インスタンス:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <ComboBox x:Name="SgInstanceComboBox" Width="350" VerticalAlignment="Center"
+                                  DisplayMemberPath="DisplayLabel" Margin="0,0,8,0" />
+                        <Button x:Name="LoadSgButton" Content="読込" Padding="10,4" Margin="0,0,8,0" />
+                        <Button x:Name="ApplySgButton" Content="適用" Padding="10,4" />
+                    </StackPanel>
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <DockPanel Grid.Column="0" Margin="0,0,8,0">
+                            <TextBlock DockPanel.Dock="Top" Text="適用済み SG" FontWeight="Bold" Margin="0,0,0,4" />
+                            <ListBox x:Name="AppliedSgList"
+                                     DisplayMemberPath="DisplayLabel"
+                                     SelectionMode="Extended" />
+                        </DockPanel>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="4,0,4,0">
+                            <Button x:Name="MoveToAppliedButton" Content="&lt;" Width="40" Margin="0,0,0,8" Padding="0,4" />
+                            <Button x:Name="MoveToAvailableButton" Content="&gt;" Width="40" Padding="0,4" />
+                        </StackPanel>
+                        <DockPanel Grid.Column="2" Margin="8,0,0,0">
+                            <TextBlock DockPanel.Dock="Top" Text="未適用 SG（同 VPC）" FontWeight="Bold" Margin="0,0,0,4" />
+                            <ListBox x:Name="AvailableSgList"
+                                     DisplayMemberPath="DisplayLabel"
+                                     SelectionMode="Extended" />
+                        </DockPanel>
+                    </Grid>
+                </Grid>
             </TabItem>
             <TabItem Header="ツール実行">
                 <TextBlock Text="Tab3: SSM Run Command（未実装）" Margin="12" />

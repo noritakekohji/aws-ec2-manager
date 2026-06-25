@@ -97,16 +97,26 @@ function Get-Ec2Instances {
                 }
             }
 
+            $sgIds = New-Object System.Collections.Generic.List[string]
+            if ($inst.PSObject.Properties.Name -contains 'SecurityGroups' -and $null -ne $inst.SecurityGroups) {
+                foreach ($sg in $inst.SecurityGroups) {
+                    if ($null -ne $sg -and ($sg.PSObject.Properties.Name -contains 'GroupId')) {
+                        $sgIds.Add([string]$sg.GroupId)
+                    }
+                }
+            }
+
             $items.Add([PSCustomObject]@{
-                Name             = $name
-                InstanceId       = [string]$inst.InstanceId
-                State            = $state
-                InstanceType     = [string]$inst.InstanceType
-                AvailabilityZone = $az
-                PrivateIpAddress = if ($inst.PSObject.Properties.Name -contains 'PrivateIpAddress') { [string]$inst.PrivateIpAddress } else { $null }
-                PublicIpAddress  = $publicIp
-                Platform         = $platform
-                VpcId            = if ($inst.PSObject.Properties.Name -contains 'VpcId') { [string]$inst.VpcId } else { $null }
+                Name              = $name
+                InstanceId        = [string]$inst.InstanceId
+                State             = $state
+                InstanceType      = [string]$inst.InstanceType
+                AvailabilityZone  = $az
+                PrivateIpAddress  = if ($inst.PSObject.Properties.Name -contains 'PrivateIpAddress') { [string]$inst.PrivateIpAddress } else { $null }
+                PublicIpAddress   = $publicIp
+                Platform          = $platform
+                VpcId             = if ($inst.PSObject.Properties.Name -contains 'VpcId') { [string]$inst.VpcId } else { $null }
+                SecurityGroupIds  = [string[]]$sgIds.ToArray()
             })
         }
     }

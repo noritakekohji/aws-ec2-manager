@@ -26,6 +26,10 @@ Describe 'AwsManager' {
           "Platform": "windows",
           "State": { "Name": "running" },
           "Placement": { "AvailabilityZone": "ap-northeast-1a" },
+          "SecurityGroups": [
+            { "GroupId": "sg-1", "GroupName": "web" },
+            { "GroupId": "sg-2", "GroupName": "db"  }
+          ],
           "Tags": [
             { "Key": "Name", "Value": "win-host" },
             { "Key": "Env",  "Value": "dev" }
@@ -38,6 +42,7 @@ Describe 'AwsManager' {
           "VpcId": "vpc-1",
           "State": { "Name": "stopped" },
           "Placement": { "AvailabilityZone": "ap-northeast-1c" },
+          "SecurityGroups": [],
           "Tags": []
         }
       ]
@@ -59,12 +64,16 @@ Describe 'AwsManager' {
             $a.Platform | Should -Be 'Windows'
             $a.PublicIpAddress | Should -Be '1.2.3.4'
             $a.AvailabilityZone | Should -Be 'ap-northeast-1a'
+            $a.SecurityGroupIds.Count | Should -Be 2
+            $a.SecurityGroupIds[0] | Should -Be 'sg-1'
+            $a.SecurityGroupIds[1] | Should -Be 'sg-2'
 
             $b = $list[1]
             $b.InstanceId | Should -Be 'i-bbb'
             $b.Name | Should -Be ''
             $b.Platform | Should -Be 'Linux'
             $b.PublicIpAddress | Should -BeNullOrEmpty
+            $b.SecurityGroupIds.Count | Should -Be 0
         }
     }
 
