@@ -21,14 +21,17 @@ jobs:
       - name: Lint (PSScriptAnalyzer)
         shell: pwsh
         run: |
-          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Warning
+          # tools/ は ops-scripts-template からの移植資産で本リポジトリでは改修対象外のため除外
+          $targets = Get-ChildItem -Recurse -File -Include *.ps1,*.psm1,*.psd1 |
+              Where-Object { $_.FullName -notmatch '[\\/]tools[\\/]' }
+          $results = $targets | ForEach-Object { Invoke-ScriptAnalyzer -Path $_.FullName -Severity Warning }
           if ($results) { $results | Format-Table; exit 1 }
 
       - name: Test (Pester)
         shell: pwsh
         run: |
           $config = New-PesterConfiguration
-          $config.Run.Path = '.'
+          $config.Run.Path = 'tests'
           $config.Run.Exit = $true
           $config.Output.Verbosity = 'Detailed'
           Invoke-Pester -Configuration $config
