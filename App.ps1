@@ -689,8 +689,13 @@ function Update-YamlListBoxForInstance {
         return
     }
     $platform = if ($Instance.Platform -eq 'Windows') { 'Windows' } else { 'Linux' }
-    $items = if ($platform -eq 'Windows') { $tab3State.WindowsYamls } else { $tab3State.LinuxYamls }
-    $yamlListBox.ItemsSource = $items
+    # if/else 式は単一要素配列を unroll するため、直接代入で配列形状を保つ
+    if ($platform -eq 'Windows') {
+        $yamlListBox.ItemsSource = $tab3State.WindowsYamls
+    }
+    else {
+        $yamlListBox.ItemsSource = $tab3State.LinuxYamls
+    }
     $yamlInfoText.Text = ''
 }
 

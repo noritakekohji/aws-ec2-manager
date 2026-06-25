@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `AwsConfig.psm1` の `Get-DefaultConfigPath` が `$env:AWS_CONFIG_FILE` を尊重するように変更
 
 ### Fixed
+- Tab3 で YAML が 1 件しかない場合に `Update-YamlListBoxForInstance` が PSCustomObject を ItemsSource に渡してしまい「PSCustomObject を IEnumerable に変換できません」例外が出ていた問題を修正（`$items = if (...) { $tab3State.LinuxYamls } else { ... }` の if/else 式が単一要素配列を unroll していた）
 - `Get-AwsProfileDetail` が AWS CLI v2 形式 (`sso_session` 参照) のプロファイルで `sso_start_url` を `[sso-session <name>]` ブロックから解決するように修正。これにより `bedrock` 等の SSO セッション参照プロファイルでヘッダの SSO URL が空になっていた問題を解消
 - `App.ps1` でプロファイル ComboBox に "String[] Array" と 1 項目だけ表示される問題を修正（`@(Get-AwsProfiles)` のラップで二重配列になっていたため、`[string[]]` キャストに変更）
 - `Test-SsoToken` が `aws` CLI に引数を単一の連結文字列として渡してしまい `ParamValidation` エラーになっていた問題を修正（`Invoke-AwsCli @(...)` を `Invoke-AwsCli -Arguments @(...)` に変更）。引数形状を検証する Pester テストも追加
