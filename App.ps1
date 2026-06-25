@@ -39,6 +39,7 @@ function Find-Control {
 $profileComboBox = Find-Control -Name 'ProfileComboBox'
 $profileInfoText = Find-Control -Name 'ProfileInfoText'
 $checkTokenButton = Find-Control -Name 'CheckTokenButton'
+$ssoLoginButton = Find-Control -Name 'SsoLoginButton'
 $openSsoButton = Find-Control -Name 'OpenSsoButton'
 $settingsButton = Find-Control -Name 'SettingsButton'
 $statusBarText = Find-Control -Name 'StatusBarText'
@@ -235,6 +236,23 @@ $settingsButton.Add_Click({
         }
         catch {
             $statusBarText.Text = "設定エラー: $($_.Exception.Message)"
+        }
+    })
+
+$ssoLoginButton.Add_Click({
+        try {
+            $selected = $profileComboBox.SelectedItem
+            if ($null -eq $selected) {
+                $statusBarText.Text = 'プロファイル未選択'
+                return
+            }
+            # aws sso login はブラウザを開いてユーザー入力を待つので、別コンソールで起動して GUI をブロックしない
+            Start-Process -FilePath 'aws' -ArgumentList @('sso', 'login', '--profile', $selected) | Out-Null
+            $statusBarText.Text = "SSO ログインを別ウィンドウで開きました: $selected （ブラウザで承認後「トークン確認」を押してください）"
+        }
+        catch {
+            $statusBarText.Text = "エラー: $($_.Exception.Message)"
+            return
         }
     })
 

@@ -18,6 +18,7 @@
             <Button x:Name="SettingsButton" Content="設定" Padding="8,2" Margin="6,0,0,0" VerticalAlignment="Center" ToolTip="AWS config ファイルのパスを変更" />
             <TextBlock x:Name="ProfileInfoText" VerticalAlignment="Center" Margin="12,0,12,0" />
             <Button x:Name="CheckTokenButton" Content="トークン確認" Padding="8,2" VerticalAlignment="Center" />
+            <Button x:Name="SsoLoginButton" Content="SSO ログイン" Padding="8,2" Margin="6,0,0,0" VerticalAlignment="Center" ToolTip="aws sso login --profile &lt;選択中&gt; を別ウィンドウで実行" />
         </StackPanel>
 
         <!-- Tabs -->
