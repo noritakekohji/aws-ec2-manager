@@ -221,7 +221,6 @@ $tab2State = [PSCustomObject]@{
     OriginalSgIds = @()
     CurrentInstanceId = $null
     CurrentVpcId = $null
-    AllSgsByVpc = @{}
 }
 
 function Get-SgDisplayItem {
