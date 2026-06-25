@@ -151,7 +151,7 @@ function Test-SsoToken {
         [string]$Name
     )
 
-    return (Invoke-AwsCli @('sts', 'get-caller-identity', '--profile', $Name, '--output', 'json')).Success
+    return (Invoke-AwsCli -Arguments @('sts', 'get-caller-identity', '--profile', $Name, '--output', 'json')).Success
 }
 
 Export-ModuleMember -Function Get-AwsProfiles, Get-AwsProfileDetail, Test-SsoToken

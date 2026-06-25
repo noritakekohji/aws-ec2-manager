@@ -116,5 +116,21 @@ Describe 'AwsConfig' {
             }
             Test-SsoToken -Name 'dev' | Should -BeFalse
         }
+
+        It 'passes arguments as individual elements (not a single joined string)' {
+            Mock -ModuleName AwsConfig Invoke-AwsCli -ParameterFilter {
+                $Arguments.Count -eq 6 -and
+                $Arguments[0] -eq 'sts' -and
+                $Arguments[1] -eq 'get-caller-identity' -and
+                $Arguments[2] -eq '--profile' -and
+                $Arguments[3] -eq 'dev' -and
+                $Arguments[4] -eq '--output' -and
+                $Arguments[5] -eq 'json'
+            } {
+                [PSCustomObject]@{ ExitCode = 0; Output = ''; Success = $true }
+            }
+            Test-SsoToken -Name 'dev' | Should -BeTrue
+            Should -Invoke -ModuleName AwsConfig Invoke-AwsCli -Times 1
+        }
     }
 }
