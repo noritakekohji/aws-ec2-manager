@@ -107,6 +107,15 @@ function Get-AwsProfileDetail {
     if ($sec.Contains('region')) { $region = $sec['region'] }
     if ($sec.Contains('sso_account_id')) { $ssoAccountId = $sec['sso_account_id'] }
 
+    # AWS CLI v2 形式: profile が sso_session を参照している場合、
+    # 実際の sso_start_url は [sso-session <name>] ブロックにある
+    if ($null -eq $ssoStartUrl -and $sec.Contains('sso_session')) {
+        $sessionKey = 'sso-session ' + $sec['sso_session']
+        if ($sections.Contains($sessionKey) -and $sections[$sessionKey].Contains('sso_start_url')) {
+            $ssoStartUrl = $sections[$sessionKey]['sso_start_url']
+        }
+    }
+
     return [PSCustomObject]@{
         Name         = $Name
         SsoStartUrl  = $ssoStartUrl

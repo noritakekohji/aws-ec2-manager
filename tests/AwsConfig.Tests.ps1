@@ -27,6 +27,15 @@ Describe 'AwsConfig' {
             ''
             '[profile minimal]'
             'region = eu-west-1'
+            ''
+            '[sso-session my-sso]'
+            'sso_start_url = https://session.awsapps.com/start'
+            'sso_region = us-east-1'
+            ''
+            '[profile with-session]'
+            'region = us-east-1'
+            'sso_session = my-sso'
+            'sso_account_id = 444444444444'
         )
         Set-Content -LiteralPath $script:TmpConfig -Value $iniLines -Encoding UTF8
 
@@ -47,7 +56,8 @@ Describe 'AwsConfig' {
             $profiles | Should -Contain 'dev'
             $profiles | Should -Contain 'prod'
             $profiles | Should -Contain 'minimal'
-            $profiles.Count | Should -Be 4
+            $profiles | Should -Contain 'with-session'
+            $profiles.Count | Should -Be 5
         }
 
         It 'returns an empty array when config file is missing' {
@@ -83,6 +93,12 @@ Describe 'AwsConfig' {
             $detail.Region | Should -Be 'eu-west-1'
             $detail.SsoStartUrl | Should -BeNullOrEmpty
             $detail.SsoAccountId | Should -BeNullOrEmpty
+        }
+
+        It 'resolves sso_start_url from [sso-session] block when profile uses sso_session reference' {
+            $detail = Get-AwsProfileDetail -Name 'with-session' -ConfigPath $script:TmpConfig
+            $detail.SsoStartUrl | Should -Be 'https://session.awsapps.com/start'
+            $detail.SsoAccountId | Should -Be '444444444444'
         }
     }
 
