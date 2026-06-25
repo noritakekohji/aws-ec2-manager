@@ -29,6 +29,12 @@ aws sso login --profile <profile>
 .\launch.bat
 ```
 
+`~/.aws/config` / `~/.aws/credentials` の書き方サンプルは
+[docs/samples/aws-config.example](docs/samples/aws-config.example) /
+[docs/samples/aws-credentials.example](docs/samples/aws-credentials.example) を参照。
+デフォルト以外のパスに置きたい場合は GUI の「設定」ボタン、または環境変数
+`AWS_CONFIG_FILE` で指定できます。
+
 ## 使い方
 
 `launch.bat` をダブルクリックで GUI 起動。

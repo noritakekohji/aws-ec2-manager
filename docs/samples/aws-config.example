@@ -1,0 +1,75 @@
+# ============================================================
+# AWS CLI config サンプル
+# 配置先: %USERPROFILE%\.aws\config   (Windows)
+#         ~/.aws/config              (macOS/Linux)
+# 別パスに置きたい場合は本アプリの「設定」ボタンか、
+# 環境変数 AWS_CONFIG_FILE で指定可能。
+# ============================================================
+
+
+# ------------------------------------------------------------
+# 1) SSO セッション参照型 (AWS CLI v2 の現行推奨形式)
+#    複数のプロファイルで sso-session ブロックを共有できる。
+# ------------------------------------------------------------
+[sso-session my-org]
+sso_start_url = https://d-xxxxxxxxxx.awsapps.com/start
+sso_region = us-east-1
+sso_registration_scopes = sso:account:access
+
+[profile prod]
+sso_session = my-org
+sso_account_id = 111111111111
+sso_role_name = AdministratorAccess
+region = us-east-1
+output = json
+
+[profile dev]
+sso_session = my-org
+sso_account_id = 222222222222
+sso_role_name = PowerUserAccess
+region = ap-northeast-1
+output = json
+
+
+# ------------------------------------------------------------
+# 2) レガシー SSO 型 (sso_session を使わず直接 URL を書く)
+#    旧形式だが現在も動作する。
+# ------------------------------------------------------------
+[profile legacy-sso]
+sso_start_url = https://d-yyyyyyyyyy.awsapps.com/start
+sso_region = us-east-1
+sso_account_id = 333333333333
+sso_role_name = ReadOnlyAccess
+region = us-east-1
+output = json
+
+
+# ------------------------------------------------------------
+# 3) IAM Access Key 型 (アクセスキー + シークレットキー)
+#    実キーは ~/.aws/credentials 側に書く (aws-credentials.example 参照)。
+#    SSO ログインは不要だが、鍵管理はユーザー責任。
+# ------------------------------------------------------------
+[profile bedrock-key]
+region = us-east-1
+output = json
+
+
+# ------------------------------------------------------------
+# 4) デフォルトプロファイル (任意)
+#    --profile 指定がない場合に使われる。
+# ------------------------------------------------------------
+[default]
+region = us-east-1
+output = json
+
+
+# ------------------------------------------------------------
+# 5) AssumeRole 型 (別アカウントへのスイッチロール)
+#    source_profile に指定したプロファイルの認証情報を使って
+#    role_arn の IAM ロールを引き受ける。
+# ------------------------------------------------------------
+[profile cross-account]
+role_arn = arn:aws:iam::444444444444:role/CrossAccountReadOnly
+source_profile = prod
+region = us-east-1
+output = json
