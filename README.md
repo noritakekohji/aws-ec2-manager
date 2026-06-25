@@ -6,7 +6,7 @@ PowerShell 5.1 + XAML で実装し、AWS CLI（SSO プロファイル）と SSM 
 
 ## 主な機能
 
-- **インスタンス管理**: 一覧表示 / 起動 / 停止
+- **インスタンス管理**: 一覧表示 / 起動 / 停止 / 再起動
 - **セキュリティグループ**: VPC 内 SG リストから選択して `modify-instance-attribute` で置換
 - **ツール実行（SSM）**: `tools/{linux,windows}/*.yaml` の定義から選択して SSM Run Command で実行
   - 結果 `text` → WPF TextBox 表示
