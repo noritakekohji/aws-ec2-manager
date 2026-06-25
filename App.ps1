@@ -32,6 +32,7 @@ function Find-Control {
 $profileComboBox = Find-Control -Name 'ProfileComboBox'
 $profileInfoText = Find-Control -Name 'ProfileInfoText'
 $checkTokenButton = Find-Control -Name 'CheckTokenButton'
+$openSsoButton = Find-Control -Name 'OpenSsoButton'
 $statusBarText = Find-Control -Name 'StatusBarText'
 
 # Populate profiles
@@ -96,6 +97,23 @@ $checkTokenButton.Add_Click({
         }
     })
 
+$openSsoButton.Add_Click({
+        try {
+            $selected = $profileComboBox.SelectedItem
+            if ($null -eq $selected) {
+                $statusBarText.Text = 'プロファイル未選択'
+                return
+            }
+            # aws sso login はブラウザを開いてユーザー入力を待つので、別コンソールで起動して GUI をブロックしない
+            Start-Process -FilePath 'aws' -ArgumentList @('sso', 'login', '--profile', $selected) | Out-Null
+            $statusBarText.Text = "SSO ログインを別ウィンドウで開きました: $selected （ブラウザで承認後「トークン確認」を押してください）"
+        }
+        catch {
+            $statusBarText.Text = "エラー: $($_.Exception.Message)"
+            return
+        }
+    })
+
 $refreshInstancesButton = Find-Control -Name 'RefreshInstancesButton'
 $startInstanceButton = Find-Control -Name 'StartInstanceButton'
 $stopInstanceButton = Find-Control -Name 'StopInstanceButton'
@@ -133,7 +151,9 @@ $refreshInstancesButton.Add_Click({
             if ($null -eq $name) { return }
             $statusBarText.Text = '取得中…'
             & $pumpUi
-            $items = @(Get-Ec2Instances -Profile $name)
+            # @() で包むと unary-comma 返り値が「1 要素 = 配列まるごと」に化けるので使わない
+            [object[]]$items = Get-Ec2Instances -Profile $name
+            if ($null -eq $items) { $items = @() }
             $prevId = $null
             if ($null -ne $instancesGrid.SelectedItem) {
                 $prevId = $instancesGrid.SelectedItem.InstanceId
@@ -249,7 +269,8 @@ function Update-SgInstanceComboBox {
         if ($null -eq $name) { return }
         $statusBarText.Text = 'インスタンス取得中…'
         & $pumpUi
-        $items = @(Get-Ec2Instances -Profile $name)
+        [object[]]$items = Get-Ec2Instances -Profile $name
+        if ($null -eq $items) { $items = @() }
         $display = New-Object System.Collections.Generic.List[PSCustomObject]
         foreach ($it in $items) {
             $label = if ([string]::IsNullOrEmpty($it.Name)) { $it.InstanceId } else { "$($it.InstanceId) ($($it.Name))" }
@@ -289,7 +310,8 @@ function Update-SgListsForInstance {
         if ($null -eq $name) { return }
         $statusBarText.Text = "$($Instance.InstanceId) の SG 取得中…"
         & $pumpUi
-        $vpcSgs = @(Get-VpcSecurityGroups -Profile $name -VpcId $Instance.VpcId)
+        [object[]]$vpcSgs = Get-VpcSecurityGroups -Profile $name -VpcId $Instance.VpcId
+        if ($null -eq $vpcSgs) { $vpcSgs = @() }
 
         $appliedIds = @()
         if ($null -ne $Instance.SecurityGroupIds) { $appliedIds = @($Instance.SecurityGroupIds) }
@@ -508,8 +530,12 @@ function Update-YamlListsFromDisk {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper, not a system-state change.')]
     [CmdletBinding()]
     param()
-    $tab3State.LinuxYamls = @(Get-SsmYamlList -Platform 'Linux')
-    $tab3State.WindowsYamls = @(Get-SsmYamlList -Platform 'Windows')
+    [object[]]$lin = Get-SsmYamlList -Platform 'Linux'
+    [object[]]$win = Get-SsmYamlList -Platform 'Windows'
+    if ($null -eq $lin) { $lin = @() }
+    if ($null -eq $win) { $win = @() }
+    $tab3State.LinuxYamls = $lin
+    $tab3State.WindowsYamls = $win
 }
 
 function Update-YamlListBoxForInstance {
@@ -547,7 +573,8 @@ $loadSsmButton.Add_Click({
             if ($null -eq $name) { return }
             $statusBarText.Text = 'インスタンス取得中…'
             & $pumpUi
-            $items = @(Get-Ec2Instances -Profile $name)
+            [object[]]$items = Get-Ec2Instances -Profile $name
+            if ($null -eq $items) { $items = @() }
             $display = New-Object System.Collections.Generic.List[PSCustomObject]
             foreach ($it in $items) {
                 $label = if ([string]::IsNullOrEmpty($it.Name)) { "$($it.InstanceId) [$($it.Platform)]" } else { "$($it.InstanceId) ($($it.Name)) [$($it.Platform)]" }

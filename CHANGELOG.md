@@ -7,10 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- ヘッダに「開く」ボタンを追加。選択中プロファイルで `aws sso login` を別ウィンドウ起動する（ブラウザ承認後「トークン確認」を押せばトークン状態を確認できる）
+
 ### Fixed
 - `Get-AwsProfileDetail` が AWS CLI v2 形式 (`sso_session` 参照) のプロファイルで `sso_start_url` を `[sso-session <name>]` ブロックから解決するように修正。これにより `bedrock` 等の SSO セッション参照プロファイルでヘッダの SSO URL が空になっていた問題を解消
 - `App.ps1` でプロファイル ComboBox に "String[] Array" と 1 項目だけ表示される問題を修正（`@(Get-AwsProfiles)` のラップで二重配列になっていたため、`[string[]]` キャストに変更）
 - `Test-SsoToken` が `aws` CLI に引数を単一の連結文字列として渡してしまい `ParamValidation` エラーになっていた問題を修正（`Invoke-AwsCli @(...)` を `Invoke-AwsCli -Arguments @(...)` に変更）。引数形状を検証する Pester テストも追加
+- `App.ps1` の `@(Get-Ec2Instances)` / `@(Get-VpcSecurityGroups)` / `@(Get-SsmYamlList)` 全 5 箇所が unary-comma 返り値を「1 要素 = 配列まるごと」に二重ラップしてしまい、Tab1 DataGrid / Tab2,3 ComboBox / Tab3 YAML 一覧が表示されなかった問題を修正（`[object[]]` キャストに統一）
 
 ## [0.1.0] - 2026-06-25
 

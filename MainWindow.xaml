@@ -14,6 +14,7 @@
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="8">
             <TextBlock Text="プロファイル:" VerticalAlignment="Center" Margin="0,0,8,0" />
             <ComboBox x:Name="ProfileComboBox" Width="250" VerticalAlignment="Center" />
+            <Button x:Name="OpenSsoButton" Content="開く" Padding="8,2" Margin="6,0,0,0" VerticalAlignment="Center" ToolTip="aws sso login --profile &lt;選択中&gt; を新しいコンソールで実行" />
             <TextBlock x:Name="ProfileInfoText" VerticalAlignment="Center" Margin="12,0,12,0" />
             <Button x:Name="CheckTokenButton" Content="トークン確認" Padding="8,2" VerticalAlignment="Center" />
         </StackPanel>
