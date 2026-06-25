@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- ヘッダに「開く」ボタンを追加。選択中プロファイルで `aws sso login` を別ウィンドウ起動する（ブラウザ承認後「トークン確認」を押せばトークン状態を確認できる）
+- ヘッダに「開く」ボタンを追加。`~/.aws/config` を notepad で開く（config が無ければ `~/.aws/` ディレクトリをエクスプローラで開くフォールバック）
 
 ### Fixed
 - `Get-AwsProfileDetail` が AWS CLI v2 形式 (`sso_session` 参照) のプロファイルで `sso_start_url` を `[sso-session <name>]` ブロックから解決するように修正。これにより `bedrock` 等の SSO セッション参照プロファイルでヘッダの SSO URL が空になっていた問題を解消

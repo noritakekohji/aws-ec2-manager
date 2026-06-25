@@ -99,14 +99,19 @@ $checkTokenButton.Add_Click({
 
 $openSsoButton.Add_Click({
         try {
-            $selected = $profileComboBox.SelectedItem
-            if ($null -eq $selected) {
-                $statusBarText.Text = 'プロファイル未選択'
-                return
+            $awsDir = Join-Path $env:USERPROFILE '.aws'
+            $configPath = Join-Path $awsDir 'config'
+            if (Test-Path -LiteralPath $configPath) {
+                Start-Process -FilePath 'notepad.exe' -ArgumentList @($configPath) | Out-Null
+                $statusBarText.Text = "~/.aws/config を notepad で開きました"
             }
-            # aws sso login はブラウザを開いてユーザー入力を待つので、別コンソールで起動して GUI をブロックしない
-            Start-Process -FilePath 'aws' -ArgumentList @('sso', 'login', '--profile', $selected) | Out-Null
-            $statusBarText.Text = "SSO ログインを別ウィンドウで開きました: $selected （ブラウザで承認後「トークン確認」を押してください）"
+            elseif (Test-Path -LiteralPath $awsDir) {
+                Start-Process -FilePath 'explorer.exe' -ArgumentList @($awsDir) | Out-Null
+                $statusBarText.Text = "~/.aws/ をエクスプローラで開きました（config が見つかりません）"
+            }
+            else {
+                $statusBarText.Text = "~/.aws/ ディレクトリが存在しません"
+            }
         }
         catch {
             $statusBarText.Text = "エラー: $($_.Exception.Message)"
