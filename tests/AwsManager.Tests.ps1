@@ -157,6 +157,24 @@ Describe 'AwsManager' {
         }
     }
 
+    Context 'ConvertFrom-MinimalYaml' {
+        It 'parses basic key/value and script: | block' {
+            $yaml = "name: foo`noutput: text`nscript: |`n  echo hello"
+            $r = ConvertFrom-MinimalYaml -Text $yaml
+            $r['name'] | Should -Be 'foo'
+            $r['output'] | Should -Be 'text'
+            ($r['script'].TrimEnd("`n")) | Should -Be 'echo hello'
+        }
+
+        It 'coerces timeout to int and parses description' {
+            $yaml = "name: bar`ndescription: a task`ntimeout: 120`nscript: |`n  ls"
+            $r = ConvertFrom-MinimalYaml -Text $yaml
+            $r['description'] | Should -Be 'a task'
+            $r['timeout'] | Should -Be 120
+            ($r['timeout']) -is [int] | Should -BeTrue
+        }
+    }
+
     Context 'Invoke-SsmTask - YAML parsing' {
         It 'parses top-level keys and script block (text output)' {
             $yaml = @'

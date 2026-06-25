@@ -89,7 +89,48 @@
                 </Grid>
             </TabItem>
             <TabItem Header="ツール実行">
-                <TextBlock Text="Tab3: SSM Run Command（未実装）" Margin="12" />
+                <Grid Margin="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Text="インスタンス:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <ComboBox x:Name="SsmInstanceComboBox" Width="350" VerticalAlignment="Center"
+                                  DisplayMemberPath="DisplayLabel" Margin="0,0,8,0" />
+                        <Button x:Name="LoadSsmButton" Content="読込" Padding="10,4" Margin="0,0,8,0" />
+                        <Button x:Name="RescanYamlButton" Content="再スキャン" Padding="10,4" />
+                    </StackPanel>
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ListBox x:Name="YamlListBox" Grid.Column="0" Width="300"
+                                 DisplayMemberPath="Name" Margin="0,0,8,0" />
+                        <Grid Grid.Column="1">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <StackPanel Grid.Row="0" Margin="0,0,0,8">
+                                <TextBlock x:Name="YamlInfoText" TextWrapping="Wrap" Margin="0,0,0,8" />
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="RunSsmButton" Content="実行" Padding="10,4" Margin="0,0,8,0" />
+                                    <ProgressBar x:Name="SsmProgressBar" Width="200" Height="18"
+                                                 IsIndeterminate="True" Visibility="Collapsed"
+                                                 VerticalAlignment="Center" />
+                                </StackPanel>
+                            </StackPanel>
+                            <TextBox x:Name="SsmOutputText" Grid.Row="1"
+                                     IsReadOnly="True"
+                                     AcceptsReturn="True"
+                                     VerticalScrollBarVisibility="Auto"
+                                     HorizontalScrollBarVisibility="Auto"
+                                     FontFamily="Consolas" />
+                        </Grid>
+                    </Grid>
+                </Grid>
             </TabItem>
         </TabControl>
 

@@ -411,4 +411,4 @@ function Invoke-SsmTask {
     }
 }
 
-Export-ModuleMember -Function Get-Ec2Instances, Start-Ec2Instance, Stop-Ec2Instance, Restart-Ec2Instance, Get-VpcSecurityGroups, Set-InstanceSecurityGroups, Invoke-SsmTask
+Export-ModuleMember -Function Get-Ec2Instances, Start-Ec2Instance, Stop-Ec2Instance, Restart-Ec2Instance, Get-VpcSecurityGroups, Set-InstanceSecurityGroups, Invoke-SsmTask, ConvertFrom-MinimalYaml

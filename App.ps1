@@ -442,4 +442,238 @@ $applySgButton.Add_Click({
         }
     })
 
+#----------------------------------------------------------------------
+# Tab3: SSM Run Command
+#----------------------------------------------------------------------
+
+$ssmInstanceComboBox = Find-Control -Name 'SsmInstanceComboBox'
+$loadSsmButton = Find-Control -Name 'LoadSsmButton'
+$rescanYamlButton = Find-Control -Name 'RescanYamlButton'
+$yamlListBox = Find-Control -Name 'YamlListBox'
+$yamlInfoText = Find-Control -Name 'YamlInfoText'
+$runSsmButton = Find-Control -Name 'RunSsmButton'
+$ssmProgressBar = Find-Control -Name 'SsmProgressBar'
+$ssmOutputText = Find-Control -Name 'SsmOutputText'
+
+$tab3State = [PSCustomObject]@{
+    LinuxYamls   = @()
+    WindowsYamls = @()
+}
+
+function Get-SsmYamlList {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Returns multiple YAML tasks by design.')]
+    [CmdletBinding()]
+    [OutputType([PSCustomObject[]])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Linux', 'Windows')]
+        [string]$Platform
+    )
+    $sub = if ($Platform -eq 'Windows') { 'windows' } else { 'linux' }
+    $dir = Join-Path $PSScriptRoot (Join-Path 'ssm-tasks' $sub)
+    $list = New-Object System.Collections.Generic.List[PSCustomObject]
+    if (-not (Test-Path -LiteralPath $dir)) {
+        return , ($list.ToArray())
+    }
+    $files = @(Get-ChildItem -LiteralPath $dir -Filter '*.yaml' -File -ErrorAction SilentlyContinue)
+    foreach ($f in $files) {
+        try {
+            $text = Get-Content -LiteralPath $f.FullName -Raw -ErrorAction Stop
+            $task = ConvertFrom-MinimalYaml -Text $text
+            $name = if ($task.ContainsKey('name')) { [string]$task['name'] } else { $f.BaseName }
+            $desc = if ($task.ContainsKey('description')) { [string]$task['description'] } else { '' }
+            $out  = if ($task.ContainsKey('output')) { [string]$task['output'] } else { 'text' }
+            $to   = if ($task.ContainsKey('timeout')) { $task['timeout'] } else { 300 }
+            $scr  = if ($task.ContainsKey('script')) { [string]$task['script'] } else { '' }
+            $list.Add([PSCustomObject]@{
+                Path        = $f.FullName
+                Name        = $name
+                Description = $desc
+                Output      = $out
+                Platform    = $Platform
+                Timeout     = $to
+                Script      = $scr
+            })
+        }
+        catch {
+            $statusBarText.Text = "YAML 読込エラー: $($f.Name) - $($_.Exception.Message)"
+        }
+    }
+    return , ($list.ToArray())
+}
+
+function Update-YamlListsFromDisk {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper, not a system-state change.')]
+    [CmdletBinding()]
+    param()
+    $tab3State.LinuxYamls = @(Get-SsmYamlList -Platform 'Linux')
+    $tab3State.WindowsYamls = @(Get-SsmYamlList -Platform 'Windows')
+}
+
+function Update-YamlListBoxForInstance {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper, not a system-state change.')]
+    [CmdletBinding()]
+    param($Instance)
+    if ($null -eq $Instance) {
+        $yamlListBox.ItemsSource = $null
+        return
+    }
+    $platform = if ($Instance.Platform -eq 'Windows') { 'Windows' } else { 'Linux' }
+    $items = if ($platform -eq 'Windows') { $tab3State.WindowsYamls } else { $tab3State.LinuxYamls }
+    $yamlListBox.ItemsSource = $items
+    $yamlInfoText.Text = ''
+}
+
+function Get-SafeFileName {
+    param([string]$Name)
+    if ([string]::IsNullOrEmpty($Name)) { return 'task' }
+    $invalid = '\\/:\*\?"<>\|'
+    return ([regex]::Replace($Name, "[$invalid]", '_'))
+}
+
+# Initial scan
+try {
+    Update-YamlListsFromDisk
+}
+catch {
+    $statusBarText.Text = "YAML スキャンエラー: $($_.Exception.Message)"
+}
+
+$loadSsmButton.Add_Click({
+        try {
+            $name = Get-SelectedProfile
+            if ($null -eq $name) { return }
+            $statusBarText.Text = 'インスタンス取得中…'
+            & $pumpUi
+            $items = @(Get-Ec2Instances -Profile $name)
+            $display = New-Object System.Collections.Generic.List[PSCustomObject]
+            foreach ($it in $items) {
+                $label = if ([string]::IsNullOrEmpty($it.Name)) { "$($it.InstanceId) [$($it.Platform)]" } else { "$($it.InstanceId) ($($it.Name)) [$($it.Platform)]" }
+                $display.Add([PSCustomObject]@{
+                    InstanceId   = $it.InstanceId
+                    Name         = $it.Name
+                    Platform     = $it.Platform
+                    DisplayLabel = $label
+                })
+            }
+            $ssmInstanceComboBox.ItemsSource = $display.ToArray()
+            $statusBarText.Text = "インスタンス $($display.Count) 件"
+        }
+        catch {
+            $statusBarText.Text = "エラー: $($_.Exception.Message)"
+        }
+    })
+
+$ssmInstanceComboBox.Add_SelectionChanged({
+        try {
+            $sel = $ssmInstanceComboBox.SelectedItem
+            if ($null -eq $sel) { return }
+            Update-YamlListBoxForInstance -Instance $sel
+        }
+        catch {
+            $statusBarText.Text = "エラー: $($_.Exception.Message)"
+        }
+    })
+
+$yamlListBox.Add_SelectionChanged({
+        try {
+            $sel = $yamlListBox.SelectedItem
+            if ($null -eq $sel) {
+                $yamlInfoText.Text = ''
+                return
+            }
+            $desc = if ([string]::IsNullOrEmpty($sel.Description)) { '(なし)' } else { $sel.Description }
+            $yamlInfoText.Text = "name: $($sel.Name)`ndescription: $desc`noutput: $($sel.Output)`ntimeout: $($sel.Timeout)"
+        }
+        catch {
+            $statusBarText.Text = "エラー: $($_.Exception.Message)"
+        }
+    })
+
+$rescanYamlButton.Add_Click({
+        try {
+            Update-YamlListsFromDisk
+            $sel = $ssmInstanceComboBox.SelectedItem
+            if ($null -ne $sel) {
+                Update-YamlListBoxForInstance -Instance $sel
+            }
+            $statusBarText.Text = "YAML 再スキャン完了 (Linux $($tab3State.LinuxYamls.Count) / Windows $($tab3State.WindowsYamls.Count))"
+        }
+        catch {
+            $statusBarText.Text = "エラー: $($_.Exception.Message)"
+        }
+    })
+
+$runSsmButton.Add_Click({
+        try {
+            $name = Get-SelectedProfile
+            if ($null -eq $name) { return }
+            $inst = $ssmInstanceComboBox.SelectedItem
+            if ($null -eq $inst) {
+                $statusBarText.Text = 'インスタンス未選択'
+                return
+            }
+            $yaml = $yamlListBox.SelectedItem
+            if ($null -eq $yaml) {
+                $statusBarText.Text = 'YAML 未選択'
+                return
+            }
+
+            $answer = [System.Windows.MessageBox]::Show(
+                "$($inst.InstanceId) で『$($yaml.Name)』を実行しますか？",
+                'aws-ec2-manager',
+                [System.Windows.MessageBoxButton]::YesNo,
+                [System.Windows.MessageBoxImage]::Question
+            )
+            if ($answer -ne [System.Windows.MessageBoxResult]::Yes) {
+                $statusBarText.Text = '実行をキャンセルしました'
+                return
+            }
+
+            $ssmProgressBar.Visibility = [System.Windows.Visibility]::Visible
+            $ssmOutputText.Text = '実行中...'
+            $statusBarText.Text = "$($yaml.Name) 実行中... (GUI は完了まで応答しません)"
+            & $pumpUi
+
+            $result = Invoke-SsmTask -Profile $name -InstanceId $inst.InstanceId -YamlPath $yaml.Path
+
+            $ssmProgressBar.Visibility = [System.Windows.Visibility]::Collapsed
+
+            $outType = if ($null -ne $result.OutputType) { [string]$result.OutputType } else { 'text' }
+            if ($outType -eq 'html') {
+                $tmpDir = Join-Path $env:TEMP 'aws-ec2-manager'
+                if (-not (Test-Path -LiteralPath $tmpDir)) {
+                    New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
+                }
+                $safe = Get-SafeFileName -Name $yaml.Name
+                $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
+                $htmlPath = Join-Path $tmpDir "$safe-$stamp.html"
+                Set-Content -LiteralPath $htmlPath -Value $result.Output -Encoding UTF8
+                try {
+                    Start-Process -FilePath 'msedge.exe' -ArgumentList $htmlPath -ErrorAction Stop
+                }
+                catch {
+                    Start-Process -FilePath $htmlPath
+                }
+                $ssmOutputText.Text = "HTML 結果を Edge で開きました: $htmlPath"
+            }
+            else {
+                if ($result.Status -eq 'Success') {
+                    $ssmOutputText.Text = [string]$result.Output
+                }
+                else {
+                    $err = if ([string]::IsNullOrEmpty([string]$result.Error)) { '' } else { "`n--- STDERR ---`n$($result.Error)" }
+                    $ssmOutputText.Text = "$([string]$result.Output)$err"
+                }
+            }
+
+            $dur = if ($null -ne $result.Duration) { '{0:0.0}' -f $result.Duration.TotalSeconds } else { '?' }
+            $statusBarText.Text = "Status: $($result.Status) / Duration: ${dur}s"
+        }
+        catch {
+            $ssmProgressBar.Visibility = [System.Windows.Visibility]::Collapsed
+            $statusBarText.Text = "エラー: $($_.Exception.Message)"
+        }
+    })
+
 $window.ShowDialog() | Out-Null

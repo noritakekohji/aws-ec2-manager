@@ -1,0 +1,5 @@
+name: ネットワーク疎通チェック
+output: text
+script: |
+  cd /opt/ops-scripts/tools/network-check
+  bash check_network_connectivity.sh --target-list targets.lst
