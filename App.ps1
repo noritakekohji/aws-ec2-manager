@@ -644,7 +644,8 @@ function Get-SsmYamlList {
     $files = @(Get-ChildItem -LiteralPath $dir -Filter '*.yaml' -File -ErrorAction SilentlyContinue)
     foreach ($f in $files) {
         try {
-            $text = Get-Content -LiteralPath $f.FullName -Raw -ErrorAction Stop
+            # YAML は UTF-8 (BOM なし) 想定。PS 5.1 既定の CP932 で読むと日本語が文字化けするので明示
+            $text = Get-Content -LiteralPath $f.FullName -Raw -Encoding UTF8 -ErrorAction Stop
             $task = ConvertFrom-MinimalYaml -Text $text
             $name = if ($task.ContainsKey('name')) { [string]$task['name'] } else { $f.BaseName }
             $desc = if ($task.ContainsKey('description')) { [string]$task['description'] } else { '' }

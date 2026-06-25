@@ -309,7 +309,8 @@ function Invoke-SsmTask {
         throw "YAML file not found: $YamlPath"
     }
 
-    $yamlText = Get-Content -LiteralPath $YamlPath -Raw -ErrorAction Stop
+    # YAML は UTF-8 (BOM なし) 想定。PS 5.1 既定の CP932 で読むと日本語が文字化けするので明示
+    $yamlText = Get-Content -LiteralPath $YamlPath -Raw -Encoding UTF8 -ErrorAction Stop
     $task = ConvertFrom-MinimalYaml -Text $yamlText
 
     $script = if ($task.ContainsKey('script')) { [string]$task['script'] } else { '' }
