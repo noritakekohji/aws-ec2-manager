@@ -94,4 +94,106 @@ $checkTokenButton.Add_Click({
         }
     })
 
+$refreshInstancesButton = Find-Control -Name 'RefreshInstancesButton'
+$startInstanceButton = Find-Control -Name 'StartInstanceButton'
+$stopInstanceButton = Find-Control -Name 'StopInstanceButton'
+$restartInstanceButton = Find-Control -Name 'RestartInstanceButton'
+$instancesGrid = Find-Control -Name 'InstancesGrid'
+
+$pumpUi = {
+    $window.Dispatcher.Invoke(
+        [Action] {},
+        [System.Windows.Threading.DispatcherPriority]::Background
+    )
+}
+
+function Get-SelectedProfile {
+    $sel = $profileComboBox.SelectedItem
+    if ($null -eq $sel) {
+        $statusBarText.Text = 'プロファイル未選択'
+        return $null
+    }
+    return [string]$sel
+}
+
+function Get-SelectedInstance {
+    $row = $instancesGrid.SelectedItem
+    if ($null -eq $row) {
+        $statusBarText.Text = 'インスタンスを選択してください'
+        return $null
+    }
+    return $row
+}
+
+$refreshInstancesButton.Add_Click({
+        try {
+            $name = Get-SelectedProfile
+            if ($null -eq $name) { return }
+            $statusBarText.Text = '取得中…'
+            & $pumpUi
+            $items = @(Get-Ec2Instances -Profile $name)
+            $instancesGrid.ItemsSource = $items
+            $statusBarText.Text = "$($items.Count) 件"
+        }
+        catch {
+            $statusBarText.Text = "エラー: $($_.Exception.Message)"
+            return
+        }
+    })
+
+function Invoke-InstanceAction {
+    param(
+        [Parameter(Mandatory = $true)][string]$ActionLabel,
+        [Parameter(Mandatory = $true)][scriptblock]$Action
+    )
+    try {
+        $name = Get-SelectedProfile
+        if ($null -eq $name) { return }
+        $row = Get-SelectedInstance
+        if ($null -eq $row) { return }
+        $instanceId = [string]$row.InstanceId
+        $answer = [System.Windows.MessageBox]::Show(
+            "$instanceId を $ActionLabel しますか？",
+            'aws-ec2-manager',
+            [System.Windows.MessageBoxButton]::YesNo,
+            [System.Windows.MessageBoxImage]::Question
+        )
+        if ($answer -ne [System.Windows.MessageBoxResult]::Yes) {
+            $statusBarText.Text = "$ActionLabel をキャンセルしました"
+            return
+        }
+        $statusBarText.Text = "$instanceId を $ActionLabel 中…"
+        & $pumpUi
+        $ok = & $Action $name $instanceId
+        if ($ok) {
+            $statusBarText.Text = "$instanceId の $ActionLabel 要求を送信しました（更新ボタンで反映）"
+        }
+        else {
+            $statusBarText.Text = "$instanceId の $ActionLabel に失敗しました"
+        }
+    }
+    catch {
+        $statusBarText.Text = "エラー: $($_.Exception.Message)"
+        return
+    }
+}
+
+$startInstanceButton.Add_Click({
+        Invoke-InstanceAction -ActionLabel '起動' -Action {
+            param($n, $id) Start-Ec2Instance -Profile $n -InstanceId $id
+        }
+    })
+
+$stopInstanceButton.Add_Click({
+        Invoke-InstanceAction -ActionLabel '停止' -Action {
+            param($n, $id) Stop-Ec2Instance -Profile $n -InstanceId $id
+        }
+    })
+
+$restartInstanceButton.Add_Click({
+        Invoke-InstanceAction -ActionLabel '再起動' -Action {
+            param($n, $id) Restart-Ec2Instance -Profile $n -InstanceId $id
+        }
+    })
+
 $window.ShowDialog() | Out-Null

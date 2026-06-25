@@ -21,7 +21,34 @@
         <!-- Tabs -->
         <TabControl x:Name="MainTabs" Grid.Row="1" Margin="8,0,8,0">
             <TabItem Header="EC2 インスタンス">
-                <TextBlock Text="Tab1: EC2 一覧（未実装）" Margin="12" />
+                <Grid Margin="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+                        <Button x:Name="RefreshInstancesButton" Content="更新" Padding="10,4" Margin="0,0,8,0" />
+                        <Button x:Name="StartInstanceButton" Content="起動" Padding="10,4" Margin="0,0,8,0" />
+                        <Button x:Name="StopInstanceButton" Content="停止" Padding="10,4" Margin="0,0,8,0" />
+                        <Button x:Name="RestartInstanceButton" Content="再起動" Padding="10,4" Margin="0,0,8,0" />
+                    </StackPanel>
+                    <DataGrid x:Name="InstancesGrid" Grid.Row="1"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              SelectionMode="Single">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="160" />
+                            <DataGridTextColumn Header="InstanceId" Binding="{Binding InstanceId}" Width="160" />
+                            <DataGridTextColumn Header="State" Binding="{Binding State}" Width="90" />
+                            <DataGridTextColumn Header="InstanceType" Binding="{Binding InstanceType}" Width="110" />
+                            <DataGridTextColumn Header="AvailabilityZone" Binding="{Binding AvailabilityZone}" Width="120" />
+                            <DataGridTextColumn Header="PrivateIpAddress" Binding="{Binding PrivateIpAddress}" Width="130" />
+                            <DataGridTextColumn Header="PublicIpAddress" Binding="{Binding PublicIpAddress}" Width="130" />
+                            <DataGridTextColumn Header="Platform" Binding="{Binding Platform}" Width="90" />
+                            <DataGridTextColumn Header="VpcId" Binding="{Binding VpcId}" Width="140" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
             </TabItem>
             <TabItem Header="セキュリティグループ">
                 <TextBlock Text="Tab2: SG 管理（未実装）" Margin="12" />
