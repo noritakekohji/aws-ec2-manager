@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - `Get-AwsProfileDetail` が AWS CLI v2 形式 (`sso_session` 参照) のプロファイルで `sso_start_url` を `[sso-session <name>]` ブロックから解決するように修正。これにより `bedrock` 等の SSO セッション参照プロファイルでヘッダの SSO URL が空になっていた問題を解消
+- `App.ps1` でプロファイル ComboBox に "String[] Array" と 1 項目だけ表示される問題を修正（`@(Get-AwsProfiles)` のラップで二重配列になっていたため、`[string[]]` キャストに変更）
 
 ## [0.1.0] - 2026-06-25
 

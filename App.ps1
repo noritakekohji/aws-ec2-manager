@@ -36,9 +36,11 @@ $statusBarText = Find-Control -Name 'StatusBarText'
 
 # Populate profiles
 try {
-    $profiles = @(Get-AwsProfiles)
+    # Get-AwsProfiles は string[] を返す。@() で包むと WPF から「1 要素 = 配列まるごと」に見えるため使わない
+    [string[]]$profiles = Get-AwsProfiles
+    if ($null -eq $profiles) { $profiles = @() }
     $profileComboBox.ItemsSource = $profiles
-    if ($profiles.Count -gt 0) {
+    if ($profiles.Length -gt 0) {
         $profileComboBox.SelectedIndex = 0
     }
     else {
