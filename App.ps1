@@ -35,41 +35,62 @@ $checkTokenButton = Find-Control -Name 'CheckTokenButton'
 $statusBarText = Find-Control -Name 'StatusBarText'
 
 # Populate profiles
-$profiles = @(Get-AwsProfiles)
-$profileComboBox.ItemsSource = $profiles
-if ($profiles.Count -gt 0) {
-    $profileComboBox.SelectedIndex = 0
+try {
+    $profiles = @(Get-AwsProfiles)
+    $profileComboBox.ItemsSource = $profiles
+    if ($profiles.Count -gt 0) {
+        $profileComboBox.SelectedIndex = 0
+    }
+    else {
+        $statusBarText.Text = 'プロファイルが見つかりません (~/.aws/config を確認)'
+    }
+}
+catch {
+    $statusBarText.Text = "プロファイル読込エラー: $($_.Exception.Message)"
 }
 
 $profileComboBox.Add_SelectionChanged({
-        $selected = $profileComboBox.SelectedItem
-        if ($null -eq $selected) {
-            $profileInfoText.Text = ''
-            $statusBarText.Text = 'Ready'
+        try {
+            $selected = $profileComboBox.SelectedItem
+            if ($null -eq $selected) {
+                $profileInfoText.Text = ''
+                $statusBarText.Text = 'Ready'
+                return
+            }
+            $detail = Get-AwsProfileDetail -Name $selected
+            if ($null -eq $detail) {
+                $profileInfoText.Text = '(プロファイル詳細を取得できません)'
+            }
+            else {
+                $fmt = { param($v) if ($null -eq $v -or $v -eq '') { '(なし)' } else { $v } }
+                $profileInfoText.Text = "SSO URL=$(& $fmt $detail.SsoStartUrl) | Region=$(& $fmt $detail.Region) | Account=$(& $fmt $detail.SsoAccountId)"
+            }
+            $statusBarText.Text = "Profile: $selected"
+        }
+        catch {
+            $statusBarText.Text = "エラー: $($_.Exception.Message)"
             return
         }
-        $detail = Get-AwsProfileDetail -Name $selected
-        if ($null -eq $detail) {
-            $profileInfoText.Text = '(プロファイル詳細を取得できません)'
-        }
-        else {
-            $profileInfoText.Text = ("SSO URL={0} | Region={1} | Account={2}" -f $detail.SsoStartUrl, $detail.Region, $detail.SsoAccountId)
-        }
-        $statusBarText.Text = "Profile: $selected"
     })
 
 $checkTokenButton.Add_Click({
-        $selected = $profileComboBox.SelectedItem
-        if ($null -eq $selected) {
-            $statusBarText.Text = 'プロファイル未選択'
+        try {
+            $selected = $profileComboBox.SelectedItem
+            if ($null -eq $selected) {
+                $statusBarText.Text = 'プロファイル未選択'
+                return
+            }
+            $ok = Test-SsoToken -Name $selected
+            if ($ok) {
+                $statusBarText.Text = 'SSO トークン有効'
+            }
+            else {
+                $statusBarText.Text = "要 SSO ログイン: aws sso login --profile $selected"
+            }
+        }
+        catch {
+            $statusBarText.Text = "エラー: $($_.Exception.Message)"
             return
-        }
-        $ok = Test-SsoToken -Name $selected
-        if ($ok) {
-            $statusBarText.Text = 'SSO トークン有効'
-        }
-        else {
-            $statusBarText.Text = "要 SSO ログイン: aws sso login --profile $selected"
         }
     })
 

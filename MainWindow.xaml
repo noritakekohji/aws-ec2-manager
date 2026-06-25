@@ -20,13 +20,13 @@
 
         <!-- Tabs -->
         <TabControl x:Name="MainTabs" Grid.Row="1" Margin="8,0,8,0">
-            <TabItem x:Name="Tab1" Header="EC2 インスタンス">
+            <TabItem Header="EC2 インスタンス">
                 <TextBlock Text="Tab1: EC2 一覧（未実装）" Margin="12" />
             </TabItem>
-            <TabItem x:Name="Tab2" Header="セキュリティグループ">
+            <TabItem Header="セキュリティグループ">
                 <TextBlock Text="Tab2: SG 管理（未実装）" Margin="12" />
             </TabItem>
-            <TabItem x:Name="Tab3" Header="ツール実行">
+            <TabItem Header="ツール実行">
                 <TextBlock Text="Tab3: SSM Run Command（未実装）" Margin="12" />
             </TabItem>
         </TabControl>
