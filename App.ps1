@@ -81,11 +81,14 @@ function Show-SettingsDialog {
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="aws-ec2-manager 設定"
-        Width="640" Height="220"
+        Width="640" Height="300"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize">
     <Grid Margin="12">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -94,15 +97,25 @@ function Show-SettingsDialog {
         </Grid.RowDefinitions>
         <TextBlock Grid.Row="0" Text="AWS CLI config ファイルのパス" FontWeight="Bold" Margin="0,0,0,4" />
         <TextBlock Grid.Row="1" Text="空欄でデフォルト (~/.aws/config or $env:AWS_CONFIG_FILE)" Foreground="Gray" Margin="0,0,0,8" />
-        <Grid Grid.Row="2">
+        <Grid Grid.Row="2" Margin="0,0,0,16">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBox x:Name="ConfigPathTextBox" Grid.Column="0" VerticalAlignment="Center" Padding="4,4" />
-            <Button x:Name="BrowseButton" Grid.Column="1" Content="参照..." Padding="10,4" Margin="6,0,0,0" />
+            <Button x:Name="BrowseConfigButton" Grid.Column="1" Content="参照..." Padding="10,4" Margin="6,0,0,0" />
         </Grid>
-        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
+        <TextBlock Grid.Row="3" Text="ログ出力先ファイルのパス" FontWeight="Bold" Margin="0,0,0,4" />
+        <TextBlock Grid.Row="4" Text="空欄でログ無効" Foreground="Gray" Margin="0,0,0,8" />
+        <Grid Grid.Row="5">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="LogPathTextBox" Grid.Column="0" VerticalAlignment="Center" Padding="4,4" />
+            <Button x:Name="BrowseLogButton" Grid.Column="1" Content="参照..." Padding="10,4" Margin="6,0,0,0" />
+        </Grid>
+        <StackPanel Grid.Row="7" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button x:Name="OkButton" Content="OK" Width="90" Padding="0,4" Margin="0,0,8,0" IsDefault="True" />
             <Button x:Name="CancelButton" Content="キャンセル" Width="90" Padding="0,4" IsCancel="True" />
         </StackPanel>
@@ -116,16 +129,21 @@ function Show-SettingsDialog {
     $dialog.Owner = $window
 
     $configPathTextBox = $dialog.FindName('ConfigPathTextBox')
-    $browseButton = $dialog.FindName('BrowseButton')
-    $okButton = $dialog.FindName('OkButton')
-    $cancelButton = $dialog.FindName('CancelButton')
+    $browseConfigButton = $dialog.FindName('BrowseConfigButton')
+    $logPathTextBox     = $dialog.FindName('LogPathTextBox')
+    $browseLogButton    = $dialog.FindName('BrowseLogButton')
+    $okButton           = $dialog.FindName('OkButton')
+    $cancelButton       = $dialog.FindName('CancelButton')
 
     $current = Get-AppSettings
     if (-not [string]::IsNullOrWhiteSpace($current.AwsConfigPath)) {
         $configPathTextBox.Text = $current.AwsConfigPath
     }
+    if (-not [string]::IsNullOrWhiteSpace($current.LogPath)) {
+        $logPathTextBox.Text = $current.LogPath
+    }
 
-    $browseButton.Add_Click({
+    $browseConfigButton.Add_Click({
             $ofd = New-Object Microsoft.Win32.OpenFileDialog
             $ofd.Title = 'AWS config ファイルを選択'
             $ofd.Filter = 'All files (*.*)|*.*'
@@ -137,6 +155,23 @@ function Show-SettingsDialog {
             }
             if ($ofd.ShowDialog($dialog)) {
                 $configPathTextBox.Text = $ofd.FileName
+            }
+        })
+
+    $browseLogButton.Add_Click({
+            $sfd = New-Object Microsoft.Win32.SaveFileDialog
+            $sfd.Title = 'ログファイルの保存先を選択'
+            $sfd.Filter = 'Log files (*.log)|*.log|Text files (*.txt)|*.txt|All files (*.*)|*.*'
+            $sfd.DefaultExt = 'log'
+            if (-not [string]::IsNullOrWhiteSpace($logPathTextBox.Text)) {
+                $initDir = Split-Path -Parent $logPathTextBox.Text
+                if ((-not [string]::IsNullOrWhiteSpace($initDir)) -and (Test-Path -LiteralPath $initDir)) {
+                    $sfd.InitialDirectory = $initDir
+                }
+                $sfd.FileName = Split-Path -Leaf $logPathTextBox.Text
+            }
+            if ($sfd.ShowDialog($dialog)) {
+                $logPathTextBox.Text = $sfd.FileName
             }
         })
 
@@ -152,16 +187,21 @@ function Show-SettingsDialog {
 
     $result = $dialog.ShowDialog()
     if ($result -eq $true) {
-        $newPath = $configPathTextBox.Text
-        Save-AppSettings -AwsConfigPath $newPath
-        if ([string]::IsNullOrWhiteSpace($newPath)) {
+        $newConfigPath = $configPathTextBox.Text
+        $newLogPath    = $logPathTextBox.Text
+        Save-AppSettings -AwsConfigPath $newConfigPath -LogPath $newLogPath
+
+        if ([string]::IsNullOrWhiteSpace($newConfigPath)) {
             Remove-Item Env:\AWS_CONFIG_FILE -ErrorAction SilentlyContinue
-            $statusBarText.Text = '設定を保存しました（デフォルトパスを使用）'
         }
         else {
-            $env:AWS_CONFIG_FILE = $newPath
-            $statusBarText.Text = "設定を保存しました: $newPath"
+            $env:AWS_CONFIG_FILE = $newConfigPath
         }
+
+        Initialize-AppLogger -LogPath $newLogPath
+        Write-AppLog -Level 'INFO' -Message "設定変更: AwsConfigPath=$newConfigPath LogPath=$newLogPath"
+
+        $statusBarText.Text = '設定を保存しました'
         Update-ProfileComboBox
     }
 }
