@@ -18,13 +18,26 @@ function Invoke-AwsCli {
         [string[]]$Arguments
     )
 
-    $output = & aws @Arguments
+    $combined = & aws @Arguments 2>&1
     $exitCode = [int]$LASTEXITCODE
-    $joined = if ($null -eq $output) { '' } else { ($output -join [Environment]::NewLine) }
+
+    $stdoutLines = New-Object System.Collections.Generic.List[string]
+    $stderrLines = New-Object System.Collections.Generic.List[string]
+    foreach ($item in $combined) {
+        if ($item -is [System.Management.Automation.ErrorRecord]) {
+            $stderrLines.Add($item.ToString())
+        } else {
+            $stdoutLines.Add([string]$item)
+        }
+    }
+
+    $joined       = if ($stdoutLines.Count -eq 0) { '' } else { ($stdoutLines.ToArray() -join [Environment]::NewLine) }
+    $stderrJoined = if ($stderrLines.Count -eq 0)  { '' } else { ($stderrLines.ToArray()  -join [Environment]::NewLine) }
 
     return [PSCustomObject]@{
         ExitCode = $exitCode
         Output   = $joined
+        Stderr   = $stderrJoined
         Success  = ($exitCode -eq 0)
     }
 }
@@ -52,7 +65,8 @@ function Get-Ec2Instances {
 
     $result = Invoke-AwsCli -Arguments @('ec2', 'describe-instances', '--profile', $Profile, '--output', 'json')
     if (-not $result.Success) {
-        Write-Error "aws ec2 describe-instances failed: $($result.Output)"
+        $errDetail = if ([string]::IsNullOrWhiteSpace($result.Stderr)) { $result.Output } else { $result.Stderr }
+        Write-Error "aws ec2 describe-instances failed: $errDetail"
         return , @()
     }
 
@@ -177,7 +191,8 @@ function Get-VpcSecurityGroups {
     )
 
     if (-not $r.Success) {
-        Write-Error "aws ec2 describe-security-groups failed: $($r.Output)"
+        $errDetail = if ([string]::IsNullOrWhiteSpace($r.Stderr)) { $r.Output } else { $r.Stderr }
+        Write-Error "aws ec2 describe-security-groups failed: $errDetail"
         return , @()
     }
 
