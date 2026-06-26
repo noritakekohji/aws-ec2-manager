@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-26
+
 ### Added
+- `Logger.psm1` モジュールを新規追加（`Initialize-AppLogger` / `Write-AppLog`）。`[yyyy-MM-dd HH:mm:ss] [LEVEL] メッセージ` 形式でプレーンテキストファイルに追記
+- 設定ダイアログに「ログ出力先ファイルのパス」フィールドと参照ボタンを追加。空欄でログ無効
+- `AppSettings.psm1` に `LogPath` フィールドを追加（`settings.json` に永続化）
+- 操作ログ: プロファイル読込・選択、SSO トークン確認、SSO ログイン、インスタンス取得・起動・停止・再起動、SG 適用、SSM タスク実行の各操作を INFO/WARN/ERROR レベルで記録
+- 設定変更時にログを再初期化するため、アプリ再起動なしにログパスを変更可能
 - `docs/samples/aws-config.example` / `docs/samples/aws-credentials.example` を追加（SSO セッション参照 / レガシー SSO / IAM Access Key / デフォルト / AssumeRole の各書き方サンプル）
 - ヘッダに「SSO ログイン」ボタンを追加。選択中プロファイルで `aws sso login --profile <name>` を別ウィンドウ起動する（ブラウザ承認後「トークン確認」を押せばトークン状態を確認できる）
 - ヘッダに「開く」ボタンを追加。AWS config を notepad で開く（config が無ければそのディレクトリをエクスプローラで開くフォールバック）
@@ -17,11 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - `aws` CLI の stderr（`Unable to parse config file: ...` など）がそのままコンソールに漏れていた問題を修正。`Invoke-AwsCli` を `2>&1` でstderrをキャプチャするように変更し、`Stderr` フィールドとして返すようにした（`AwsConfig.psm1` / `AwsManager.psm1` 両方）
 - YAML ファイル読み込みが PS 5.1 既定の CP932 デコードで日本語が文字化けしていた問題を修正（`Get-Content -Raw -Encoding UTF8` に変更、`Get-SsmYamlList` / `Invoke-SsmTask` 両方）
-- Tab3 で YAML が 1 件しかない場合に `Update-YamlListBoxForInstance` が PSCustomObject を ItemsSource に渡してしまい「PSCustomObject を IEnumerable に変換できません」例外が出ていた問題を修正（`$items = if (...) { $tab3State.LinuxYamls } else { ... }` の if/else 式が単一要素配列を unroll していた）
-- `Get-AwsProfileDetail` が AWS CLI v2 形式 (`sso_session` 参照) のプロファイルで `sso_start_url` を `[sso-session <name>]` ブロックから解決するように修正。これにより `bedrock` 等の SSO セッション参照プロファイルでヘッダの SSO URL が空になっていた問題を解消
-- `App.ps1` でプロファイル ComboBox に "String[] Array" と 1 項目だけ表示される問題を修正（`@(Get-AwsProfiles)` のラップで二重配列になっていたため、`[string[]]` キャストに変更）
-- `Test-SsoToken` が `aws` CLI に引数を単一の連結文字列として渡してしまい `ParamValidation` エラーになっていた問題を修正（`Invoke-AwsCli @(...)` を `Invoke-AwsCli -Arguments @(...)` に変更）。引数形状を検証する Pester テストも追加
-- `App.ps1` の `@(Get-Ec2Instances)` / `@(Get-VpcSecurityGroups)` / `@(Get-SsmYamlList)` 全 5 箇所が unary-comma 返り値を「1 要素 = 配列まるごと」に二重ラップしてしまい、Tab1 DataGrid / Tab2,3 ComboBox / Tab3 YAML 一覧が表示されなかった問題を修正（`[object[]]` キャストに統一）
+- Tab3 で YAML が 1 件しかない場合に `Update-YamlListBoxForInstance` が PSCustomObject を ItemsSource に渡してしまい「PSCustomObject を IEnumerable に変換できません」例外が出ていた問題を修正
+- `Get-AwsProfileDetail` が AWS CLI v2 形式 (`sso_session` 参照) のプロファイルで `sso_start_url` を `[sso-session <name>]` ブロックから解決するように修正
+- `App.ps1` でプロファイル ComboBox に "String[] Array" と 1 項目だけ表示される問題を修正
+- `Test-SsoToken` が `aws` CLI に引数を単一の連結文字列として渡してしまい `ParamValidation` エラーになっていた問題を修正
+- `App.ps1` の Tab1/2/3 で unary-comma 返り値が二重ラップされていた問題を修正
 
 ## [0.1.0] - 2026-06-25
 
