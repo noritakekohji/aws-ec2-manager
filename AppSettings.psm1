@@ -25,6 +25,7 @@ function Get-AppSettings {
 
     $defaults = [PSCustomObject]@{
         AwsConfigPath = $null
+        LogPath       = $null
     }
 
     $path = Get-SettingsPath
@@ -48,8 +49,15 @@ function Get-AppSettings {
         if (-not [string]::IsNullOrWhiteSpace($val)) { $configPath = $val }
     }
 
+    $logPath = $null
+    if ($obj.PSObject.Properties.Name -contains 'LogPath') {
+        $val = [string]$obj.LogPath
+        if (-not [string]::IsNullOrWhiteSpace($val)) { $logPath = $val }
+    }
+
     return [PSCustomObject]@{
         AwsConfigPath = $configPath
+        LogPath       = $logPath
     }
 }
 
@@ -60,7 +68,11 @@ function Save-AppSettings {
     param(
         [AllowNull()]
         [AllowEmptyString()]
-        [string]$AwsConfigPath
+        [string]$AwsConfigPath,
+
+        [AllowNull()]
+        [AllowEmptyString()]
+        [string]$LogPath
     )
 
     $dir = Get-SettingsDirectory
@@ -68,11 +80,15 @@ function Save-AppSettings {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
     }
 
-    $normalized = $null
-    if (-not [string]::IsNullOrWhiteSpace($AwsConfigPath)) { $normalized = $AwsConfigPath.Trim() }
+    $normalizedConfig = $null
+    if (-not [string]::IsNullOrWhiteSpace($AwsConfigPath)) { $normalizedConfig = $AwsConfigPath.Trim() }
+
+    $normalizedLog = $null
+    if (-not [string]::IsNullOrWhiteSpace($LogPath)) { $normalizedLog = $LogPath.Trim() }
 
     $obj = [PSCustomObject]@{
-        AwsConfigPath = $normalized
+        AwsConfigPath = $normalizedConfig
+        LogPath       = $normalizedLog
     }
     $json = $obj | ConvertTo-Json -Depth 3
     Set-Content -LiteralPath (Get-SettingsPath) -Value $json -Encoding UTF8 -ErrorAction Stop
