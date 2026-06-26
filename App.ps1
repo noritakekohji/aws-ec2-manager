@@ -240,6 +240,7 @@ $checkTokenButton.Add_Click({
                 return
             }
             $ok = Test-SsoToken -Name $selected
+            Write-AppLog -Level 'INFO' -Message "aws sts get-caller-identity --profile $selected (result: $ok)"
             if ($ok) {
                 $statusBarText.Text = 'SSO トークン有効'
                 Write-AppLog -Level 'INFO' -Message "SSO トークン確認: 有効 ($selected)"

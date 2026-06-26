@@ -15,7 +15,11 @@ function Invoke-AwsCli {
     [OutputType([PSCustomObject])]
     param(
         [Parameter(ValueFromRemainingArguments = $true)]
-        [string[]]$Arguments
+        [string[]]$Arguments,
+
+        [Parameter()]
+        [AllowNull()]
+        [scriptblock]$LogCallback = $null
     )
 
     $combined = & aws @Arguments 2>&1
@@ -33,6 +37,14 @@ function Invoke-AwsCli {
 
     $joined       = if ($stdoutLines.Count -eq 0) { '' } else { ($stdoutLines.ToArray() -join [Environment]::NewLine) }
     $stderrJoined = if ($stderrLines.Count -eq 0)  { '' } else { ($stderrLines.ToArray()  -join [Environment]::NewLine) }
+
+    if ($null -ne $LogCallback) {
+        $argStr = ($Arguments -join ' ')
+        & $LogCallback "aws $argStr"
+        if (-not [string]::IsNullOrWhiteSpace($stderrJoined)) {
+            & $LogCallback "[STDERR] $stderrJoined"
+        }
+    }
 
     return [PSCustomObject]@{
         ExitCode = $exitCode
@@ -365,7 +377,7 @@ function Invoke-SsmTask {
         '--parameters', $paramJson,
         '--output', 'json'
     )
-    $sendResult = Invoke-AwsCli @sendArgs
+    $sendResult = Invoke-AwsCli -Arguments $sendArgs
     if (-not $sendResult.Success) {
         throw "aws ssm send-command failed: $($sendResult.Output)"
     }
