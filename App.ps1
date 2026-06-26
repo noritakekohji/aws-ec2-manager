@@ -59,6 +59,7 @@ function Update-ProfileComboBox {
         if ($profiles.Length -gt 0) {
             $profileComboBox.SelectedIndex = 0
             $statusBarText.Text = "プロファイル $($profiles.Length) 件"
+            Write-AppLog -Level 'INFO' -Message "プロファイル読込: $($profiles.Length) 件"
         }
         else {
             $configPath = Get-EffectiveAwsConfigPath
@@ -223,6 +224,7 @@ $profileComboBox.Add_SelectionChanged({
                 $profileInfoText.Text = "SSO URL=$(& $fmt $detail.SsoStartUrl) | Region=$(& $fmt $detail.Region) | Account=$(& $fmt $detail.SsoAccountId)"
             }
             $statusBarText.Text = "Profile: $selected"
+            Write-AppLog -Level 'INFO' -Message "プロファイル選択: $selected"
         }
         catch {
             $statusBarText.Text = "エラー: $($_.Exception.Message)"
@@ -240,9 +242,11 @@ $checkTokenButton.Add_Click({
             $ok = Test-SsoToken -Name $selected
             if ($ok) {
                 $statusBarText.Text = 'SSO トークン有効'
+                Write-AppLog -Level 'INFO' -Message "SSO トークン確認: 有効 ($selected)"
             }
             else {
                 $statusBarText.Text = "要 SSO ログイン: aws sso login --profile $selected"
+                Write-AppLog -Level 'WARN' -Message "SSO トークン確認: 要ログイン ($selected)"
             }
         }
         catch {
@@ -292,6 +296,7 @@ $ssoLoginButton.Add_Click({
             # aws sso login はブラウザを開いてユーザー入力を待つので、別コンソールで起動して GUI をブロックしない
             Start-Process -FilePath 'aws' -ArgumentList @('sso', 'login', '--profile', $selected) | Out-Null
             $statusBarText.Text = "SSO ログインを別ウィンドウで開きました: $selected （ブラウザで承認後「トークン確認」を押してください）"
+            Write-AppLog -Level 'INFO' -Message "SSO ログイン開始: $selected"
         }
         catch {
             $statusBarText.Text = "エラー: $($_.Exception.Message)"
@@ -349,6 +354,7 @@ $refreshInstancesButton.Add_Click({
                 if ($null -ne $match) { $instancesGrid.SelectedItem = $match }
             }
             $statusBarText.Text = "$($items.Count) 件"
+            Write-AppLog -Level 'INFO' -Message "インスタンス取得: $($items.Count) 件 (Profile=$name)"
         }
         catch {
             $statusBarText.Text = "エラー: $($_.Exception.Message)"
@@ -378,13 +384,16 @@ function Invoke-InstanceAction {
             return
         }
         $statusBarText.Text = "$instanceId を $ActionLabel 中…"
+        Write-AppLog -Level 'INFO' -Message "インスタンス操作開始: $ActionLabel $instanceId"
         & $pumpUi
         $ok = & $Action $name $instanceId
         if ($ok) {
             $statusBarText.Text = "$instanceId の $ActionLabel 要求を送信しました（更新ボタンで反映）"
+            Write-AppLog -Level 'INFO' -Message "インスタンス操作完了: $ActionLabel $instanceId"
         }
         else {
             $statusBarText.Text = "$instanceId の $ActionLabel に失敗しました"
+            Write-AppLog -Level 'ERROR' -Message "インスタンス操作失敗: $ActionLabel $instanceId"
         }
     }
     catch {
@@ -628,10 +637,12 @@ $applySgButton.Add_Click({
             }
 
             $statusBarText.Text = "$instanceId に SG 適用中…"
+            Write-AppLog -Level 'INFO' -Message "SG 適用開始: $instanceId 追加=$addText 削除=$delText"
             & $pumpUi
             $ok = Set-InstanceSecurityGroups -Profile $name -InstanceId $instanceId -GroupIds $newIds
             if ($ok) {
                 $statusBarText.Text = "$instanceId に SG を適用しました"
+                Write-AppLog -Level 'INFO' -Message "SG 適用完了: $instanceId"
                 # Reload the current instance state by re-fetching describe-instances.
                 Update-SgInstanceComboBox
                 $match = $null
@@ -644,6 +655,7 @@ $applySgButton.Add_Click({
             }
             else {
                 $statusBarText.Text = "$instanceId への SG 適用に失敗しました"
+                Write-AppLog -Level 'ERROR' -Message "SG 適用失敗: $instanceId"
             }
         }
         catch {
@@ -853,6 +865,7 @@ $runSsmButton.Add_Click({
             $ssmProgressBar.Visibility = [System.Windows.Visibility]::Visible
             $ssmOutputText.Text = '実行中...'
             $statusBarText.Text = "$($yaml.Name) 実行中... (GUI は完了まで応答しません)"
+            Write-AppLog -Level 'INFO' -Message "SSM 実行開始: $($yaml.Name) on $($inst.InstanceId)"
             & $pumpUi
 
             $result = Invoke-SsmTask -Profile $name -InstanceId $inst.InstanceId -YamlPath $yaml.Path
@@ -889,6 +902,7 @@ $runSsmButton.Add_Click({
 
             $dur = if ($null -ne $result.Duration) { '{0:0.0}' -f $result.Duration.TotalSeconds } else { '?' }
             $statusBarText.Text = "Status: $($result.Status) / Duration: ${dur}s"
+            Write-AppLog -Level 'INFO' -Message "SSM 実行完了: $($yaml.Name) on $($inst.InstanceId) Status=$($result.Status) Duration=${dur}s"
         }
         catch {
             $ssmProgressBar.Visibility = [System.Windows.Visibility]::Collapsed
