@@ -14,12 +14,15 @@ Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, Sys
 Import-Module -Force (Join-Path $PSScriptRoot 'AppSettings.psm1')
 Import-Module -Force (Join-Path $PSScriptRoot 'AwsConfig.psm1')
 Import-Module -Force (Join-Path $PSScriptRoot 'AwsManager.psm1')
+Import-Module -Force (Join-Path $PSScriptRoot 'Logger.psm1')
 
 # 設定を読み込み、AWS CLI サブプロセスに継承させる
 $appSettings = Get-AppSettings
 if (-not [string]::IsNullOrWhiteSpace($appSettings.AwsConfigPath)) {
     $env:AWS_CONFIG_FILE = $appSettings.AwsConfigPath
 }
+Initialize-AppLogger -LogPath $appSettings.LogPath
+Write-AppLog -Level 'INFO' -Message 'aws-ec2-manager 起動'
 
 $xamlPath = Join-Path $PSScriptRoot 'MainWindow.xaml'
 [xml]$xaml = Get-Content -LiteralPath $xamlPath -Raw
