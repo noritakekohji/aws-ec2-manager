@@ -59,7 +59,7 @@ aws sso login --profile <profile>
 
 ## バージョン
 
-現在: **0.1.0** — 変更履歴は [CHANGELOG.md](CHANGELOG.md) を参照。
+現在: **1.0.0** — 変更履歴は [CHANGELOG.md](CHANGELOG.md) を参照。
 
 ## ライセンス
 

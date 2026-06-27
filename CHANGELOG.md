@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-06-27
+
+### Changed
+- GUI 全体をダークテーマに刷新し、ヘッダー、タブ、ボタン、DataGrid、ListBox、ステータスバーの視認性と操作感を改善
+- メインウィンドウの初期サイズと最小サイズを調整し、EC2 / SG / SSM 各タブのレイアウト密度を改善
+
 ## [0.2.0] - 2026-06-26
 
 ### Added
