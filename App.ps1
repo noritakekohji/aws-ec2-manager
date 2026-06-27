@@ -9,7 +9,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml
+Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml, System.Windows.Forms
 
 Import-Module -Force (Join-Path $PSScriptRoot 'AppSettings.psm1')
 Import-Module -Force (Join-Path $PSScriptRoot 'AwsConfig.psm1')
@@ -44,6 +44,7 @@ $profileInfoText = Find-Control -Name 'ProfileInfoText'
 $checkTokenButton = Find-Control -Name 'CheckTokenButton'
 $ssoLoginButton = Find-Control -Name 'SsoLoginButton'
 $openSsoButton = Find-Control -Name 'OpenSsoButton'
+$logButton = Find-Control -Name 'LogButton'
 $settingsButton = Find-Control -Name 'SettingsButton'
 $statusBarText = Find-Control -Name 'StatusBarText'
 
@@ -106,8 +107,8 @@ function Show-SettingsDialog {
             <TextBox x:Name="ConfigPathTextBox" Grid.Column="0" VerticalAlignment="Center" Padding="4,4" />
             <Button x:Name="BrowseConfigButton" Grid.Column="1" Content="参照..." Padding="10,4" Margin="6,0,0,0" />
         </Grid>
-        <TextBlock Grid.Row="3" Text="ログ出力先ファイルのパス" FontWeight="Bold" Margin="0,0,0,4" />
-        <TextBlock Grid.Row="4" Text="空欄でログ無効" Foreground="Gray" Margin="0,0,0,8" />
+        <TextBlock Grid.Row="3" Text="ログ出力先フォルダ" FontWeight="Bold" Margin="0,0,0,4" />
+        <TextBlock Grid.Row="4" Text="指定フォルダ配下に yyyy-MM-dd フォルダを作成して app.log / HTML レポートを出力" Foreground="Gray" Margin="0,0,0,8" />
         <Grid Grid.Row="5">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
@@ -160,19 +161,16 @@ function Show-SettingsDialog {
         })
 
     $browseLogButton.Add_Click({
-            $sfd = New-Object Microsoft.Win32.SaveFileDialog
-            $sfd.Title = 'ログファイルの保存先を選択'
-            $sfd.Filter = 'Log files (*.log)|*.log|Text files (*.txt)|*.txt|All files (*.*)|*.*'
-            $sfd.DefaultExt = 'log'
+            $fbd = New-Object System.Windows.Forms.FolderBrowserDialog
+            $fbd.Description = 'ログ出力先フォルダを選択'
+            $fbd.ShowNewFolderButton = $true
             if (-not [string]::IsNullOrWhiteSpace($logPathTextBox.Text)) {
-                $initDir = Split-Path -Parent $logPathTextBox.Text
-                if ((-not [string]::IsNullOrWhiteSpace($initDir)) -and (Test-Path -LiteralPath $initDir)) {
-                    $sfd.InitialDirectory = $initDir
+                if (Test-Path -LiteralPath $logPathTextBox.Text) {
+                    $fbd.SelectedPath = $logPathTextBox.Text
                 }
-                $sfd.FileName = Split-Path -Leaf $logPathTextBox.Text
             }
-            if ($sfd.ShowDialog($dialog)) {
-                $logPathTextBox.Text = $sfd.FileName
+            if ($fbd.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+                $logPathTextBox.Text = $fbd.SelectedPath
             }
         })
 
@@ -206,6 +204,21 @@ function Show-SettingsDialog {
         Update-ProfileComboBox
     }
 }
+
+$logButton.Add_Click({
+        try {
+            $logDir = Get-AppLogDirectory
+            if (-not (Test-Path -LiteralPath $logDir)) {
+                New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+            }
+            Start-Process explorer.exe -ArgumentList $logDir | Out-Null
+            $statusBarText.Text = "ログフォルダを開きました: $logDir"
+            Write-AppLog -Level 'INFO' -Message "ログフォルダを開く: $logDir"
+        }
+        catch {
+            $statusBarText.Text = "ログフォルダを開けません: $($_.Exception.Message)"
+        }
+    })
 
 $profileComboBox.Add_SelectionChanged({
         try {
@@ -309,6 +322,8 @@ $refreshInstancesButton = Find-Control -Name 'RefreshInstancesButton'
 $startInstanceButton = Find-Control -Name 'StartInstanceButton'
 $stopInstanceButton = Find-Control -Name 'StopInstanceButton'
 $restartInstanceButton = Find-Control -Name 'RestartInstanceButton'
+$lockInstanceButton = Find-Control -Name 'LockInstanceButton'
+$unlockInstanceButton = Find-Control -Name 'UnlockInstanceButton'
 $instancesGrid = Find-Control -Name 'InstancesGrid'
 
 $pumpUi = {
@@ -316,6 +331,101 @@ $pumpUi = {
         [Action] {},
         [System.Windows.Threading.DispatcherPriority]::Background
     )
+}
+
+$lockState = [PSCustomObject]@{
+    LockedInstanceIds = @()
+}
+if ($null -ne $appSettings.LockedInstanceIds) {
+    $lockState.LockedInstanceIds = @($appSettings.LockedInstanceIds)
+}
+
+function Test-InstanceLocked {
+    param([string]$InstanceId)
+    if ([string]::IsNullOrWhiteSpace($InstanceId)) { return $false }
+    return (@($lockState.LockedInstanceIds) -contains $InstanceId)
+}
+
+function Save-InstanceLockState {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'User-driven local settings persistence.')]
+    [CmdletBinding()]
+    param()
+    $current = Get-AppSettings
+    Save-AppSettings -AwsConfigPath $current.AwsConfigPath -LogPath $current.LogPath -LockedInstanceIds $lockState.LockedInstanceIds
+}
+
+function Add-InstanceLockMetadata {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Adds UI-only properties to display rows.')]
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Instance,
+        [string]$DisplayLabel
+    )
+    $id = [string]$Instance.InstanceId
+    $locked = Test-InstanceLocked -InstanceId $id
+    $stateText = if ($locked) { 'ロック' } else { '' }
+    $Instance | Add-Member -NotePropertyName IsLocked -NotePropertyValue $locked -Force
+    $Instance | Add-Member -NotePropertyName LockState -NotePropertyValue $stateText -Force
+    if ($PSBoundParameters.ContainsKey('DisplayLabel')) {
+        $label = if ($locked) { "[ロック] $DisplayLabel" } else { $DisplayLabel }
+        $Instance | Add-Member -NotePropertyName DisplayLabel -NotePropertyValue $label -Force
+    }
+    return $Instance
+}
+
+function Update-InstanceLockButtons {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper.')]
+    [CmdletBinding()]
+    param()
+    $row = $instancesGrid.SelectedItem
+    if ($null -eq $row) {
+        $lockInstanceButton.IsEnabled = $false
+        $unlockInstanceButton.IsEnabled = $false
+        return
+    }
+    $locked = Test-InstanceLocked -InstanceId ([string]$row.InstanceId)
+    $lockInstanceButton.IsEnabled = -not $locked
+    $unlockInstanceButton.IsEnabled = $locked
+}
+
+function Test-InstanceOperationAllowed {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstanceId,
+        [Parameter(Mandatory = $true)][string]$OperationLabel
+    )
+    if (Test-InstanceLocked -InstanceId $InstanceId) {
+        $statusBarText.Text = "$InstanceId はロック中のため $OperationLabel できません"
+        [System.Windows.MessageBox]::Show(
+            "$InstanceId はロックされています。`n$OperationLabel は実行できません。`n必要な場合は先に「ロック解除」を行ってください。",
+            'aws-ec2-manager',
+            [System.Windows.MessageBoxButton]::OK,
+            [System.Windows.MessageBoxImage]::Warning
+        ) | Out-Null
+        Write-AppLog -Level 'WARN' -Message "ロック中のため操作ブロック: $OperationLabel $InstanceId"
+        return $false
+    }
+    return $true
+}
+
+function Update-LockDependentControls {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper.')]
+    [CmdletBinding()]
+    param()
+    Update-InstanceLockButtons
+
+    $sgSel = $sgInstanceComboBox.SelectedItem
+    if ($null -ne $sgSel) {
+        Add-InstanceLockMetadata -Instance $sgSel -DisplayLabel ([string]$sgSel.DisplayLabel).Replace('[ロック] ', '') | Out-Null
+        $applySgButton.IsEnabled = -not (Test-InstanceLocked -InstanceId ([string]$sgSel.InstanceId))
+        $sgInstanceComboBox.Items.Refresh()
+    }
+
+    $ssmSel = $ssmInstanceComboBox.SelectedItem
+    if ($null -ne $ssmSel) {
+        Add-InstanceLockMetadata -Instance $ssmSel -DisplayLabel ([string]$ssmSel.DisplayLabel).Replace('[ロック] ', '') | Out-Null
+        $runSsmButton.IsEnabled = -not (Test-InstanceLocked -InstanceId ([string]$ssmSel.InstanceId))
+        $ssmInstanceComboBox.Items.Refresh()
+    }
 }
 
 function Get-SelectedProfile {
@@ -336,31 +446,212 @@ function Get-SelectedInstance {
     return $row
 }
 
-$refreshInstancesButton.Add_Click({
+function ConvertTo-DetailText {
+    param($Value)
+    if ($null -eq $Value) { return '' }
+    if ($Value -is [System.Array]) {
+        if ($Value.Count -eq 0) { return '' }
+        return (@($Value) -join ', ')
+    }
+    return [string]$Value
+}
+
+function New-DetailRow {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        $Value
+    )
+    return [PSCustomObject]@{
+        Name  = $Name
+        Value = ConvertTo-DetailText -Value $Value
+    }
+}
+
+function Show-InstanceDetailWindow {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper.')]
+    [CmdletBinding()]
+    param($Instance)
+
+    if ($null -eq $Instance) { return }
+
+    $detailXaml = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Instance Details"
+        Width="760" Height="620"
+        MinWidth="640" MinHeight="480"
+        WindowStartupLocation="CenterOwner"
+        Background="#0F172A"
+        FontFamily="Yu Gothic UI, Meiryo UI, Segoe UI"
+        FontSize="13">
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <TextBlock x:Name="TitleText" Grid.Row="0" FontSize="18" FontWeight="SemiBold" Foreground="#E5E7EB" Margin="0,0,0,4" />
+        <TextBlock x:Name="MetaText" Grid.Row="1" Foreground="#94A3B8" TextWrapping="Wrap" Margin="0,0,0,12" />
+        <DataGrid x:Name="DetailGrid" Grid.Row="2"
+                  AutoGenerateColumns="False"
+                  IsReadOnly="True"
+                  CanUserAddRows="False"
+                  CanUserDeleteRows="False"
+                  HeadersVisibility="Column"
+                  GridLinesVisibility="None"
+                  RowHeaderWidth="0"
+                  Background="#0B1220"
+                  Foreground="#E5E7EB"
+                  BorderBrush="#263247"
+                  AlternatingRowBackground="#111A2C"
+                  RowBackground="#0B1220">
+            <DataGrid.Resources>
+                <Style TargetType="DataGridColumnHeader">
+                    <Setter Property="Background" Value="#1E293B" />
+                    <Setter Property="Foreground" Value="#BAE6FD" />
+                    <Setter Property="Padding" Value="10,8" />
+                    <Setter Property="FontWeight" Value="SemiBold" />
+                </Style>
+                <Style TargetType="DataGridCell">
+                    <Setter Property="BorderThickness" Value="0" />
+                    <Setter Property="Padding" Value="10,6" />
+                    <Setter Property="Foreground" Value="#E5E7EB" />
+                    <Setter Property="Background" Value="Transparent" />
+                </Style>
+            </DataGrid.Resources>
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="項目" Binding="{Binding Name}" Width="190" />
+                <DataGridTextColumn Header="値" Binding="{Binding Value}" Width="*" />
+            </DataGrid.Columns>
+        </DataGrid>
+        <DockPanel Grid.Row="3" Margin="0,12,0,0">
+            <TextBlock x:Name="HintText" DockPanel.Dock="Left" Text="行をダブルクリックすると値をコピーします" Foreground="#94A3B8" VerticalAlignment="Center" />
+            <Button x:Name="CloseButton" DockPanel.Dock="Right" Content="閉じる" Width="96" Padding="0,5" HorizontalAlignment="Right" />
+        </DockPanel>
+    </Grid>
+</Window>
+'@
+
+    [xml]$xamlDoc = $detailXaml
+    $reader2 = New-Object System.Xml.XmlNodeReader $xamlDoc
+    $dialog = [Windows.Markup.XamlReader]::Load($reader2)
+    $dialog.Owner = $window
+
+    $displayName = if ([string]::IsNullOrWhiteSpace([string]$Instance.Name)) { [string]$Instance.InstanceId } else { [string]$Instance.Name }
+    $dialog.Title = "Instance Details - $($Instance.InstanceId)"
+    $dialog.FindName('TitleText').Text = $displayName
+    $dialog.FindName('MetaText').Text = "InstanceId: $($Instance.InstanceId) / State: $($Instance.State) / SSM: $($Instance.SsmStatus)"
+
+    $rows = New-Object System.Collections.Generic.List[PSCustomObject]
+    $rows.Add((New-DetailRow -Name 'Name' -Value $Instance.Name))
+    $rows.Add((New-DetailRow -Name 'InstanceId' -Value $Instance.InstanceId))
+    $rows.Add((New-DetailRow -Name 'State' -Value $Instance.State))
+    $rows.Add((New-DetailRow -Name 'InstanceType' -Value $Instance.InstanceType))
+    $rows.Add((New-DetailRow -Name 'Platform' -Value $Instance.Platform))
+    $rows.Add((New-DetailRow -Name 'AvailabilityZone' -Value $Instance.AvailabilityZone))
+    $rows.Add((New-DetailRow -Name 'PrivateIpAddress' -Value $Instance.PrivateIpAddress))
+    $rows.Add((New-DetailRow -Name 'PublicIpAddress' -Value $Instance.PublicIpAddress))
+    $rows.Add((New-DetailRow -Name 'VpcId' -Value $Instance.VpcId))
+    $rows.Add((New-DetailRow -Name 'SubnetId' -Value $Instance.SubnetId))
+    $rows.Add((New-DetailRow -Name 'ImageId' -Value $Instance.ImageId))
+    $rows.Add((New-DetailRow -Name 'KeyName' -Value $Instance.KeyName))
+    $rows.Add((New-DetailRow -Name 'LaunchTime' -Value $Instance.LaunchTime))
+    $rows.Add((New-DetailRow -Name 'RootDeviceName' -Value $Instance.RootDeviceName))
+    $rows.Add((New-DetailRow -Name 'IamInstanceProfile' -Value $Instance.IamInstanceProfile))
+    $rows.Add((New-DetailRow -Name 'IamInstanceProfileArn' -Value $Instance.IamInstanceProfileArn))
+    $rows.Add((New-DetailRow -Name 'SecurityGroupIds' -Value $Instance.SecurityGroupIds))
+    $rows.Add((New-DetailRow -Name 'SecurityGroupNames' -Value $Instance.SecurityGroupNames))
+    $rows.Add((New-DetailRow -Name 'SsmStatus' -Value $Instance.SsmStatus))
+    $rows.Add((New-DetailRow -Name 'SsmAgentVersion' -Value $Instance.SsmAgentVersion))
+    $rows.Add((New-DetailRow -Name 'SsmPlatformName' -Value $Instance.SsmPlatformName))
+    $rows.Add((New-DetailRow -Name 'SsmPlatformVersion' -Value $Instance.SsmPlatformVersion))
+    $rows.Add((New-DetailRow -Name 'SsmLastPingDateTime' -Value $Instance.SsmLastPingDateTime))
+    $rows.Add((New-DetailRow -Name 'LockState' -Value $Instance.LockState))
+
+    $detailGrid = $dialog.FindName('DetailGrid')
+    $detailGrid.ItemsSource = $rows.ToArray()
+    $hintText = $dialog.FindName('HintText')
+    $detailGrid.Add_MouseDoubleClick({
+            $selectedRow = $detailGrid.SelectedItem
+            if ($null -ne $selectedRow) {
+                [System.Windows.Clipboard]::SetText([string]$selectedRow.Value)
+                $hintText.Text = "$($selectedRow.Name) をコピーしました"
+            }
+        })
+    $dialog.FindName('CloseButton').Add_Click({ $dialog.Close() })
+    $dialog.ShowDialog() | Out-Null
+}
+
+$instancesGrid.Add_SelectionChanged({
+        Update-InstanceLockButtons
+    })
+$instancesGrid.Add_MouseDoubleClick({
         try {
-            $name = Get-SelectedProfile
-            if ($null -eq $name) { return }
-            $statusBarText.Text = '取得中…'
-            & $pumpUi
-            # @() で包むと unary-comma 返り値が「1 要素 = 配列まるごと」に化けるので使わない
-            [object[]]$items = Get-Ec2Instances -Profile $name
-            if ($null -eq $items) { $items = @() }
-            $prevId = $null
-            if ($null -ne $instancesGrid.SelectedItem) {
-                $prevId = $instancesGrid.SelectedItem.InstanceId
+            $row = $instancesGrid.SelectedItem
+            if ($null -ne $row) {
+                Show-InstanceDetailWindow -Instance $row
             }
-            $instancesGrid.ItemsSource = $items
-            if ($null -ne $prevId) {
-                $match = $items | Where-Object { $_.InstanceId -eq $prevId } | Select-Object -First 1
-                if ($null -ne $match) { $instancesGrid.SelectedItem = $match }
-            }
-            $statusBarText.Text = "$($items.Count) 件"
-            Write-AppLog -Level 'INFO' -Message "インスタンス取得: $($items.Count) 件 (Profile=$name)"
         }
         catch {
-            $statusBarText.Text = "エラー: $($_.Exception.Message)"
-            return
+            $statusBarText.Text = "詳細表示エラー: $($_.Exception.Message)"
         }
+    })
+Update-InstanceLockButtons
+
+function Update-InstancesGridFromItems {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper.')]
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [object[]]$Items
+    )
+    if ($null -eq $Items) { $Items = @() }
+    foreach ($it in $Items) {
+        Add-InstanceLockMetadata -Instance $it | Out-Null
+    }
+    $prevId = $null
+    if ($null -ne $instancesGrid.SelectedItem) {
+        $prevId = $instancesGrid.SelectedItem.InstanceId
+    }
+    $instancesGrid.ItemsSource = $Items
+    if ($null -ne $prevId) {
+        $match = $Items | Where-Object { $_.InstanceId -eq $prevId } | Select-Object -First 1
+        if ($null -ne $match) { $instancesGrid.SelectedItem = $match }
+    }
+    Update-InstanceLockButtons
+}
+
+function Update-InstanceViews {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI refresh helper.')]
+    [CmdletBinding()]
+    param()
+    try {
+        $name = Get-SelectedProfile
+        if ($null -eq $name) { return }
+        $statusBarText.Text = 'インスタンス更新中…'
+        & $pumpUi
+        # @() で包むと unary-comma 返り値が「1 要素 = 配列まるごと」に化けるので使わない
+        [object[]]$items = Get-Ec2Instances -Profile $name
+        if ($null -eq $items) { $items = @() }
+        Update-InstancesGridFromItems -Items $items
+        if ($null -ne (Get-Command -Name Update-SgInstanceComboBoxFromItems -ErrorAction SilentlyContinue)) {
+            Update-SgInstanceComboBoxFromItems -Items $items
+        }
+        if ($null -ne (Get-Command -Name Update-SsmInstanceComboBoxFromItems -ErrorAction SilentlyContinue)) {
+            Update-SsmInstanceComboBoxFromItems -Items $items
+        }
+        $statusBarText.Text = "インスタンス $($items.Count) 件を更新しました"
+        Write-AppLog -Level 'INFO' -Message "インスタンス一括更新: $($items.Count) 件 (Profile=$name)"
+    }
+    catch {
+        $statusBarText.Text = "エラー: $($_.Exception.Message)"
+        return
+    }
+}
+
+$refreshInstancesButton.Add_Click({
+        Update-InstanceViews
     })
 
 function Invoke-InstanceAction {
@@ -374,6 +665,7 @@ function Invoke-InstanceAction {
         $row = Get-SelectedInstance
         if ($null -eq $row) { return }
         $instanceId = [string]$row.InstanceId
+        if (-not (Test-InstanceOperationAllowed -InstanceId $instanceId -OperationLabel $ActionLabel)) { return }
         $answer = [System.Windows.MessageBox]::Show(
             "$instanceId を $ActionLabel しますか？",
             'aws-ec2-manager',
@@ -403,6 +695,62 @@ function Invoke-InstanceAction {
     }
 }
 
+$lockInstanceButton.Add_Click({
+        try {
+            $row = Get-SelectedInstance
+            if ($null -eq $row) { return }
+            $instanceId = [string]$row.InstanceId
+            if (Test-InstanceLocked -InstanceId $instanceId) {
+                $statusBarText.Text = "$instanceId はすでにロックされています"
+                Update-InstanceLockButtons
+                return
+            }
+            $lockState.LockedInstanceIds = @((@($lockState.LockedInstanceIds) + $instanceId) | Select-Object -Unique)
+            Add-InstanceLockMetadata -Instance $row | Out-Null
+            Save-InstanceLockState
+            $instancesGrid.Items.Refresh()
+            Update-LockDependentControls
+            $statusBarText.Text = "$instanceId をロックしました"
+            Write-AppLog -Level 'INFO' -Message "インスタンスロック: $instanceId"
+        }
+        catch {
+            $statusBarText.Text = "ロックエラー: $($_.Exception.Message)"
+        }
+    })
+
+$unlockInstanceButton.Add_Click({
+        try {
+            $row = Get-SelectedInstance
+            if ($null -eq $row) { return }
+            $instanceId = [string]$row.InstanceId
+            if (-not (Test-InstanceLocked -InstanceId $instanceId)) {
+                $statusBarText.Text = "$instanceId はロックされていません"
+                Update-InstanceLockButtons
+                return
+            }
+            $answer = [System.Windows.MessageBox]::Show(
+                "$instanceId のロックを解除します。`n解除後は起動・停止・再起動・SG変更・SSMコマンド実行が可能になります。`n本当に解除しますか？",
+                'aws-ec2-manager',
+                [System.Windows.MessageBoxButton]::YesNo,
+                [System.Windows.MessageBoxImage]::Warning
+            )
+            if ($answer -ne [System.Windows.MessageBoxResult]::Yes) {
+                $statusBarText.Text = 'ロック解除をキャンセルしました'
+                return
+            }
+            $lockState.LockedInstanceIds = @(@($lockState.LockedInstanceIds) | Where-Object { $_ -ne $instanceId })
+            Add-InstanceLockMetadata -Instance $row | Out-Null
+            Save-InstanceLockState
+            $instancesGrid.Items.Refresh()
+            Update-LockDependentControls
+            $statusBarText.Text = "$instanceId のロックを解除しました"
+            Write-AppLog -Level 'WARN' -Message "インスタンスロック解除: $instanceId"
+        }
+        catch {
+            $statusBarText.Text = "ロック解除エラー: $($_.Exception.Message)"
+        }
+    })
+
 $startInstanceButton.Add_Click({
         Invoke-InstanceAction -ActionLabel '起動' -Action {
             param($n, $id) Start-Ec2Instance -Profile $n -InstanceId $id
@@ -428,31 +776,582 @@ $restartInstanceButton.Add_Click({
 $sgInstanceComboBox = Find-Control -Name 'SgInstanceComboBox'
 $loadSgButton = Find-Control -Name 'LoadSgButton'
 $applySgButton = Find-Control -Name 'ApplySgButton'
+$exportSgReportButton = Find-Control -Name 'ExportSgReportButton'
 $appliedSgList = Find-Control -Name 'AppliedSgList'
 $availableSgList = Find-Control -Name 'AvailableSgList'
 $moveToAppliedButton = Find-Control -Name 'MoveToAppliedButton'
 $moveToAvailableButton = Find-Control -Name 'MoveToAvailableButton'
+$sgDiffPanel = Find-Control -Name 'SgDiffPanel'
 
 # Module-scope state for Tab2 (avoid $script: under StrictMode pitfalls).
 $tab2State = [PSCustomObject]@{
     OriginalSgIds = @()
+    OriginalSgItems = @()
     CurrentInstanceId = $null
     CurrentVpcId = $null
+    LastReportPath = $null
+}
+
+function Get-ObjectPropertyValue {
+    param(
+        [Parameter(Mandatory = $true)]$Object,
+        [Parameter(Mandatory = $true)][string]$Name
+    )
+    if ($null -eq $Object) { return $null }
+    if ($Object.PSObject.Properties.Name -contains $Name) { return $Object.$Name }
+    return $null
 }
 
 function Get-SgDisplayItem {
     param(
         [Parameter(Mandatory = $true)][string]$GroupId,
         [string]$GroupName,
-        [string]$Description
+        [string]$Description,
+        [string]$VpcId,
+        [object[]]$IpPermissions,
+        [object[]]$IpPermissionsEgress
     )
     $name = if ([string]::IsNullOrEmpty($GroupName)) { '' } else { $GroupName }
     [PSCustomObject]@{
-        GroupId      = $GroupId
-        GroupName    = $name
-        Description  = $Description
-        DisplayLabel = "$GroupId ($name)"
+        GroupId              = $GroupId
+        GroupName            = $name
+        Description          = $Description
+        VpcId                = $VpcId
+        IpPermissions        = @($IpPermissions)
+        IpPermissionsEgress  = @($IpPermissionsEgress)
+        DisplayLabel         = "$GroupId ($name)"
     }
+}
+
+function Get-SgLabel {
+    param($Item)
+    if ($null -eq $Item) { return '' }
+    $name = [string](Get-ObjectPropertyValue -Object $Item -Name 'GroupName')
+    $id = [string](Get-ObjectPropertyValue -Object $Item -Name 'GroupId')
+    if ([string]::IsNullOrWhiteSpace($name)) { return $id }
+    return "$id ($name)"
+}
+
+function Get-SgItemsFromList {
+    param($ListBox)
+    $items = @()
+    if ($null -ne $ListBox.ItemsSource) {
+        foreach ($x in $ListBox.ItemsSource) { $items += $x }
+    }
+    return $items
+}
+
+function Add-SgDiffText {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper, not a system-state change.')]
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$Text,
+        [string]$Color = '#E5E7EB',
+        [bool]$Bold = $false,
+        [double]$FontSize = 13,
+        [int]$Bottom = 4
+    )
+
+    $tb = New-Object System.Windows.Controls.TextBlock
+    $tb.Text = $Text
+    $tb.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString($Color))
+    $tb.FontSize = $FontSize
+    $tb.TextWrapping = [System.Windows.TextWrapping]::Wrap
+    $tb.Margin = New-Object System.Windows.Thickness 0,0,0,$Bottom
+    if ($Bold) { $tb.FontWeight = [System.Windows.FontWeights]::SemiBold }
+    $sgDiffPanel.Children.Add($tb) | Out-Null
+    return $tb
+}
+
+function Get-SgRuleDetailText {
+    param($SecurityGroup)
+    $lines = @()
+    $lines += "Description: $($SecurityGroup.Description)"
+    $rules = @(Get-SgRuleRowsForItems -Items @($SecurityGroup))
+    $inRules = @($rules | Where-Object { $_.Direction -eq 'Inbound' })
+    $outRules = @($rules | Where-Object { $_.Direction -eq 'Outbound' })
+    $lines += ''
+    $lines += '[Inbound]'
+    if ($inRules.Count -eq 0) { $lines += '  ルールなし' }
+    foreach ($rule in $inRules) { $lines += ('  ' + (Format-SgRuleLine -Rule $rule)) }
+    $lines += ''
+    $lines += '[Outbound]'
+    if ($outRules.Count -eq 0) { $lines += '  ルールなし' }
+    foreach ($rule in $outRules) { $lines += ('  ' + (Format-SgRuleLine -Rule $rule)) }
+    return ($lines -join "`r`n")
+}
+
+function Add-SgDiffExpander {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper, not a system-state change.')]
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$Mark,
+        [Parameter(Mandatory = $true)]$SecurityGroup
+    )
+
+    $isAdd = ($Mark -eq '[+]')
+    $color = if ($isAdd) { '#38BDF8' } else { '#F97373' }
+    $expander = New-Object System.Windows.Controls.Expander
+    $expander.IsExpanded = $false
+    $expander.Margin = New-Object System.Windows.Thickness 0,4,0,6
+    $header = New-Object System.Windows.Controls.TextBlock
+    $header.Text = "$Mark $(Get-SgLabel -Item $SecurityGroup)"
+    $header.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString($color))
+    $header.FontWeight = [System.Windows.FontWeights]::SemiBold
+    $expander.Header = $header
+
+    $content = New-Object System.Windows.Controls.TextBox
+    $content.Text = Get-SgRuleDetailText -SecurityGroup $SecurityGroup
+    $content.IsReadOnly = $true
+    $content.AcceptsReturn = $true
+    $content.TextWrapping = [System.Windows.TextWrapping]::NoWrap
+    $content.VerticalScrollBarVisibility = [System.Windows.Controls.ScrollBarVisibility]::Auto
+    $content.HorizontalScrollBarVisibility = [System.Windows.Controls.ScrollBarVisibility]::Auto
+    $content.FontFamily = New-Object System.Windows.Media.FontFamily 'Consolas, Yu Gothic UI, Meiryo UI'
+    $content.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#E5E7EB'))
+    $content.Background = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#0B1220'))
+    $content.BorderBrush = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString('#263247'))
+    $content.Margin = New-Object System.Windows.Thickness 18,6,0,0
+    $content.MinHeight = 120
+    $expander.Content = $content
+    $sgDiffPanel.Children.Add($expander) | Out-Null
+}
+
+function Render-SgDiffPanel {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper, not a system-state change.')]
+    [CmdletBinding()]
+    param($Diff)
+
+    $sgDiffPanel.Children.Clear()
+    if ([string]::IsNullOrEmpty($tab2State.CurrentInstanceId)) {
+        Add-SgDiffText -Text 'インスタンスを選択してください。' -Color '#94A3B8' | Out-Null
+        return
+    }
+    if ($null -eq $Diff) {
+        Add-SgDiffText -Text '差分を計算できません。' -Color '#F97373' -Bold $true | Out-Null
+        return
+    }
+
+    Add-SgDiffText -Text "Instance: $($tab2State.CurrentInstanceId)" -Color '#E5E7EB' -Bold $true | Out-Null
+    Add-SgDiffText -Text "適用前SG: $($Diff.BeforeIds -join ', ')" -Color '#94A3B8' -Bottom 2 | Out-Null
+    Add-SgDiffText -Text "適用後SG: $($Diff.AfterIds -join ', ')" -Color '#94A3B8' -Bottom 10 | Out-Null
+
+    Add-SgDiffText -Text 'Security Group 差分' -Color '#BAE6FD' -Bold $true -FontSize 14 | Out-Null
+    if (-not $Diff.Changed) {
+        Add-SgDiffText -Text 'SG差分はありません。' -Color '#94A3B8' | Out-Null
+        return
+    }
+
+    foreach ($sg in @($Diff.AddedSgs)) {
+        Add-SgDiffText -Text ('[+] ' + (Get-SgLabel -Item $sg)) -Color '#38BDF8' -Bold $true | Out-Null
+    }
+    foreach ($sg in @($Diff.RemovedSgs)) {
+        Add-SgDiffText -Text ('[-] ' + (Get-SgLabel -Item $sg)) -Color '#F97373' -Bold $true | Out-Null
+    }
+
+    Add-SgDiffText -Text '差分SGの内容（クリックで開閉）' -Color '#BAE6FD' -Bold $true -FontSize 14 -Bottom 6 | Out-Null
+    foreach ($sg in @($Diff.AddedSgs)) {
+        Add-SgDiffExpander -Mark '[+]' -SecurityGroup $sg
+    }
+    foreach ($sg in @($Diff.RemovedSgs)) {
+        Add-SgDiffExpander -Mark '[-]' -SecurityGroup $sg
+    }
+}
+
+function Update-SgDiffPreview {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper, not a system-state change.')]
+    [CmdletBinding()]
+    param()
+    $diff = Get-SgDiffData
+    Render-SgDiffPanel -Diff $diff
+    $exportSgReportButton.IsEnabled = -not [string]::IsNullOrEmpty($tab2State.CurrentInstanceId)
+}
+
+function ConvertTo-SgRuleRows {
+    param(
+        [object[]]$Permissions,
+        [Parameter(Mandatory = $true)][string]$Direction
+    )
+    $rows = New-Object System.Collections.Generic.List[PSCustomObject]
+    foreach ($perm in @($Permissions)) {
+        if ($null -eq $perm) { continue }
+        $protocol = [string](Get-ObjectPropertyValue -Object $perm -Name 'IpProtocol')
+        if ([string]::IsNullOrWhiteSpace($protocol)) { $protocol = 'all' }
+        $fromPort = Get-ObjectPropertyValue -Object $perm -Name 'FromPort'
+        $toPort = Get-ObjectPropertyValue -Object $perm -Name 'ToPort'
+        $portText = 'All'
+        if ($null -ne $fromPort -and $null -ne $toPort) {
+            if ([string]$fromPort -eq [string]$toPort) { $portText = [string]$fromPort } else { $portText = "$fromPort-$toPort" }
+        }
+
+        $targets = New-Object System.Collections.Generic.List[PSCustomObject]
+        foreach ($r in @((Get-ObjectPropertyValue -Object $perm -Name 'IpRanges'))) {
+            $cidr = [string](Get-ObjectPropertyValue -Object $r -Name 'CidrIp')
+            $desc = [string](Get-ObjectPropertyValue -Object $r -Name 'Description')
+            if (-not [string]::IsNullOrWhiteSpace($cidr)) { $targets.Add([PSCustomObject]@{ Target = $cidr; Description = $desc }) }
+        }
+        foreach ($r in @((Get-ObjectPropertyValue -Object $perm -Name 'Ipv6Ranges'))) {
+            $cidr6 = [string](Get-ObjectPropertyValue -Object $r -Name 'CidrIpv6')
+            $desc6 = [string](Get-ObjectPropertyValue -Object $r -Name 'Description')
+            if (-not [string]::IsNullOrWhiteSpace($cidr6)) { $targets.Add([PSCustomObject]@{ Target = $cidr6; Description = $desc6 }) }
+        }
+        foreach ($r in @((Get-ObjectPropertyValue -Object $perm -Name 'UserIdGroupPairs'))) {
+            $groupId = [string](Get-ObjectPropertyValue -Object $r -Name 'GroupId')
+            $descGroup = [string](Get-ObjectPropertyValue -Object $r -Name 'Description')
+            if (-not [string]::IsNullOrWhiteSpace($groupId)) { $targets.Add([PSCustomObject]@{ Target = $groupId; Description = $descGroup }) }
+        }
+        foreach ($r in @((Get-ObjectPropertyValue -Object $perm -Name 'PrefixListIds'))) {
+            $prefixId = [string](Get-ObjectPropertyValue -Object $r -Name 'PrefixListId')
+            $descPrefix = [string](Get-ObjectPropertyValue -Object $r -Name 'Description')
+            if (-not [string]::IsNullOrWhiteSpace($prefixId)) { $targets.Add([PSCustomObject]@{ Target = $prefixId; Description = $descPrefix }) }
+        }
+        if ($targets.Count -eq 0) { $targets.Add([PSCustomObject]@{ Target = '(targetなし)'; Description = '' }) }
+
+        foreach ($target in $targets) {
+            $rows.Add([PSCustomObject]@{
+                    Direction   = $Direction
+                    Protocol    = $protocol
+                    Port        = $portText
+                    Target      = $target.Target
+                    Description = $target.Description
+                })
+        }
+    }
+    if ($rows.Count -eq 0) {
+        $rows.Add([PSCustomObject]@{
+                Direction   = $Direction
+                Protocol    = '(ルールなし)'
+                Port        = ''
+                Target      = ''
+                Description = ''
+            })
+    }
+    return $rows.ToArray()
+}
+
+function Get-SgRuleKey {
+    param($Rule)
+    $parts = @(
+        [string]$Rule.Direction,
+        [string]$Rule.Protocol,
+        [string]$Rule.Port,
+        [string]$Rule.Target,
+        [string]$Rule.Description,
+        [string]$Rule.SecurityGroupId
+    )
+    return ($parts -join '|')
+}
+
+function Get-SgRuleRowsForItems {
+    param([object[]]$Items)
+    $rows = New-Object System.Collections.Generic.List[PSCustomObject]
+    foreach ($sg in @($Items)) {
+        if ($null -eq $sg) { continue }
+        $sgLabel = Get-SgLabel -Item $sg
+        $inRows = ConvertTo-SgRuleRows -Permissions $sg.IpPermissions -Direction 'Inbound'
+        $outRows = ConvertTo-SgRuleRows -Permissions $sg.IpPermissionsEgress -Direction 'Outbound'
+        foreach ($row in @($inRows + $outRows)) {
+            if ([string]$row.Protocol -eq '(ルールなし)') { continue }
+            $row | Add-Member -NotePropertyName SecurityGroupId -NotePropertyValue ([string]$sg.GroupId) -Force
+            $row | Add-Member -NotePropertyName SecurityGroup -NotePropertyValue $sgLabel -Force
+            $row | Add-Member -NotePropertyName RuleKey -NotePropertyValue (Get-SgRuleKey -Rule $row) -Force
+            $rows.Add($row)
+        }
+    }
+    return $rows.ToArray()
+}
+
+function Get-SgDiffData {
+    [CmdletBinding()]
+    param()
+
+    $currentItems = @(Get-SgItemsFromList -ListBox $appliedSgList)
+    $currentIds = @()
+    foreach ($x in $currentItems) { $currentIds += [string]$x.GroupId }
+    $originalIds = @()
+    if ($null -ne $tab2State.OriginalSgIds) { $originalIds = @($tab2State.OriginalSgIds) }
+    $originalItems = @()
+    if ($null -ne $tab2State.OriginalSgItems) { $originalItems = @($tab2State.OriginalSgItems) }
+
+    $addedSgs = @()
+    foreach ($item in $currentItems) {
+        if ($originalIds -notcontains [string]$item.GroupId) { $addedSgs += $item }
+    }
+
+    $removedSgs = @()
+    foreach ($item in $originalItems) {
+        if ($currentIds -notcontains [string]$item.GroupId) { $removedSgs += $item }
+    }
+
+    [PSCustomObject]@{
+        BeforeIds    = $originalIds
+        AfterIds     = $currentIds
+        AddedSgs     = $addedSgs
+        RemovedSgs   = $removedSgs
+        ChangedSgs   = @($addedSgs + $removedSgs)
+        Changed      = (($addedSgs.Count -gt 0) -or ($removedSgs.Count -gt 0))
+    }
+}
+
+function Format-SgRuleLine {
+    param(
+        [Parameter(Mandatory = $true)]$Rule
+    )
+    return ("{0,-8} {1,-7} {2,-9} {3,-22} # {4}" -f $Rule.Direction, $Rule.Protocol, $Rule.Port, $Rule.Target, $Rule.Description)
+}
+
+function Format-SgContentSection {
+    param(
+        [Parameter(Mandatory = $true)][string]$Mark,
+        [Parameter(Mandatory = $true)]$SecurityGroup
+    )
+    $lines = @()
+    $lines += "$Mark $(Get-SgLabel -Item $SecurityGroup)"
+    if (-not [string]::IsNullOrWhiteSpace([string]$SecurityGroup.Description)) {
+        $lines += "    Description: $($SecurityGroup.Description)"
+    }
+    $rules = @(Get-SgRuleRowsForItems -Items @($SecurityGroup))
+    $inRules = @($rules | Where-Object { $_.Direction -eq 'Inbound' })
+    $outRules = @($rules | Where-Object { $_.Direction -eq 'Outbound' })
+    $lines += '    [Inbound]'
+    if ($inRules.Count -eq 0) {
+        $lines += '      ルールなし'
+    }
+    foreach ($rule in $inRules) {
+        $lines += ('      ' + (Format-SgRuleLine -Rule $rule))
+    }
+    $lines += '    [Outbound]'
+    if ($outRules.Count -eq 0) {
+        $lines += '      ルールなし'
+    }
+    foreach ($rule in $outRules) {
+        $lines += ('      ' + (Format-SgRuleLine -Rule $rule))
+    }
+    return ($lines -join "`r`n")
+}
+
+function Format-SgDiffText {
+    param($Diff)
+    if ([string]::IsNullOrEmpty($tab2State.CurrentInstanceId)) { return 'インスタンスを選択してください。' }
+    if ($null -eq $Diff) { return '差分を計算できません。' }
+
+    $lines = @()
+    $lines += "Instance: $($tab2State.CurrentInstanceId)"
+    $lines += "適用前SG: $($Diff.BeforeIds -join ', ')"
+    $lines += "適用後SG: $($Diff.AfterIds -join ', ')"
+    $lines += ''
+    if (-not $Diff.Changed) {
+        $lines += 'SG差分はありません。'
+        return ($lines -join "`r`n")
+    }
+    $lines += '[Security Groups]'
+    foreach ($sg in @($Diff.AddedSgs)) { $lines += ('  [+] ' + (Get-SgLabel -Item $sg)) }
+    foreach ($sg in @($Diff.RemovedSgs)) { $lines += ('  [-] ' + (Get-SgLabel -Item $sg)) }
+    $lines += ''
+    $lines += '[Details]'
+    foreach ($sg in @($Diff.AddedSgs)) {
+        $lines += (Format-SgContentSection -Mark '[+]' -SecurityGroup $sg)
+        $lines += ''
+    }
+    foreach ($sg in @($Diff.RemovedSgs)) {
+        $lines += (Format-SgContentSection -Mark '[-]' -SecurityGroup $sg)
+        $lines += ''
+    }
+    return ($lines -join "`r`n")
+}
+
+function ConvertTo-HtmlText {
+    param([AllowNull()][object]$Value)
+    if ($null -eq $Value) { return '' }
+    return [System.Net.WebUtility]::HtmlEncode([string]$Value)
+}
+
+function Get-SgReportDirectory {
+    [CmdletBinding()]
+    param()
+    return (Get-AppLogDirectory)
+}
+
+function New-SgReportHtml {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'User-requested local HTML report generation.')]
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$Status,
+        [Parameter(Mandatory = $true)][string]$Directory
+    )
+
+    if ([string]::IsNullOrEmpty($tab2State.CurrentInstanceId)) {
+        $statusBarText.Text = 'インスタンス未選択のためHTML出力できません'
+        return $null
+    }
+
+    $diff = Get-SgDiffData
+    $dir = $Directory
+    if (-not (Test-Path -LiteralPath $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $safeInstanceId = Get-SafeFileName -Text $tab2State.CurrentInstanceId
+    $path = Join-Path $dir ("sg-change-{0}-{1}.html" -f $safeInstanceId, $stamp)
+
+    $sgRows = ''
+    foreach ($sg in @($diff.AddedSgs)) {
+        $sgRows += "<tr><td class='added'>[+]</td><td>$(ConvertTo-HtmlText (Get-SgLabel -Item $sg))</td><td>$(ConvertTo-HtmlText $sg.Description)</td></tr>`r`n"
+    }
+    foreach ($sg in @($diff.RemovedSgs)) {
+        $sgRows += "<tr><td class='removed'>[-]</td><td>$(ConvertTo-HtmlText (Get-SgLabel -Item $sg))</td><td>$(ConvertTo-HtmlText $sg.Description)</td></tr>`r`n"
+    }
+    if ([string]::IsNullOrWhiteSpace($sgRows)) {
+        $sgRows = "<tr><td colspan='3'>SG差分はありません</td></tr>`r`n"
+    }
+
+    $detailBlocks = ''
+    foreach ($sg in @($diff.ChangedSgs)) {
+        $markClass = if (@($diff.AddedSgs | Where-Object { $_.GroupId -eq $sg.GroupId }).Count -gt 0) { 'added' } else { 'removed' }
+        $markText = if ($markClass -eq 'added') { '[+]' } else { '[-]' }
+        $ruleRows = ''
+        foreach ($rule in @(Get-SgRuleRowsForItems -Items @($sg))) {
+            $ruleRows += "<tr><td>$(ConvertTo-HtmlText $rule.Direction)</td><td>$(ConvertTo-HtmlText $rule.Protocol)</td><td>$(ConvertTo-HtmlText $rule.Port)</td><td>$(ConvertTo-HtmlText $rule.Target)</td><td>$(ConvertTo-HtmlText $rule.Description)</td></tr>`r`n"
+        }
+        if ([string]::IsNullOrWhiteSpace($ruleRows)) {
+            $ruleRows = "<tr><td colspan='5'>ルールなし</td></tr>`r`n"
+        }
+        $detailBlocks += "<details class='sg-detail'><summary class='$markClass'>$markText $(ConvertTo-HtmlText (Get-SgLabel -Item $sg))</summary>`r`n"
+        $detailBlocks += "<table><thead><tr><th>方向</th><th>Protocol</th><th>Port</th><th>Source / Destination</th><th>Description</th></tr></thead><tbody>$ruleRows</tbody></table>`r`n"
+        $detailBlocks += "</details>`r`n"
+    }
+
+    $beforeRows = ''
+    foreach ($id in @($diff.BeforeIds)) { $beforeRows += "<li>$(ConvertTo-HtmlText $id)</li>`r`n" }
+    $afterRows = ''
+    foreach ($id in @($diff.AfterIds)) { $afterRows += "<li>$(ConvertTo-HtmlText $id)</li>`r`n" }
+
+    $html = @"
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>Security Group Change Report - $(ConvertTo-HtmlText $tab2State.CurrentInstanceId)</title>
+<style>
+body { font-family: "Yu Gothic UI", "Meiryo UI", sans-serif; margin: 24px; color: #172033; background: #f8fafc; }
+h1 { margin: 0 0 8px; font-size: 22px; }
+h2 { margin-top: 24px; font-size: 16px; border-bottom: 1px solid #cbd5e1; padding-bottom: 6px; }
+h3 { margin: 18px 0 8px; font-size: 14px; }
+details.sg-detail { border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; margin: 10px 0; background: #f8fafc; }
+summary { cursor: pointer; font-weight: 700; }
+.meta { color: #475569; margin-bottom: 18px; }
+.panel { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+table { border-collapse: collapse; width: 100%; background: #ffffff; margin-top: 8px; }
+th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; vertical-align: top; word-break: break-word; }
+th { background: #e2e8f0; }
+.added { color: #0369a1; font-weight: 700; }
+.removed { color: #b91c1c; font-weight: 700; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+ul { margin-top: 8px; }
+</style>
+</head>
+<body>
+<h1>Security Group Change Report</h1>
+<div class="meta">Instance: $(ConvertTo-HtmlText $tab2State.CurrentInstanceId) / VPC: $(ConvertTo-HtmlText $tab2State.CurrentVpcId) / Status: $(ConvertTo-HtmlText $Status) / Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')</div>
+<div class="panel">
+<h2>Security Group 差分</h2>
+<table>
+<thead><tr><th>差分</th><th>Security Group</th><th>Description</th></tr></thead>
+<tbody>
+$sgRows
+</tbody>
+</table>
+</div>
+<div class="panel">
+<h2>差分SGの内容</h2>
+$detailBlocks
+</div>
+<div class="panel cols">
+<div><h2>適用前</h2><ul>$beforeRows</ul></div>
+<div><h2>適用後</h2><ul>$afterRows</ul></div>
+</div>
+</body>
+</html>
+"@
+    Set-Content -LiteralPath $path -Value $html -Encoding UTF8 -ErrorAction Stop
+    $tab2State.LastReportPath = $path
+    return $path
+}
+
+function Open-HtmlFile {
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)][string]$Path)
+    try {
+        Start-Process -FilePath 'msedge.exe' -ArgumentList $Path -ErrorAction Stop
+    }
+    catch {
+        Start-Process -FilePath $Path | Out-Null
+    }
+}
+
+function Show-SgDetailWindow {
+    [CmdletBinding()]
+    param($SecurityGroup)
+    if ($null -eq $SecurityGroup) { return }
+
+    $detailXaml = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Security Group Details"
+        Width="920" Height="620"
+        MinWidth="760" MinHeight="500"
+        WindowStartupLocation="CenterOwner"
+        Background="#0F172A"
+        FontFamily="Yu Gothic UI, Meiryo UI, Segoe UI"
+        FontSize="13">
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <StackPanel Grid.Row="0" Margin="0,0,0,12">
+            <TextBlock x:Name="TitleText" FontSize="19" FontWeight="SemiBold" Foreground="#F8FAFC" />
+            <TextBlock x:Name="MetaText" Foreground="#94A3B8" Margin="0,4,0,0" TextWrapping="Wrap" />
+        </StackPanel>
+        <DockPanel Grid.Row="1" Margin="0,0,0,12">
+            <TextBlock DockPanel.Dock="Top" Text="インバウンド" FontWeight="SemiBold" Foreground="#BAE6FD" Margin="0,0,0,8" />
+            <DataGrid x:Name="InboundGrid" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="None">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Protocol" Binding="{Binding Protocol}" Width="100" />
+                    <DataGridTextColumn Header="Port" Binding="{Binding Port}" Width="90" />
+                    <DataGridTextColumn Header="Source" Binding="{Binding Target}" Width="*" />
+                    <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="220" />
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+        <DockPanel Grid.Row="2" Margin="0,0,0,12">
+            <TextBlock DockPanel.Dock="Top" Text="アウトバウンド" FontWeight="SemiBold" Foreground="#BAE6FD" Margin="0,0,0,8" />
+            <DataGrid x:Name="OutboundGrid" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" HeadersVisibility="Column" GridLinesVisibility="None">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Protocol" Binding="{Binding Protocol}" Width="100" />
+                    <DataGridTextColumn Header="Port" Binding="{Binding Port}" Width="90" />
+                    <DataGridTextColumn Header="Destination" Binding="{Binding Target}" Width="*" />
+                    <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="220" />
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+        <Button x:Name="CloseButton" Grid.Row="3" Content="閉じる" Width="96" HorizontalAlignment="Right" />
+    </Grid>
+</Window>
+'@
+    [xml]$xamlDoc = $detailXaml
+    $reader2 = New-Object System.Xml.XmlNodeReader $xamlDoc
+    $dialog = [Windows.Markup.XamlReader]::Load($reader2)
+    $dialog.Owner = $window
+    $dialog.Title = "Security Group Details - $($SecurityGroup.GroupId)"
+    $dialog.FindName('TitleText').Text = Get-SgLabel -Item $SecurityGroup
+    $dialog.FindName('MetaText').Text = "VPC: $($SecurityGroup.VpcId) / $($SecurityGroup.Description)"
+    $dialog.FindName('InboundGrid').ItemsSource = ConvertTo-SgRuleRows -Permissions $SecurityGroup.IpPermissions -Direction 'Inbound'
+    $dialog.FindName('OutboundGrid').ItemsSource = ConvertTo-SgRuleRows -Permissions $SecurityGroup.IpPermissionsEgress -Direction 'Outbound'
+    $dialog.FindName('CloseButton').Add_Click({ $dialog.Close() })
+    $dialog.ShowDialog() | Out-Null
 }
 
 function Update-SgInstanceComboBox {
@@ -466,23 +1365,56 @@ function Update-SgInstanceComboBox {
         & $pumpUi
         [object[]]$items = Get-Ec2Instances -Profile $name
         if ($null -eq $items) { $items = @() }
-        $display = New-Object System.Collections.Generic.List[PSCustomObject]
-        foreach ($it in $items) {
-            $label = if ([string]::IsNullOrEmpty($it.Name)) { $it.InstanceId } else { "$($it.InstanceId) ($($it.Name))" }
-            $display.Add([PSCustomObject]@{
-                InstanceId       = $it.InstanceId
-                Name             = $it.Name
-                VpcId            = $it.VpcId
-                SecurityGroupIds = $it.SecurityGroupIds
-                DisplayLabel     = $label
-            })
-        }
-        $sgInstanceComboBox.ItemsSource = $display.ToArray()
-        $statusBarText.Text = "インスタンス $($display.Count) 件"
+        $count = Update-SgInstanceComboBoxFromItems -Items $items
+        $statusBarText.Text = "インスタンス $count 件"
     }
     catch {
         $statusBarText.Text = "エラー: $($_.Exception.Message)"
     }
+}
+
+function Update-SgInstanceComboBoxFromItems {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper, not a system-state change.')]
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [object[]]$Items
+    )
+    if ($null -eq $Items) { $Items = @() }
+    $prevId = $null
+    if ($null -ne $sgInstanceComboBox.SelectedItem) {
+        $prevId = [string]$sgInstanceComboBox.SelectedItem.InstanceId
+    }
+    $display = New-Object System.Collections.Generic.List[PSCustomObject]
+    foreach ($it in $Items) {
+        $label = if ([string]::IsNullOrEmpty($it.Name)) { $it.InstanceId } else { "$($it.InstanceId) ($($it.Name))" }
+        $item = [PSCustomObject]@{
+            InstanceId       = $it.InstanceId
+            Name             = $it.Name
+            VpcId            = $it.VpcId
+            SecurityGroupIds = $it.SecurityGroupIds
+            DisplayLabel     = $label
+        }
+        Add-InstanceLockMetadata -Instance $item -DisplayLabel $label | Out-Null
+        $display.Add($item)
+    }
+    $sgInstanceComboBox.ItemsSource = $display.ToArray()
+    if ($display.Count -gt 0) {
+        $match = $null
+        if (-not [string]::IsNullOrEmpty($prevId)) {
+            $match = $sgInstanceComboBox.ItemsSource | Where-Object { [string]$_.InstanceId -eq $prevId } | Select-Object -First 1
+        }
+        if ($null -ne $match) {
+            $sgInstanceComboBox.SelectedItem = $match
+        }
+        else {
+            $sgInstanceComboBox.SelectedIndex = 0
+        }
+    }
+    else {
+        $sgInstanceComboBox.SelectedIndex = -1
+    }
+    return $display.Count
 }
 
 function Update-SgListsForInstance {
@@ -492,12 +1424,22 @@ function Update-SgListsForInstance {
     if ($null -eq $Instance) {
         $appliedSgList.ItemsSource = $null
         $availableSgList.ItemsSource = $null
+        $tab2State.OriginalSgIds = @()
+        $tab2State.OriginalSgItems = @()
+        $tab2State.CurrentInstanceId = $null
+        $tab2State.CurrentVpcId = $null
+        Update-SgDiffPreview
         return
     }
     if ([string]::IsNullOrEmpty($Instance.VpcId)) {
         $statusBarText.Text = "$($Instance.InstanceId) は VPC 情報がありません"
         $appliedSgList.ItemsSource = $null
         $availableSgList.ItemsSource = $null
+        $tab2State.OriginalSgIds = @()
+        $tab2State.OriginalSgItems = @()
+        $tab2State.CurrentInstanceId = $null
+        $tab2State.CurrentVpcId = $null
+        Update-SgDiffPreview
         return
     }
     try {
@@ -514,7 +1456,7 @@ function Update-SgListsForInstance {
         $applied = New-Object System.Collections.Generic.List[PSCustomObject]
         $available = New-Object System.Collections.Generic.List[PSCustomObject]
         foreach ($sg in $vpcSgs) {
-            $item = Get-SgDisplayItem -GroupId $sg.GroupId -GroupName $sg.GroupName -Description $sg.Description
+            $item = Get-SgDisplayItem -GroupId $sg.GroupId -GroupName $sg.GroupName -Description $sg.Description -VpcId $sg.VpcId -IpPermissions $sg.IpPermissions -IpPermissionsEgress $sg.IpPermissionsEgress
             if ($appliedIds -contains $sg.GroupId) {
                 $applied.Add($item)
             }
@@ -534,11 +1476,21 @@ function Update-SgListsForInstance {
         $appliedSgList.ItemsSource = $applied.ToArray()
         $availableSgList.ItemsSource = $available.ToArray()
 
-        $tab2State.OriginalSgIds = [string[]]$appliedIds
+        $appliedSnapshot = @($applied.ToArray())
+        $tab2State.OriginalSgIds = [string[]]($appliedSnapshot | ForEach-Object { [string]$_.GroupId })
+        $tab2State.OriginalSgItems = @($appliedSnapshot)
         $tab2State.CurrentInstanceId = $Instance.InstanceId
         $tab2State.CurrentVpcId = $Instance.VpcId
+        Update-SgDiffPreview
 
-        $statusBarText.Text = "$($Instance.InstanceId): 適用 $($applied.Count) / 候補 $($available.Count)"
+        $isLocked = Test-InstanceLocked -InstanceId ([string]$Instance.InstanceId)
+        $applySgButton.IsEnabled = -not $isLocked
+        if ($isLocked) {
+            $statusBarText.Text = "$($Instance.InstanceId) はロック中です。SG 適用はできません"
+        }
+        else {
+            $statusBarText.Text = "$($Instance.InstanceId): 適用 $($applied.Count) / 候補 $($available.Count)"
+        }
     }
     catch {
         $statusBarText.Text = "エラー: $($_.Exception.Message)"
@@ -568,10 +1520,13 @@ function Move-SgItem {
     }
     $From.ItemsSource = $fromList.ToArray()
     $To.ItemsSource = $toList.ToArray()
+    Update-SgDiffPreview
 }
 
+$exportSgReportButton.IsEnabled = $false
+
 $loadSgButton.Add_Click({
-        Update-SgInstanceComboBox
+        Update-InstanceViews
     })
 
 $sgInstanceComboBox.Add_SelectionChanged({
@@ -593,6 +1548,29 @@ $moveToAvailableButton.Add_Click({
         Move-SgItem -From $appliedSgList -To $availableSgList
     })
 
+$appliedSgList.Add_MouseDoubleClick({
+        Show-SgDetailWindow -SecurityGroup $appliedSgList.SelectedItem
+    })
+
+$availableSgList.Add_MouseDoubleClick({
+        Show-SgDetailWindow -SecurityGroup $availableSgList.SelectedItem
+    })
+
+$exportSgReportButton.Add_Click({
+        try {
+            $tmpDir = Join-Path ([System.IO.Path]::GetTempPath()) 'aws-ec2-manager-preview'
+            $path = New-SgReportHtml -Status 'Preview' -Directory $tmpDir
+            if ($null -ne $path) {
+                Open-HtmlFile -Path $path
+                $statusBarText.Text = "SG差分HTMLをブラウザで表示しました"
+                Write-AppLog -Level 'INFO' -Message "SG差分HTMLプレビュー: $path"
+            }
+        }
+        catch {
+            $statusBarText.Text = "HTML出力エラー: $($_.Exception.Message)"
+        }
+    })
+
 $applySgButton.Add_Click({
         try {
             $name = Get-SelectedProfile
@@ -602,6 +1580,7 @@ $applySgButton.Add_Click({
                 return
             }
             $instanceId = $tab2State.CurrentInstanceId
+            if (-not (Test-InstanceOperationAllowed -InstanceId $instanceId -OperationLabel 'SG 適用')) { return }
 
             $newIds = @()
             if ($null -ne $appliedSgList.ItemsSource) {
@@ -642,7 +1621,14 @@ $applySgButton.Add_Click({
             & $pumpUi
             $ok = Set-InstanceSecurityGroups -Profile $name -InstanceId $instanceId -GroupIds $newIds
             if ($ok) {
-                $statusBarText.Text = "$instanceId に SG を適用しました"
+                $reportPath = New-SgReportHtml -Status 'Applied' -Directory (Get-SgReportDirectory)
+                if ($null -ne $reportPath) {
+                    $statusBarText.Text = "$instanceId に SG を適用しました。HTML: $reportPath"
+                    Write-AppLog -Level 'INFO' -Message "SG適用HTML出力: $reportPath"
+                }
+                else {
+                    $statusBarText.Text = "$instanceId に SG を適用しました"
+                }
                 Write-AppLog -Level 'INFO' -Message "SG 適用完了: $instanceId"
                 # Reload the current instance state by re-fetching describe-instances.
                 Update-SgInstanceComboBox
@@ -671,6 +1657,7 @@ $applySgButton.Add_Click({
 $ssmInstanceComboBox = Find-Control -Name 'SsmInstanceComboBox'
 $loadSsmButton = Find-Control -Name 'LoadSsmButton'
 $rescanYamlButton = Find-Control -Name 'RescanYamlButton'
+$openYamlFolderButton = Find-Control -Name 'OpenYamlFolderButton'
 $yamlListBox = Find-Control -Name 'YamlListBox'
 $yamlInfoText = Find-Control -Name 'YamlInfoText'
 $runSsmButton = Find-Control -Name 'RunSsmButton'
@@ -737,14 +1724,34 @@ function Update-YamlListsFromDisk {
     $tab3State.WindowsYamls = $win
 }
 
+function Get-SsmYamlDirectory {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [AllowNull()]
+        $Instance
+    )
+
+    $root = Join-Path $PSScriptRoot 'ssm-tasks'
+    if ($null -eq $Instance) { return $root }
+
+    $sub = if ($Instance.Platform -eq 'Windows') { 'windows' } else { 'linux' }
+    $dir = Join-Path $root $sub
+    if (Test-Path -LiteralPath $dir) { return $dir }
+    return $root
+}
+
 function Update-YamlListBoxForInstance {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper, not a system-state change.')]
     [CmdletBinding()]
     param($Instance)
     if ($null -eq $Instance) {
         $yamlListBox.ItemsSource = $null
+        $runSsmButton.IsEnabled = $true
         return
     }
+    $isLocked = Test-InstanceLocked -InstanceId ([string]$Instance.InstanceId)
+    $runSsmButton.IsEnabled = -not $isLocked
     $platform = if ($Instance.Platform -eq 'Windows') { 'Windows' } else { 'Linux' }
     # if/else 式は単一要素配列を unroll するため、直接代入で配列形状を保つ
     if ($platform -eq 'Windows') {
@@ -754,6 +1761,9 @@ function Update-YamlListBoxForInstance {
         $yamlListBox.ItemsSource = $tab3State.LinuxYamls
     }
     $yamlInfoText.Text = ''
+    if ($isLocked) {
+        $statusBarText.Text = "$($Instance.InstanceId) はロック中です。SSM コマンド実行はできません"
+    }
 }
 
 function Get-SafeFileName {
@@ -761,6 +1771,49 @@ function Get-SafeFileName {
     if ([string]::IsNullOrEmpty($Name)) { return 'task' }
     $invalid = '\\/:\*\?"<>\|'
     return ([regex]::Replace($Name, "[$invalid]", '_'))
+}
+
+function Update-SsmInstanceComboBoxFromItems {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper, not a system-state change.')]
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [object[]]$Items
+    )
+    if ($null -eq $Items) { $Items = @() }
+    $prevId = $null
+    if ($null -ne $ssmInstanceComboBox.SelectedItem) {
+        $prevId = [string]$ssmInstanceComboBox.SelectedItem.InstanceId
+    }
+    $display = New-Object System.Collections.Generic.List[PSCustomObject]
+    foreach ($it in $Items) {
+        $label = if ([string]::IsNullOrEmpty($it.Name)) { "$($it.InstanceId) [$($it.Platform)]" } else { "$($it.InstanceId) ($($it.Name)) [$($it.Platform)]" }
+        $item = [PSCustomObject]@{
+            InstanceId   = $it.InstanceId
+            Name         = $it.Name
+            Platform     = $it.Platform
+            DisplayLabel = $label
+        }
+        Add-InstanceLockMetadata -Instance $item -DisplayLabel $label | Out-Null
+        $display.Add($item)
+    }
+    $ssmInstanceComboBox.ItemsSource = $display.ToArray()
+    if ($display.Count -gt 0) {
+        $match = $null
+        if (-not [string]::IsNullOrEmpty($prevId)) {
+            $match = $ssmInstanceComboBox.ItemsSource | Where-Object { [string]$_.InstanceId -eq $prevId } | Select-Object -First 1
+        }
+        if ($null -ne $match) {
+            $ssmInstanceComboBox.SelectedItem = $match
+        }
+        else {
+            $ssmInstanceComboBox.SelectedIndex = 0
+        }
+    }
+    else {
+        $ssmInstanceComboBox.SelectedIndex = -1
+    }
+    return $display.Count
 }
 
 # Initial scan
@@ -772,29 +1825,7 @@ catch {
 }
 
 $loadSsmButton.Add_Click({
-        try {
-            $name = Get-SelectedProfile
-            if ($null -eq $name) { return }
-            $statusBarText.Text = 'インスタンス取得中…'
-            & $pumpUi
-            [object[]]$items = Get-Ec2Instances -Profile $name
-            if ($null -eq $items) { $items = @() }
-            $display = New-Object System.Collections.Generic.List[PSCustomObject]
-            foreach ($it in $items) {
-                $label = if ([string]::IsNullOrEmpty($it.Name)) { "$($it.InstanceId) [$($it.Platform)]" } else { "$($it.InstanceId) ($($it.Name)) [$($it.Platform)]" }
-                $display.Add([PSCustomObject]@{
-                    InstanceId   = $it.InstanceId
-                    Name         = $it.Name
-                    Platform     = $it.Platform
-                    DisplayLabel = $label
-                })
-            }
-            $ssmInstanceComboBox.ItemsSource = $display.ToArray()
-            $statusBarText.Text = "インスタンス $($display.Count) 件"
-        }
-        catch {
-            $statusBarText.Text = "エラー: $($_.Exception.Message)"
-        }
+        Update-InstanceViews
     })
 
 $ssmInstanceComboBox.Add_SelectionChanged({
@@ -837,6 +1868,21 @@ $rescanYamlButton.Add_Click({
         }
     })
 
+$openYamlFolderButton.Add_Click({
+        try {
+            $dir = Get-SsmYamlDirectory -Instance $ssmInstanceComboBox.SelectedItem
+            if (-not (Test-Path -LiteralPath $dir)) {
+                New-Item -ItemType Directory -Path $dir -Force | Out-Null
+            }
+            Start-Process explorer.exe -ArgumentList $dir | Out-Null
+            $statusBarText.Text = "YAML フォルダを開きました: $dir"
+            Write-AppLog -Level 'INFO' -Message "YAML フォルダを開く: $dir"
+        }
+        catch {
+            $statusBarText.Text = "YAML フォルダを開けません: $($_.Exception.Message)"
+        }
+    })
+
 $runSsmButton.Add_Click({
         try {
             $name = Get-SelectedProfile
@@ -846,6 +1892,7 @@ $runSsmButton.Add_Click({
                 $statusBarText.Text = 'インスタンス未選択'
                 return
             }
+            if (-not (Test-InstanceOperationAllowed -InstanceId ([string]$inst.InstanceId) -OperationLabel 'SSM コマンド実行')) { return }
             $yaml = $yamlListBox.SelectedItem
             if ($null -eq $yaml) {
                 $statusBarText.Text = 'YAML 未選択'

@@ -66,6 +66,47 @@ function Get-TagValue {
     return ''
 }
 
+function Get-SsmInstanceInformation {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Returns multiple SSM managed instance records by API design.')]
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Profile
+    )
+
+    $map = @{}
+    $result = Invoke-AwsCli -Arguments @('ssm', 'describe-instance-information', '--profile', $Profile, '--output', 'json')
+    if (-not $result.Success) {
+        return $map
+    }
+    if ([string]::IsNullOrWhiteSpace($result.Output)) {
+        return $map
+    }
+
+    $parsed = $result.Output | ConvertFrom-Json
+    if ($null -eq $parsed -or -not ($parsed.PSObject.Properties.Name -contains 'InstanceInformationList')) {
+        return $map
+    }
+
+    foreach ($info in $parsed.InstanceInformationList) {
+        if ($null -eq $info -or -not ($info.PSObject.Properties.Name -contains 'InstanceId')) { continue }
+        $id = [string]$info.InstanceId
+        if ([string]::IsNullOrWhiteSpace($id)) { continue }
+
+        $map[$id] = [PSCustomObject]@{
+            InstanceId       = $id
+            PingStatus       = if ($info.PSObject.Properties.Name -contains 'PingStatus') { [string]$info.PingStatus } else { '' }
+            AgentVersion     = if ($info.PSObject.Properties.Name -contains 'AgentVersion') { [string]$info.AgentVersion } else { '' }
+            PlatformName     = if ($info.PSObject.Properties.Name -contains 'PlatformName') { [string]$info.PlatformName } else { '' }
+            PlatformVersion  = if ($info.PSObject.Properties.Name -contains 'PlatformVersion') { [string]$info.PlatformVersion } else { '' }
+            LastPingDateTime = if ($info.PSObject.Properties.Name -contains 'LastPingDateTime') { [string]$info.LastPingDateTime } else { '' }
+        }
+    }
+
+    return $map
+}
+
 function Get-Ec2Instances {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Returns multiple instances by design.')]
     [CmdletBinding()]
@@ -74,6 +115,8 @@ function Get-Ec2Instances {
         [Parameter(Mandatory = $true)]
         [string]$Profile
     )
+
+    $ssmInfoById = Get-SsmInstanceInformation -Profile $Profile
 
     $result = Invoke-AwsCli -Arguments @('ec2', 'describe-instances', '--profile', $Profile, '--output', 'json')
     if (-not $result.Success) {
@@ -124,17 +167,51 @@ function Get-Ec2Instances {
             }
 
             $sgIds = New-Object System.Collections.Generic.List[string]
+            $sgNames = New-Object System.Collections.Generic.List[string]
             if ($inst.PSObject.Properties.Name -contains 'SecurityGroups' -and $null -ne $inst.SecurityGroups) {
                 foreach ($sg in $inst.SecurityGroups) {
                     if ($null -ne $sg -and ($sg.PSObject.Properties.Name -contains 'GroupId')) {
                         $sgIds.Add([string]$sg.GroupId)
                     }
+                    if ($null -ne $sg -and ($sg.PSObject.Properties.Name -contains 'GroupName')) {
+                        $sgNames.Add([string]$sg.GroupName)
+                    }
                 }
+            }
+
+            $instanceId = [string]$inst.InstanceId
+            $ssmInfo = $null
+            if ($ssmInfoById.ContainsKey($instanceId)) {
+                $ssmInfo = $ssmInfoById[$instanceId]
+            }
+            $ssmPing = ''
+            $ssmAgent = ''
+            $ssmPlatform = ''
+            $ssmPlatformVersion = ''
+            $ssmLastPing = ''
+            if ($null -ne $ssmInfo) {
+                $ssmPing = [string]$ssmInfo.PingStatus
+                $ssmAgent = [string]$ssmInfo.AgentVersion
+                $ssmPlatform = [string]$ssmInfo.PlatformName
+                $ssmPlatformVersion = [string]$ssmInfo.PlatformVersion
+                $ssmLastPing = [string]$ssmInfo.LastPingDateTime
+            }
+            $ssmStatus = if ([string]::IsNullOrWhiteSpace($ssmPing)) { '未登録' } else { $ssmPing }
+
+            $iamArn = ''
+            if ($inst.PSObject.Properties.Name -contains 'IamInstanceProfile' -and $null -ne $inst.IamInstanceProfile) {
+                if ($inst.IamInstanceProfile.PSObject.Properties.Name -contains 'Arn') {
+                    $iamArn = [string]$inst.IamInstanceProfile.Arn
+                }
+            }
+            $iamName = ''
+            if (-not [string]::IsNullOrWhiteSpace($iamArn)) {
+                $iamName = ($iamArn -split '/')[-1]
             }
 
             $items.Add([PSCustomObject]@{
                 Name              = $name
-                InstanceId        = [string]$inst.InstanceId
+                InstanceId        = $instanceId
                 State             = $state
                 InstanceType      = [string]$inst.InstanceType
                 AvailabilityZone  = $az
@@ -142,7 +219,21 @@ function Get-Ec2Instances {
                 PublicIpAddress   = $publicIp
                 Platform          = $platform
                 VpcId             = if ($inst.PSObject.Properties.Name -contains 'VpcId') { [string]$inst.VpcId } else { $null }
+                SubnetId          = if ($inst.PSObject.Properties.Name -contains 'SubnetId') { [string]$inst.SubnetId } else { $null }
+                ImageId           = if ($inst.PSObject.Properties.Name -contains 'ImageId') { [string]$inst.ImageId } else { $null }
+                KeyName           = if ($inst.PSObject.Properties.Name -contains 'KeyName') { [string]$inst.KeyName } else { $null }
+                LaunchTime        = if ($inst.PSObject.Properties.Name -contains 'LaunchTime') { [string]$inst.LaunchTime } else { $null }
+                RootDeviceName    = if ($inst.PSObject.Properties.Name -contains 'RootDeviceName') { [string]$inst.RootDeviceName } else { $null }
+                IamInstanceProfile = $iamName
+                IamInstanceProfileArn = $iamArn
                 SecurityGroupIds  = [string[]]$sgIds.ToArray()
+                SecurityGroupNames = [string[]]$sgNames.ToArray()
+                SsmStatus         = $ssmStatus
+                SsmPingStatus     = $ssmPing
+                SsmAgentVersion   = $ssmAgent
+                SsmPlatformName   = $ssmPlatform
+                SsmPlatformVersion = $ssmPlatformVersion
+                SsmLastPingDateTime = $ssmLastPing
             })
         }
     }
@@ -218,9 +309,12 @@ function Get-VpcSecurityGroups {
 
     foreach ($sg in $parsed.SecurityGroups) {
         $list.Add([PSCustomObject]@{
-            GroupId     = [string]$sg.GroupId
-            GroupName   = [string]$sg.GroupName
-            Description = [string]$sg.Description
+            GroupId              = [string]$sg.GroupId
+            GroupName            = [string]$sg.GroupName
+            Description          = [string]$sg.Description
+            VpcId                = [string]$sg.VpcId
+            IpPermissions        = @($sg.IpPermissions)
+            IpPermissionsEgress  = @($sg.IpPermissionsEgress)
         })
     }
     return , ($list.ToArray())
@@ -439,4 +533,4 @@ function Invoke-SsmTask {
     }
 }
 
-Export-ModuleMember -Function Get-Ec2Instances, Start-Ec2Instance, Stop-Ec2Instance, Restart-Ec2Instance, Get-VpcSecurityGroups, Set-InstanceSecurityGroups, Invoke-SsmTask, ConvertFrom-MinimalYaml
+Export-ModuleMember -Function Get-Ec2Instances, Get-SsmInstanceInformation, Start-Ec2Instance, Stop-Ec2Instance, Restart-Ec2Instance, Get-VpcSecurityGroups, Set-InstanceSecurityGroups, Invoke-SsmTask, ConvertFrom-MinimalYaml

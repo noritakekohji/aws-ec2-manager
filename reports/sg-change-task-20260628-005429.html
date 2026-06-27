@@ -1,0 +1,118 @@
+﻿<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>Security Group Change Report - i-050c9ca99599d3fbb</title>
+<style>
+body { font-family: "Yu Gothic UI", "Meiryo UI", sans-serif; margin: 24px; color: #172033; background: #f8fafc; }
+h1 { margin: 0 0 8px; font-size: 22px; }
+h2 { margin-top: 24px; font-size: 16px; border-bottom: 1px solid #cbd5e1; padding-bottom: 6px; }
+.meta { color: #475569; margin-bottom: 18px; }
+.panel { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+table { border-collapse: collapse; width: 100%; background: #ffffff; }
+th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; vertical-align: top; }
+th { background: #e2e8f0; }
+.added { color: #0369a1; font-weight: 700; }
+.removed { color: #b91c1c; font-weight: 700; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+ul { margin-top: 8px; }
+</style>
+</head>
+<body>
+<h1>Security Group Change Report</h1>
+<div class="meta">Instance: i-050c9ca99599d3fbb / VPC: vpc-372ba94a / Status: Preview / Generated: 2026-06-28 00:54:29</div>
+<div class="panel">
+<h2>インバウンド / アウトバウンド ルール差分</h2>
+<table>
+<thead><tr><th>差分</th><th>方向</th><th>Protocol</th><th>Port</th><th>Source / Destination</th><th>Security Group</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>80</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>8080</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>5000</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td>For redmine</td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>11434</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>udp</td><td>7946</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>7946</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>31562</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>udp</td><td>4789</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>18080</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td>For jenkins</td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>443</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>6000</td><td>::/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>10080</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>2377</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>9000</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td>keycloak</td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>31825</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>22</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>3000</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td>For hedgedoc</td></tr>
+<tr><td class='added'>[+]</td><td>Outbound</td><td>-1</td><td>All</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>80</td><td>0.0.0.0/0</td><td>sg-03300c077667d1f5c (reverse_proxy)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>8080</td><td>0.0.0.0/0</td><td>sg-03300c077667d1f5c (reverse_proxy)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>22</td><td>0.0.0.0/0</td><td>sg-03300c077667d1f5c (reverse_proxy)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>18091</td><td>0.0.0.0/0</td><td>sg-03300c077667d1f5c (reverse_proxy)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>8404</td><td>0.0.0.0/0</td><td>sg-03300c077667d1f5c (reverse_proxy)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>3000</td><td>0.0.0.0/0</td><td>sg-03300c077667d1f5c (reverse_proxy)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Outbound</td><td>-1</td><td>All</td><td>0.0.0.0/0</td><td>sg-03300c077667d1f5c (reverse_proxy)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>8300</td><td>0.0.0.0/0</td><td>sg-0ab277c5306ca6329 (consul)</td><td>RPC</td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>8200</td><td>0.0.0.0/0</td><td>sg-0ab277c5306ca6329 (consul)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>udp</td><td>8302</td><td>0.0.0.0/0</td><td>sg-0ab277c5306ca6329 (consul)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>22</td><td>0.0.0.0/0</td><td>sg-0ab277c5306ca6329 (consul)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>udp</td><td>8301</td><td>0.0.0.0/0</td><td>sg-0ab277c5306ca6329 (consul)</td><td>Serf LAN</td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>udp</td><td>8600</td><td>0.0.0.0/0</td><td>sg-0ab277c5306ca6329 (consul)</td><td>Consul DNS</td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>8302</td><td>0.0.0.0/0</td><td>sg-0ab277c5306ca6329 (consul)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>8301</td><td>0.0.0.0/0</td><td>sg-0ab277c5306ca6329 (consul)</td><td>Serf LAN</td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>icmp</td><td>-1</td><td>0.0.0.0/0</td><td>sg-0ab277c5306ca6329 (consul)</td><td></td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>8500</td><td>0.0.0.0/0</td><td>sg-0ab277c5306ca6329 (consul)</td><td>Web UI</td></tr>
+<tr><td class='added'>[+]</td><td>Inbound</td><td>tcp</td><td>8600</td><td>0.0.0.0/0</td><td>sg-0ab277c5306ca6329 (consul)</td><td>Consul DNS</td></tr>
+<tr><td class='added'>[+]</td><td>Outbound</td><td>-1</td><td>All</td><td>0.0.0.0/0</td><td>sg-0ab277c5306ca6329 (consul)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>80</td><td>0.0.0.0/0</td><td>sg-03300c077667d1f5c (reverse_proxy)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>8080</td><td>0.0.0.0/0</td><td>sg-03300c077667d1f5c (reverse_proxy)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>22</td><td>0.0.0.0/0</td><td>sg-03300c077667d1f5c (reverse_proxy)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>18091</td><td>0.0.0.0/0</td><td>sg-03300c077667d1f5c (reverse_proxy)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>8404</td><td>0.0.0.0/0</td><td>sg-03300c077667d1f5c (reverse_proxy)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>3000</td><td>0.0.0.0/0</td><td>sg-03300c077667d1f5c (reverse_proxy)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Outbound</td><td>-1</td><td>All</td><td>0.0.0.0/0</td><td>sg-03300c077667d1f5c (reverse_proxy)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>80</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>8080</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>5000</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td>For redmine</td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>11434</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>udp</td><td>7946</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>7946</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>31562</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>udp</td><td>4789</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>18080</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td>For jenkins</td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>443</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>6000</td><td>::/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>10080</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>2377</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>9000</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td>keycloak</td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>31825</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>22</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>3000</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td>For hedgedoc</td></tr>
+<tr><td class='removed'>[-]</td><td>Outbound</td><td>-1</td><td>All</td><td>0.0.0.0/0</td><td>sg-0240d69eef9ff090f (docker)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>8300</td><td>0.0.0.0/0</td><td>sg-0ab277c5306ca6329 (consul)</td><td>RPC</td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>8200</td><td>0.0.0.0/0</td><td>sg-0ab277c5306ca6329 (consul)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>udp</td><td>8302</td><td>0.0.0.0/0</td><td>sg-0ab277c5306ca6329 (consul)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>22</td><td>0.0.0.0/0</td><td>sg-0ab277c5306ca6329 (consul)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>udp</td><td>8301</td><td>0.0.0.0/0</td><td>sg-0ab277c5306ca6329 (consul)</td><td>Serf LAN</td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>udp</td><td>8600</td><td>0.0.0.0/0</td><td>sg-0ab277c5306ca6329 (consul)</td><td>Consul DNS</td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>8302</td><td>0.0.0.0/0</td><td>sg-0ab277c5306ca6329 (consul)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>8301</td><td>0.0.0.0/0</td><td>sg-0ab277c5306ca6329 (consul)</td><td>Serf LAN</td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>icmp</td><td>-1</td><td>0.0.0.0/0</td><td>sg-0ab277c5306ca6329 (consul)</td><td></td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>8500</td><td>0.0.0.0/0</td><td>sg-0ab277c5306ca6329 (consul)</td><td>Web UI</td></tr>
+<tr><td class='removed'>[-]</td><td>Inbound</td><td>tcp</td><td>8600</td><td>0.0.0.0/0</td><td>sg-0ab277c5306ca6329 (consul)</td><td>Consul DNS</td></tr>
+<tr><td class='removed'>[-]</td><td>Outbound</td><td>-1</td><td>All</td><td>0.0.0.0/0</td><td>sg-0ab277c5306ca6329 (consul)</td><td></td></tr>
+
+</tbody>
+</table>
+</div>
+<div class="panel cols">
+<div><h2>適用前</h2><ul><li>sg-03300c077667d1f5c</li>
+<li>sg-0240d69eef9ff090f</li>
+<li>sg-0ab277c5306ca6329</li>
+</ul></div>
+<div><h2>適用後</h2><ul><li>sg-0240d69eef9ff090f</li>
+<li>sg-03300c077667d1f5c</li>
+<li>sg-0ab277c5306ca6329</li>
+</ul></div>
+</div>
+</body>
+</html>

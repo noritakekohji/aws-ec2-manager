@@ -50,7 +50,18 @@ Describe 'AwsManager' {
   ]
 }
 '@
-            Mock -ModuleName AwsManager Invoke-AwsCli {
+            Mock -ModuleName AwsManager Invoke-AwsCli -ParameterFilter {
+                $Arguments -contains 'describe-instance-information'
+            } -MockWith {
+                [PSCustomObject]@{
+                    ExitCode = 0
+                    Output = '{ "InstanceInformationList": [ { "InstanceId": "i-aaa", "PingStatus": "Online", "AgentVersion": "3.3.1", "PlatformName": "Microsoft Windows Server", "PlatformVersion": "2022", "LastPingDateTime": "2026-06-28T00:00:00+09:00" } ] }'
+                    Success = $true
+                }
+            }
+            Mock -ModuleName AwsManager Invoke-AwsCli -ParameterFilter {
+                $Arguments -contains 'describe-instances'
+            } -MockWith {
                 [PSCustomObject]@{ ExitCode = 0; Output = $fakeJson; Success = $true }
             }
 
@@ -67,6 +78,10 @@ Describe 'AwsManager' {
             $a.SecurityGroupIds.Count | Should -Be 2
             $a.SecurityGroupIds[0] | Should -Be 'sg-1'
             $a.SecurityGroupIds[1] | Should -Be 'sg-2'
+            $a.SecurityGroupNames[0] | Should -Be 'web'
+            $a.SsmStatus | Should -Be 'Online'
+            $a.SsmAgentVersion | Should -Be '3.3.1'
+            $a.SsmPlatformName | Should -Be 'Microsoft Windows Server'
 
             $b = $list[1]
             $b.InstanceId | Should -Be 'i-bbb'
@@ -74,6 +89,52 @@ Describe 'AwsManager' {
             $b.Platform | Should -Be 'Linux'
             $b.PublicIpAddress | Should -BeNullOrEmpty
             $b.SecurityGroupIds.Count | Should -Be 0
+            $b.SsmStatus | Should -Be '未登録'
+        }
+
+        It 'keeps EC2 listing available when SSM status lookup fails' {
+            $fakeJson = '{ "Reservations": [ { "Instances": [ { "InstanceId": "i-1", "InstanceType": "t3.micro", "State": { "Name": "running" }, "Placement": { "AvailabilityZone": "ap-northeast-1a" }, "SecurityGroups": [] } ] } ] }'
+            Mock -ModuleName AwsManager Invoke-AwsCli -ParameterFilter {
+                $Arguments -contains 'describe-instance-information'
+            } -MockWith {
+                [PSCustomObject]@{ ExitCode = 255; Output = 'denied'; Success = $false }
+            }
+            Mock -ModuleName AwsManager Invoke-AwsCli -ParameterFilter {
+                $Arguments -contains 'describe-instances'
+            } -MockWith {
+                [PSCustomObject]@{ ExitCode = 0; Output = $fakeJson; Success = $true }
+            }
+
+            $list = Get-Ec2Instances -Profile 'dev'
+            $list.Count | Should -Be 1
+            $list[0].SsmStatus | Should -Be '未登録'
+        }
+    }
+
+    Context 'Get-SsmInstanceInformation' {
+        It 'parses describe-instance-information by instance id' {
+            $fake = @'
+{
+  "InstanceInformationList": [
+    {
+      "InstanceId": "i-aaa",
+      "PingStatus": "Online",
+      "AgentVersion": "3.3.1",
+      "PlatformName": "Ubuntu",
+      "PlatformVersion": "22.04",
+      "LastPingDateTime": "2026-06-28T00:00:00+09:00"
+    }
+  ]
+}
+'@
+            Mock -ModuleName AwsManager Invoke-AwsCli {
+                [PSCustomObject]@{ ExitCode = 0; Output = $fake; Success = $true }
+            }
+
+            $map = Get-SsmInstanceInformation -Profile 'dev'
+            $map.ContainsKey('i-aaa') | Should -BeTrue
+            $map['i-aaa'].PingStatus | Should -Be 'Online'
+            $map['i-aaa'].PlatformName | Should -Be 'Ubuntu'
         }
     }
 
@@ -122,8 +183,19 @@ Describe 'AwsManager' {
         It 'parses describe-security-groups JSON' {
             $fake = @'
 { "SecurityGroups": [
-    { "GroupId": "sg-1", "GroupName": "web", "Description": "web tier" },
-    { "GroupId": "sg-2", "GroupName": "db",  "Description": "db tier"  }
+    {
+      "GroupId": "sg-1",
+      "GroupName": "web",
+      "Description": "web tier",
+      "VpcId": "vpc-1",
+      "IpPermissions": [
+        { "IpProtocol": "tcp", "FromPort": 80, "ToPort": 80, "IpRanges": [ { "CidrIp": "0.0.0.0/0", "Description": "http" } ] }
+      ],
+      "IpPermissionsEgress": [
+        { "IpProtocol": "-1", "IpRanges": [ { "CidrIp": "0.0.0.0/0" } ] }
+      ]
+    },
+    { "GroupId": "sg-2", "GroupName": "db",  "Description": "db tier", "VpcId": "vpc-1", "IpPermissions": [], "IpPermissionsEgress": [] }
 ]}
 '@
             Mock -ModuleName AwsManager Invoke-AwsCli {
@@ -133,6 +205,9 @@ Describe 'AwsManager' {
             $sgs.Count | Should -Be 2
             $sgs[0].GroupId | Should -Be 'sg-1'
             $sgs[1].GroupName | Should -Be 'db'
+            $sgs[0].VpcId | Should -Be 'vpc-1'
+            $sgs[0].IpPermissions.Count | Should -Be 1
+            $sgs[0].IpPermissionsEgress.Count | Should -Be 1
         }
     }
 

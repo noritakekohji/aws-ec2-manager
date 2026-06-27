@@ -17,6 +17,18 @@ function Get-SettingsPath {
     return (Join-Path (Get-SettingsDirectory) 'settings.json')
 }
 
+function Get-DefaultLogRoot {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param()
+
+    $desktop = [Environment]::GetFolderPath('Desktop')
+    if ([string]::IsNullOrWhiteSpace($desktop)) {
+        $desktop = $env:USERPROFILE
+    }
+    return (Join-Path $desktop 'aws-ec2-manager-logs')
+}
+
 function Get-AppSettings {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Settings is a domain-standard plural noun for a config object.')]
     [CmdletBinding()]
@@ -24,8 +36,9 @@ function Get-AppSettings {
     param()
 
     $defaults = [PSCustomObject]@{
-        AwsConfigPath = $null
-        LogPath       = $null
+        AwsConfigPath      = $null
+        LogPath            = Get-DefaultLogRoot
+        LockedInstanceIds  = @()
     }
 
     $path = Get-SettingsPath
@@ -49,15 +62,26 @@ function Get-AppSettings {
         if (-not [string]::IsNullOrWhiteSpace($val)) { $configPath = $val }
     }
 
-    $logPath = $null
+    $logPath = Get-DefaultLogRoot
     if ($obj.PSObject.Properties.Name -contains 'LogPath') {
         $val = [string]$obj.LogPath
         if (-not [string]::IsNullOrWhiteSpace($val)) { $logPath = $val }
     }
 
+    $lockedInstanceIds = @()
+    if ($obj.PSObject.Properties.Name -contains 'LockedInstanceIds') {
+        foreach ($id in @($obj.LockedInstanceIds)) {
+            $val = [string]$id
+            if (-not [string]::IsNullOrWhiteSpace($val)) {
+                $lockedInstanceIds += $val.Trim()
+            }
+        }
+    }
+
     return [PSCustomObject]@{
-        AwsConfigPath = $configPath
-        LogPath       = $logPath
+        AwsConfigPath      = $configPath
+        LogPath            = $logPath
+        LockedInstanceIds  = @($lockedInstanceIds | Select-Object -Unique)
     }
 }
 
@@ -72,7 +96,10 @@ function Save-AppSettings {
 
         [AllowNull()]
         [AllowEmptyString()]
-        [string]$LogPath
+        [string]$LogPath,
+
+        [AllowNull()]
+        [string[]]$LockedInstanceIds
     )
 
     $dir = Get-SettingsDirectory
@@ -86,9 +113,25 @@ function Save-AppSettings {
     $normalizedLog = $null
     if (-not [string]::IsNullOrWhiteSpace($LogPath)) { $normalizedLog = $LogPath.Trim() }
 
+    $normalizedLocked = @()
+    if ($PSBoundParameters.ContainsKey('LockedInstanceIds')) {
+        foreach ($id in @($LockedInstanceIds)) {
+            if (-not [string]::IsNullOrWhiteSpace($id)) {
+                $normalizedLocked += $id.Trim()
+            }
+        }
+    }
+    else {
+        $current = Get-AppSettings
+        if ($null -ne $current.LockedInstanceIds) {
+            $normalizedLocked = @($current.LockedInstanceIds)
+        }
+    }
+
     $obj = [PSCustomObject]@{
-        AwsConfigPath = $normalizedConfig
-        LogPath       = $normalizedLog
+        AwsConfigPath      = $normalizedConfig
+        LogPath            = $normalizedLog
+        LockedInstanceIds  = @($normalizedLocked | Select-Object -Unique)
     }
     $json = $obj | ConvertTo-Json -Depth 3
     Set-Content -LiteralPath (Get-SettingsPath) -Value $json -Encoding UTF8 -ErrorAction Stop
@@ -110,4 +153,4 @@ function Get-EffectiveAwsConfigPath {
     return (Join-Path $env:USERPROFILE '.aws/config')
 }
 
-Export-ModuleMember -Function Get-AppSettings, Save-AppSettings, Get-EffectiveAwsConfigPath, Get-SettingsPath
+Export-ModuleMember -Function Get-AppSettings, Save-AppSettings, Get-EffectiveAwsConfigPath, Get-SettingsPath, Get-DefaultLogRoot

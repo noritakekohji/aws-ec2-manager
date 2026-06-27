@@ -100,6 +100,118 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Padding" Value="8,4" />
             <Setter Property="MinHeight" Value="30" />
+            <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <Border x:Name="ComboChrome"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="6">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="28" />
+                                    </Grid.ColumnDefinitions>
+                                    <ContentPresenter Grid.Column="0"
+                                                      Margin="{TemplateBinding Padding}"
+                                                      HorizontalAlignment="Left"
+                                                      VerticalAlignment="Center"
+                                                      Content="{Binding SelectedItem, RelativeSource={RelativeSource TemplatedParent}}"
+                                                      ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"
+                                                      ContentTemplate="{TemplateBinding ItemTemplate}"
+                                                      RecognizesAccessKey="True" />
+                                    <Path Grid.Column="1"
+                                          Width="8"
+                                          Height="5"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Fill="{StaticResource MutedText}"
+                                          Data="M 0 0 L 8 0 L 4 5 Z" />
+                                </Grid>
+                            </Border>
+                            <ToggleButton x:Name="ToggleButton"
+                                          Background="Transparent"
+                                          BorderThickness="0"
+                                          Focusable="False"
+                                          Opacity="0"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                          ClickMode="Press" />
+
+                            <Popup x:Name="PART_Popup"
+                                   Placement="Bottom"
+                                   AllowsTransparency="True"
+                                   Focusable="False"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   PopupAnimation="Slide">
+                                <Grid MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                      MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                                    <Border Background="{StaticResource FieldBg}"
+                                            BorderBrush="{StaticResource Accent}"
+                                            BorderThickness="1"
+                                            CornerRadius="6"
+                                            Margin="0,3,0,0" />
+                                    <ScrollViewer Margin="1,4,1,1"
+                                                  Background="{StaticResource FieldBg}">
+                                        <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
+                                    </ScrollViewer>
+                                </Grid>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger SourceName="ToggleButton" Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ComboChrome" Property="BorderBrush" Value="{StaticResource Accent}" />
+                            </Trigger>
+                            <Trigger Property="IsDropDownOpen" Value="True">
+                                <Setter TargetName="ComboChrome" Property="BorderBrush" Value="{StaticResource Accent}" />
+                            </Trigger>
+                            <Trigger Property="HasItems" Value="False">
+                                <Setter TargetName="PART_Popup" Property="MinHeight" Value="30" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ComboChrome" Property="Opacity" Value="0.55" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Foreground" Value="{StaticResource MainText}" />
+            <Setter Property="Background" Value="{StaticResource FieldBg}" />
+            <Setter Property="Padding" Value="10,7" />
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="ItemChrome"
+                                Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Left"
+                                              VerticalAlignment="Center"
+                                              ContentSource="Content"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"
+                                              RecognizesAccessKey="True" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="ItemChrome" Property="Background" Value="#1E293B" />
+                                <Setter Property="Foreground" Value="#F8FAFC" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="ItemChrome" Property="Background" Value="#075985" />
+                                <Setter Property="Foreground" Value="White" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="#64748B" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style TargetType="TextBox">
@@ -156,9 +268,14 @@
 
         <Style TargetType="DataGridRow">
             <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Foreground" Value="{StaticResource MainText}" />
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
                     <Setter Property="Background" Value="#1E293B" />
+                </Trigger>
+                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                    <Setter Property="Background" Value="#12344D" />
+                    <Setter Property="Foreground" Value="#F8FAFC" />
                 </Trigger>
                 <Trigger Property="IsSelected" Value="True">
                     <Setter Property="Background" Value="#075985" />
@@ -171,6 +288,18 @@
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Padding" Value="10,6" />
             <Setter Property="Foreground" Value="{StaticResource MainText}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Style.Triggers>
+                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                    <Setter Property="Background" Value="#12344D" />
+                    <Setter Property="Foreground" Value="#F8FAFC" />
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#075985" />
+                    <Setter Property="Foreground" Value="White" />
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
         <Style TargetType="TabControl">
@@ -262,15 +391,41 @@
                     <TextBlock Grid.Column="0" Text="プロファイル" Style="{StaticResource MutedLabel}" Margin="0,0,8,0" />
                     <ComboBox x:Name="ProfileComboBox" Grid.Column="1" VerticalAlignment="Center" />
                     <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,12,0">
-                        <Button x:Name="OpenSsoButton" Content="開く" Margin="0,0,6,0" VerticalAlignment="Center" ToolTip="現在の AWS config を notepad で開く（無ければそのディレクトリをエクスプローラで開く）" />
-                        <Button x:Name="SettingsButton" Content="設定" VerticalAlignment="Center" ToolTip="AWS config ファイルのパスを変更" />
+                        <Button x:Name="OpenSsoButton" Margin="0,0,6,0" VerticalAlignment="Center" ToolTip="現在の AWS config を notepad で開く（無ければそのディレクトリをエクスプローラで開く）">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE8E5;" Margin="0,0,7,0" />
+                                <TextBlock Text="開く" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="LogButton" Margin="0,0,6,0" VerticalAlignment="Center" ToolTip="今日のログフォルダを開く">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE8A5;" Margin="0,0,7,0" />
+                                <TextBlock Text="ログ" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="SettingsButton" VerticalAlignment="Center" ToolTip="AWS config / ログ出力先を変更">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE713;" Margin="0,0,7,0" />
+                                <TextBlock Text="設定" />
+                            </StackPanel>
+                        </Button>
                     </StackPanel>
                     <TextBlock x:Name="ProfileInfoText" Grid.Column="3" VerticalAlignment="Center" Foreground="{StaticResource MutedText}" TextTrimming="CharacterEllipsis" />
                 </Grid>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
-                    <Button x:Name="CheckTokenButton" Content="トークン確認" Margin="0,0,8,0" VerticalAlignment="Center" />
-                    <Button x:Name="SsoLoginButton" Content="SSO ログイン" Style="{StaticResource PrimaryButton}" VerticalAlignment="Center" ToolTip="aws sso login --profile &lt;選択中&gt; を別ウィンドウで実行" />
+                    <Button x:Name="SsoLoginButton" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0" VerticalAlignment="Center" ToolTip="aws sso login --profile &lt;選択中&gt; を別ウィンドウで実行">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE8D4;" Margin="0,0,7,0" />
+                            <TextBlock Text="SSO ログイン" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="CheckTokenButton" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE73E;" Margin="0,0,7,0" />
+                            <TextBlock Text="トークン確認" />
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </Grid>
         </Border>
@@ -285,12 +440,26 @@
                         </Grid.RowDefinitions>
                         <DockPanel Grid.Row="0" Margin="0,0,0,12">
                             <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
-                                <Button x:Name="RefreshInstancesButton" Content="更新" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0" />
-                                <Button x:Name="StartInstanceButton" Content="起動" Style="{StaticResource SuccessButton}" Margin="0,0,8,0" />
-                                <Button x:Name="StopInstanceButton" Content="停止" Style="{StaticResource WarnButton}" Margin="0,0,8,0" />
-                                <Button x:Name="RestartInstanceButton" Content="再起動" />
+                                <Button x:Name="RefreshInstancesButton" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0">
+                                    <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE72C;" Margin="0,0,7,0" /><TextBlock Text="更新" /></StackPanel>
+                                </Button>
+                                <Button x:Name="StartInstanceButton" Style="{StaticResource SuccessButton}" Margin="0,0,8,0">
+                                    <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE768;" Margin="0,0,7,0" /><TextBlock Text="起動" /></StackPanel>
+                                </Button>
+                                <Button x:Name="StopInstanceButton" Style="{StaticResource WarnButton}" Margin="0,0,8,0">
+                                    <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE71A;" Margin="0,0,7,0" /><TextBlock Text="停止" /></StackPanel>
+                                </Button>
+                                <Button x:Name="RestartInstanceButton" Margin="0,0,8,0">
+                                    <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE777;" Margin="0,0,7,0" /><TextBlock Text="再起動" /></StackPanel>
+                                </Button>
+                                <Button x:Name="LockInstanceButton" Style="{StaticResource DangerButton}" Margin="0,0,8,0" ToolTip="選択中インスタンスへの操作を禁止">
+                                    <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE72E;" Margin="0,0,7,0" /><TextBlock Text="ロック" /></StackPanel>
+                                </Button>
+                                <Button x:Name="UnlockInstanceButton" ToolTip="選択中インスタンスの操作禁止を解除">
+                                    <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE785;" Margin="0,0,7,0" /><TextBlock Text="ロック解除" /></StackPanel>
+                                </Button>
                             </StackPanel>
-                            <TextBlock DockPanel.Dock="Right" Text="EC2 Instances" Foreground="{StaticResource MutedText}" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                            <TextBlock DockPanel.Dock="Right" Text="EC2 Instances（ダブルクリックで詳細）" Foreground="{StaticResource MutedText}" VerticalAlignment="Center" HorizontalAlignment="Right" />
                         </DockPanel>
                         <DataGrid x:Name="InstancesGrid" Grid.Row="1"
                                   AutoGenerateColumns="False"
@@ -302,13 +471,16 @@
                                   AlternationCount="2">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="170" />
+                                <DataGridTextColumn Header="ロック" Binding="{Binding LockState}" Width="70" />
                                 <DataGridTextColumn Header="InstanceId" Binding="{Binding InstanceId}" Width="165" />
                                 <DataGridTextColumn Header="State" Binding="{Binding State}" Width="90" />
+                                <DataGridTextColumn Header="SSM" Binding="{Binding SsmStatus}" Width="90" />
                                 <DataGridTextColumn Header="InstanceType" Binding="{Binding InstanceType}" Width="115" />
                                 <DataGridTextColumn Header="AvailabilityZone" Binding="{Binding AvailabilityZone}" Width="130" />
                                 <DataGridTextColumn Header="PrivateIpAddress" Binding="{Binding PrivateIpAddress}" Width="135" />
                                 <DataGridTextColumn Header="PublicIpAddress" Binding="{Binding PublicIpAddress}" Width="135" />
                                 <DataGridTextColumn Header="Platform" Binding="{Binding Platform}" Width="95" />
+                                <DataGridTextColumn Header="SSM LastPing" Binding="{Binding SsmLastPingDateTime}" Width="155" />
                                 <DataGridTextColumn Header="VpcId" Binding="{Binding VpcId}" Width="150" />
                             </DataGrid.Columns>
                         </DataGrid>
@@ -330,36 +502,70 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="インスタンス" Style="{StaticResource MutedLabel}" Margin="0,0,8,0" />
                             <ComboBox x:Name="SgInstanceComboBox" Grid.Column="1" VerticalAlignment="Center"
-                                      DisplayMemberPath="DisplayLabel" Margin="0,0,8,0" />
-                            <Button x:Name="LoadSgButton" Grid.Column="2" Content="読込" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0" />
+                                      Margin="0,0,8,0">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DisplayLabel}" Foreground="{StaticResource MainText}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <Button x:Name="LoadSgButton" Grid.Column="2" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0">
+                                <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE72C;" Margin="0,0,7,0" /><TextBlock Text="更新" /></StackPanel>
+                            </Button>
                             <TextBlock Grid.Column="3" Text="Security Groups" Foreground="{StaticResource MutedText}" VerticalAlignment="Center" />
-                            <Button x:Name="ApplySgButton" Grid.Column="4" Content="適用" Style="{StaticResource SuccessButton}" />
+                            <Button x:Name="ExportSgReportButton" Grid.Column="4" Margin="0,0,8,0" ToolTip="現在の差分を一時HTMLでブラウザ表示">
+                                <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE9F9;" Margin="0,0,7,0" /><TextBlock Text="HTML出力" /></StackPanel>
+                            </Button>
+                            <Button x:Name="ApplySgButton" Grid.Column="5" Style="{StaticResource SuccessButton}">
+                                <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE73E;" Margin="0,0,7,0" /><TextBlock Text="適用" /></StackPanel>
+                            </Button>
                         </Grid>
                         <Grid Grid.Row="1">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="2*" />
+                                <RowDefinition Height="3*" />
+                            </Grid.RowDefinitions>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <DockPanel Grid.Column="0" Margin="0,0,10,0">
-                                <TextBlock DockPanel.Dock="Top" Text="適用済み SG" FontWeight="SemiBold" Margin="0,0,0,8" Foreground="#BAE6FD" />
+                            <DockPanel Grid.Row="0" Grid.Column="0" Margin="0,0,10,10">
+                                <TextBlock DockPanel.Dock="Top" Text="適用済み SG（ダブルクリックで詳細）" FontWeight="SemiBold" Margin="0,0,0,8" Foreground="#BAE6FD" />
                                 <ListBox x:Name="AppliedSgList"
                                          DisplayMemberPath="DisplayLabel"
                                          SelectionMode="Extended" />
                             </DockPanel>
-                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="4,0">
+                            <StackPanel Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" Margin="4,0,4,10">
                                 <Button x:Name="MoveToAppliedButton" Content="&lt;" Width="44" Height="34" Margin="0,0,0,10" Padding="0" ToolTip="未適用 SG を適用済みに移動" />
                                 <Button x:Name="MoveToAvailableButton" Content="&gt;" Width="44" Height="34" Padding="0" ToolTip="適用済み SG を未適用に移動" />
                             </StackPanel>
-                            <DockPanel Grid.Column="2" Margin="10,0,0,0">
-                                <TextBlock DockPanel.Dock="Top" Text="未適用 SG（同 VPC）" FontWeight="SemiBold" Margin="0,0,0,8" Foreground="#BAE6FD" />
+                            <DockPanel Grid.Row="0" Grid.Column="2" Margin="10,0,0,10">
+                                <TextBlock DockPanel.Dock="Top" Text="未適用 SG（同 VPC / ダブルクリックで詳細）" FontWeight="SemiBold" Margin="0,0,0,8" Foreground="#BAE6FD" />
                                 <ListBox x:Name="AvailableSgList"
                                          DisplayMemberPath="DisplayLabel"
                                          SelectionMode="Extended" />
                             </DockPanel>
+                            <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
+                                    Background="{StaticResource PanelAltBg}"
+                                    BorderBrush="{StaticResource LineBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="7"
+                                    Padding="10">
+                                <DockPanel>
+                                    <TextBlock DockPanel.Dock="Top" Text="インバウンド / アウトバウンド ルール差分" FontWeight="SemiBold" Margin="0,0,0,8" Foreground="#BAE6FD" />
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                  Background="{StaticResource FieldBg}"
+                                                  BorderBrush="{StaticResource LineBrush}"
+                                                  BorderThickness="1">
+                                        <StackPanel x:Name="SgDiffPanel" Margin="10" />
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
                         </Grid>
                     </Grid>
                 </Border>
@@ -378,14 +584,28 @@
                                 <ColumnDefinition Width="380" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="インスタンス" Style="{StaticResource MutedLabel}" Margin="0,0,8,0" />
                             <ComboBox x:Name="SsmInstanceComboBox" Grid.Column="1" VerticalAlignment="Center"
-                                      DisplayMemberPath="DisplayLabel" Margin="0,0,8,0" />
-                            <Button x:Name="LoadSsmButton" Grid.Column="2" Content="読込" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0" />
-                            <Button x:Name="RescanYamlButton" Grid.Column="3" Content="再スキャン" />
-                            <TextBlock Grid.Column="4" Text="SSM Run Command" Foreground="{StaticResource MutedText}" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                                      Margin="0,0,8,0">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DisplayLabel}" Foreground="{StaticResource MainText}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <Button x:Name="LoadSsmButton" Grid.Column="2" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0">
+                                <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE72C;" Margin="0,0,7,0" /><TextBlock Text="更新" /></StackPanel>
+                            </Button>
+                            <Button x:Name="RescanYamlButton" Grid.Column="3" Margin="0,0,8,0">
+                                <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE72C;" Margin="0,0,7,0" /><TextBlock Text="再スキャン" /></StackPanel>
+                            </Button>
+                            <Button x:Name="OpenYamlFolderButton" Grid.Column="4" ToolTip="YAML ファイル置き場を開く">
+                                <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE8B7;" Margin="0,0,7,0" /><TextBlock Text="フォルダ" /></StackPanel>
+                            </Button>
+                            <TextBlock Grid.Column="5" Text="SSM Run Command" Foreground="{StaticResource MutedText}" VerticalAlignment="Center" HorizontalAlignment="Right" />
                         </Grid>
                         <Grid Grid.Row="1">
                             <Grid.ColumnDefinitions>
@@ -410,7 +630,9 @@
                                         </Grid.ColumnDefinitions>
                                         <TextBlock x:Name="YamlInfoText" Grid.Column="0" TextWrapping="Wrap" Foreground="{StaticResource MainText}" Margin="0,0,12,0" />
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                            <Button x:Name="RunSsmButton" Content="実行" Style="{StaticResource SuccessButton}" Margin="0,0,8,0" />
+                                            <Button x:Name="RunSsmButton" Style="{StaticResource SuccessButton}" Margin="0,0,8,0">
+                                                <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE768;" Margin="0,0,7,0" /><TextBlock Text="実行" /></StackPanel>
+                                            </Button>
                                             <ProgressBar x:Name="SsmProgressBar" Width="180" Height="14"
                                                          IsIndeterminate="True" Visibility="Collapsed"
                                                          VerticalAlignment="Center"

@@ -9,7 +9,36 @@
 
 Set-StrictMode -Version Latest
 
+$script:LogRootPath = $null
+$script:LogDirectoryPath = $null
 $script:LogFilePath = $null
+
+function Get-DefaultAppLogRoot {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param()
+
+    $desktop = [Environment]::GetFolderPath('Desktop')
+    if ([string]::IsNullOrWhiteSpace($desktop)) {
+        $desktop = $env:USERPROFILE
+    }
+    return (Join-Path $desktop 'aws-ec2-manager-logs')
+}
+
+function Get-AppLogDirectory {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param()
+
+    if ([string]::IsNullOrWhiteSpace($script:LogDirectoryPath)) {
+        $root = $script:LogRootPath
+        if ([string]::IsNullOrWhiteSpace($root)) {
+            $root = Get-DefaultAppLogRoot
+        }
+        return (Join-Path $root (Get-Date -Format 'yyyy-MM-dd'))
+    }
+    return $script:LogDirectoryPath
+}
 
 function Initialize-AppLogger {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Sets module-scope variable only; no system state change.')]
@@ -20,11 +49,13 @@ function Initialize-AppLogger {
         [string]$LogPath
     )
 
-    if ([string]::IsNullOrWhiteSpace($LogPath)) {
-        $script:LogFilePath = $null
-        return
+    $root = $LogPath
+    if ([string]::IsNullOrWhiteSpace($root)) {
+        $root = Get-DefaultAppLogRoot
     }
-    $script:LogFilePath = $LogPath
+    $script:LogRootPath = $root
+    $script:LogDirectoryPath = Join-Path $script:LogRootPath (Get-Date -Format 'yyyy-MM-dd')
+    $script:LogFilePath = Join-Path $script:LogDirectoryPath 'app.log'
 }
 
 function Write-AppLog {
@@ -55,4 +86,4 @@ function Write-AppLog {
     }
 }
 
-Export-ModuleMember -Function Initialize-AppLogger, Write-AppLog
+Export-ModuleMember -Function Initialize-AppLogger, Write-AppLog, Get-AppLogDirectory
