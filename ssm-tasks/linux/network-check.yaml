@@ -2,5 +2,6 @@ name: ネットワーク疎通チェック
 output: text
 script: |
   cd /tmp
-  bash pwd
-  bash ls -la
+  pwd
+  ls -la
+  date

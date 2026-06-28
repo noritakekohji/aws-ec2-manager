@@ -10,6 +10,71 @@
 
 Set-StrictMode -Version Latest
 
+function Get-ErrorRecordText {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Management.Automation.ErrorRecord]$ErrorRecord
+    )
+
+    if ($null -ne $ErrorRecord.ErrorDetails -and -not [string]::IsNullOrWhiteSpace([string]$ErrorRecord.ErrorDetails.Message)) {
+        return [string]$ErrorRecord.ErrorDetails.Message
+    }
+    if ($null -ne $ErrorRecord.Exception -and -not [string]::IsNullOrWhiteSpace([string]$ErrorRecord.Exception.Message)) {
+        return [string]$ErrorRecord.Exception.Message
+    }
+
+    $text = [string]$ErrorRecord
+    if (-not [string]::IsNullOrWhiteSpace($text) -and $text -ne 'System.Management.Automation.RemoteException') {
+        return $text
+    }
+
+    return 'Native command wrote to stderr, but PowerShell did not expose the message text.'
+}
+
+function ConvertTo-NativeArgument {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [AllowNull()]
+        [string]$Argument
+    )
+
+    if ($null -eq $Argument) { return '""' }
+    if ($Argument -notmatch '[\s"]' -and $Argument.Length -gt 0) { return $Argument }
+
+    $result = '"'
+    $backslashes = 0
+    foreach ($ch in $Argument.ToCharArray()) {
+        if ($ch -eq '\') {
+            $backslashes++
+            continue
+        }
+
+        if ($ch -eq '"') {
+            if ($backslashes -gt 0) {
+                $result += ('\' * ($backslashes * 2))
+                $backslashes = 0
+            }
+            $result += '\"'
+            continue
+        }
+
+        if ($backslashes -gt 0) {
+            $result += ('\' * $backslashes)
+            $backslashes = 0
+        }
+        $result += [string]$ch
+    }
+
+    if ($backslashes -gt 0) {
+        $result += ('\' * ($backslashes * 2))
+    }
+    $result += '"'
+    return $result
+}
+
 function Invoke-AwsCli {
     [CmdletBinding()]
     [OutputType([PSCustomObject])]
@@ -22,21 +87,39 @@ function Invoke-AwsCli {
         [scriptblock]$LogCallback = $null
     )
 
-    $combined = & aws @Arguments 2>&1
-    $exitCode = [int]$LASTEXITCODE
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = 'aws'
+    $quotedArgs = New-Object System.Collections.Generic.List[string]
+    foreach ($arg in @($Arguments)) {
+        $quotedArgs.Add((ConvertTo-NativeArgument -Argument $arg))
+    }
+    $psi.Arguments = ($quotedArgs.ToArray() -join ' ')
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
 
-    $stdoutLines = New-Object System.Collections.Generic.List[string]
-    $stderrLines = New-Object System.Collections.Generic.List[string]
-    foreach ($item in $combined) {
-        if ($item -is [System.Management.Automation.ErrorRecord]) {
-            $stderrLines.Add($item.ToString())
-        } else {
-            $stdoutLines.Add([string]$item)
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+    try {
+        [void]$process.Start()
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $process.WaitForExit()
+        $joined = [string]$stdoutTask.Result
+        $stderrJoined = [string]$stderrTask.Result
+        $exitCode = [int]$process.ExitCode
+    }
+    catch {
+        $joined = ''
+        $stderrJoined = [string]$_.Exception.Message
+        $exitCode = 1
+    }
+    finally {
+        if ($null -ne $process) {
+            $process.Dispose()
         }
     }
-
-    $joined       = if ($stdoutLines.Count -eq 0) { '' } else { ($stdoutLines.ToArray() -join [Environment]::NewLine) }
-    $stderrJoined = if ($stderrLines.Count -eq 0)  { '' } else { ($stderrLines.ToArray()  -join [Environment]::NewLine) }
 
     if ($null -ne $LogCallback) {
         $argStr = ($Arguments -join ' ')
@@ -52,6 +135,30 @@ function Invoke-AwsCli {
         Stderr   = $stderrJoined
         Success  = ($exitCode -eq 0)
     }
+}
+
+function Get-AwsCliErrorText {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $true)]
+        $Result
+    )
+
+    $parts = New-Object System.Collections.Generic.List[string]
+    if ($null -ne $Result -and ($Result.PSObject.Properties.Name -contains 'Stderr') -and -not [string]::IsNullOrWhiteSpace([string]$Result.Stderr)) {
+        $parts.Add([string]$Result.Stderr)
+    }
+    if ($null -ne $Result -and ($Result.PSObject.Properties.Name -contains 'Output') -and -not [string]::IsNullOrWhiteSpace([string]$Result.Output)) {
+        $parts.Add([string]$Result.Output)
+    }
+    if ($null -ne $Result -and ($Result.PSObject.Properties.Name -contains 'ExitCode')) {
+        $parts.Add("ExitCode: $($Result.ExitCode)")
+    }
+    if ($parts.Count -eq 0) {
+        return 'AWS CLI returned an error, but no details were captured.'
+    }
+    return ($parts.ToArray() -join [Environment]::NewLine)
 }
 
 function Get-TagValue {
@@ -478,7 +585,7 @@ function Invoke-SsmTask {
     $sendArgs += $awsTimeoutArgs
     $sendResult = Invoke-AwsCli -Arguments $sendArgs
     if (-not $sendResult.Success) {
-        throw "aws ssm send-command failed: $($sendResult.Output)"
+        throw "aws ssm send-command failed:`n$(Get-AwsCliErrorText -Result $sendResult)"
     }
 
     $sendObj = $sendResult.Output | ConvertFrom-Json
@@ -529,12 +636,7 @@ function Invoke-SsmTask {
             }
         }
         elseif (-not $invResult.Success) {
-            if (-not [string]::IsNullOrWhiteSpace($invResult.Stderr)) {
-                $lastError = [string]$invResult.Stderr
-            }
-            else {
-                $lastError = [string]$invResult.Output
-            }
+            $lastError = Get-AwsCliErrorText -Result $invResult
         }
 
         $elapsed = (Get-Date) - $startTime

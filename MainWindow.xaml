@@ -614,6 +614,9 @@
                             </Grid.ColumnDefinitions>
                             <DockPanel Grid.Column="0" Margin="0,0,12,0">
                                 <TextBlock DockPanel.Dock="Top" Text="タスク" FontWeight="SemiBold" Margin="0,0,0,8" Foreground="#BAE6FD" />
+                                <Button x:Name="AddYamlButton" DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                                    <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE710;" Margin="0,0,7,0" /><TextBlock Text="新規追加" /></StackPanel>
+                                </Button>
                                 <ListBox x:Name="YamlListBox"
                                          DisplayMemberPath="Name" />
                             </DockPanel>
@@ -626,18 +629,37 @@
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="420" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <TextBlock x:Name="YamlInfoText" Grid.Column="0" TextWrapping="Wrap" Foreground="{StaticResource MainText}" Margin="0,0,12,0" />
-                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                            <Button x:Name="RunSsmButton" Style="{StaticResource SuccessButton}" Margin="0,0,8,0">
-                                                <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE768;" Margin="0,0,7,0" /><TextBlock Text="実行" /></StackPanel>
+                                        <TextBox x:Name="YamlScriptPreviewText" Grid.Column="1"
+                                                 Height="82"
+                                                 Margin="0,0,12,0"
+                                                 IsReadOnly="False"
+                                                 AcceptsReturn="True"
+                                                 VerticalScrollBarVisibility="Auto"
+                                                 HorizontalScrollBarVisibility="Auto"
+                                                 TextWrapping="NoWrap"
+                                                 FontFamily="Consolas"
+                                                 FontSize="12"
+                                                 Foreground="{StaticResource MainText}"
+                                                 Background="#0B1220"
+                                                 BorderBrush="{StaticResource LineBrush}" />
+                                        <StackPanel Grid.Column="2" Orientation="Vertical" VerticalAlignment="Center">
+                                            <Button x:Name="SaveYamlButton" Style="{StaticResource PrimaryButton}" Margin="0,0,0,8">
+                                                <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE74E;" Margin="0,0,7,0" /><TextBlock Text="保存" /></StackPanel>
                                             </Button>
-                                            <ProgressBar x:Name="SsmProgressBar" Width="180" Height="14"
-                                                         IsIndeterminate="True" Visibility="Collapsed"
-                                                         VerticalAlignment="Center"
-                                                         Foreground="{StaticResource AccentStrong}"
-                                                         Background="#0B1220" />
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button x:Name="RunSsmButton" Style="{StaticResource SuccessButton}" Margin="0,0,8,0">
+                                                    <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE768;" Margin="0,0,7,0" /><TextBlock Text="実行" /></StackPanel>
+                                                </Button>
+                                                <ProgressBar x:Name="SsmProgressBar" Width="180" Height="14"
+                                                             IsIndeterminate="True" Visibility="Collapsed"
+                                                             VerticalAlignment="Center"
+                                                             Foreground="{StaticResource AccentStrong}"
+                                                             Background="#0B1220" />
+                                            </StackPanel>
                                         </StackPanel>
                                     </Grid>
                                 </Border>

@@ -1,0 +1,6 @@
+name: date
+description:
+output: text
+timeout: 300
+script: |
+  date

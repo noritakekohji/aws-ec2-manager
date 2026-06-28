@@ -10,6 +10,25 @@ Describe 'AwsManager' {
         Remove-Module AwsManager -ErrorAction SilentlyContinue
     }
 
+    Context 'AWS CLI stderr parsing' {
+        It 'uses the message from RemoteException records' {
+            InModuleScope AwsManager {
+                $ex = New-Object System.Management.Automation.RemoteException 'An error occurred (AccessDeniedException) when calling the SendCommand operation'
+                $record = New-Object System.Management.Automation.ErrorRecord $ex, 'NativeCommandError', ([System.Management.Automation.ErrorCategory]::NotSpecified), $null
+
+                Get-ErrorRecordText -ErrorRecord $record | Should -Be 'An error occurred (AccessDeniedException) when calling the SendCommand operation'
+            }
+        }
+
+        It 'quotes native arguments containing spaces and JSON quotes' {
+            InModuleScope AwsManager {
+                ConvertTo-NativeArgument -Argument 'plain' | Should -Be 'plain'
+                ConvertTo-NativeArgument -Argument 'hello world' | Should -Be '"hello world"'
+                ConvertTo-NativeArgument -Argument '{"commands":["echo hi"]}' | Should -Be '"{\"commands\":[\"echo hi\"]}"'
+            }
+        }
+    }
+
     Context 'Get-Ec2Instances' {
         It 'parses describe-instances JSON into flat objects' {
             $fakeJson = @'
@@ -315,6 +334,32 @@ script: |
 
             $r = Invoke-SsmTask -Profile 'dev' -InstanceId 'i-1' -YamlPath $tmp
             $r.OutputType | Should -Be 'html'
+
+            Remove-Item -LiteralPath $tmp -Force
+        }
+
+        It 'includes stderr when send-command fails' {
+            $yaml = @'
+name: fail-send
+platform: Linux
+script: |
+  echo hi
+'@
+            $tmp = [System.IO.Path]::GetTempFileName()
+            Set-Content -LiteralPath $tmp -Value $yaml -Encoding UTF8
+
+            Mock -ModuleName AwsManager Invoke-AwsCli -ParameterFilter {
+                $Arguments -contains 'send-command'
+            } -MockWith {
+                [PSCustomObject]@{
+                    ExitCode = 254
+                    Output = ''
+                    Stderr = 'An error occurred (InvalidInstanceId) when calling the SendCommand operation'
+                    Success = $false
+                }
+            }
+
+            { Invoke-SsmTask -Profile 'dev' -InstanceId 'i-1' -YamlPath $tmp } | Should -Throw '*InvalidInstanceId*'
 
             Remove-Item -LiteralPath $tmp -Force
         }

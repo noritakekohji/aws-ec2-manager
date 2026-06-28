@@ -226,7 +226,21 @@ $profileComboBox.Add_SelectionChanged({
             if ($null -eq $selected) {
                 $profileInfoText.Text = ''
                 $statusBarText.Text = 'Ready'
+                if ($null -ne (Get-Variable -Name instanceScanState -ErrorAction SilentlyContinue)) {
+                    $instanceScanState.Profile = $null
+                    $instanceScanState.Items = @()
+                    $instanceScanState.SelectedInstanceId = $null
+                    $instanceScanState.LastUpdated = $null
+                    Update-DependentInstanceCombos -Items @() -PreferredInstanceId $null
+                }
                 return
+            }
+            if ($null -ne (Get-Variable -Name instanceScanState -ErrorAction SilentlyContinue) -and $instanceScanState.Profile -ne [string]$selected) {
+                $instanceScanState.Profile = $null
+                $instanceScanState.Items = @()
+                $instanceScanState.SelectedInstanceId = $null
+                $instanceScanState.LastUpdated = $null
+                Update-DependentInstanceCombos -Items @() -PreferredInstanceId $null
             }
             $detail = Get-AwsProfileDetail -Name $selected
             if ($null -eq $detail) {
@@ -331,6 +345,13 @@ $pumpUi = {
         [Action] {},
         [System.Windows.Threading.DispatcherPriority]::Background
     )
+}
+
+$instanceScanState = [PSCustomObject]@{
+    Profile            = $null
+    Items              = @()
+    SelectedInstanceId = $null
+    LastUpdated        = $null
 }
 
 $lockState = [PSCustomObject]@{
@@ -444,6 +465,52 @@ function Get-SelectedInstance {
         return $null
     }
     return $row
+}
+
+function Get-SharedInstanceItems {
+    [CmdletBinding()]
+    [OutputType([object[]])]
+    param(
+        [AllowNull()]
+        [string]$Profile
+    )
+    if ([string]::IsNullOrWhiteSpace($Profile)) { return @() }
+    if ($instanceScanState.Profile -ne $Profile) { return @() }
+    if ($null -eq $instanceScanState.Items) { return @() }
+    return , @($instanceScanState.Items)
+}
+
+function Update-DependentInstanceCombos {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI refresh helper.')]
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [object[]]$Items,
+        [AllowNull()]
+        [string]$PreferredInstanceId
+    )
+
+    if ($null -eq $Items) { $Items = @() }
+    if ($null -ne (Get-Command -Name Update-SgInstanceComboBoxFromItems -ErrorAction SilentlyContinue) -and
+        $null -ne (Get-Variable -Name sgInstanceComboBox -ErrorAction SilentlyContinue) -and
+        $null -ne $sgInstanceComboBox) {
+        try {
+            Update-SgInstanceComboBoxFromItems -Items $Items -PreferredInstanceId $PreferredInstanceId | Out-Null
+        }
+        catch {
+            Write-AppLog -Level 'WARN' -Message "SG インスタンス反映エラー: $($_.Exception.Message)"
+        }
+    }
+    if ($null -ne (Get-Command -Name Update-SsmInstanceComboBoxFromItems -ErrorAction SilentlyContinue) -and
+        $null -ne (Get-Variable -Name ssmInstanceComboBox -ErrorAction SilentlyContinue) -and
+        $null -ne $ssmInstanceComboBox) {
+        try {
+            Update-SsmInstanceComboBoxFromItems -Items $Items -PreferredInstanceId $PreferredInstanceId | Out-Null
+        }
+        catch {
+            Write-AppLog -Level 'WARN' -Message "SSM インスタンス反映エラー: $($_.Exception.Message)"
+        }
+    }
 }
 
 function ConvertTo-DetailText {
@@ -584,6 +651,11 @@ function Show-InstanceDetailWindow {
 }
 
 $instancesGrid.Add_SelectionChanged({
+        $row = $instancesGrid.SelectedItem
+        if ($null -ne $row) {
+            $instanceScanState.SelectedInstanceId = [string]$row.InstanceId
+            Update-DependentInstanceCombos -Items (Get-SharedInstanceItems -Profile $instanceScanState.Profile) -PreferredInstanceId $instanceScanState.SelectedInstanceId
+        }
         Update-InstanceLockButtons
     })
 $instancesGrid.Add_MouseDoubleClick({
@@ -612,13 +684,24 @@ function Update-InstancesGridFromItems {
     }
     $prevId = $null
     if ($null -ne $instancesGrid.SelectedItem) {
-        $prevId = $instancesGrid.SelectedItem.InstanceId
+        $prevId = [string]$instancesGrid.SelectedItem.InstanceId
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace([string]$instanceScanState.SelectedInstanceId)) {
+        $prevId = [string]$instanceScanState.SelectedInstanceId
     }
     $instancesGrid.ItemsSource = $Items
     if ($null -ne $prevId) {
         $match = $Items | Where-Object { $_.InstanceId -eq $prevId } | Select-Object -First 1
         if ($null -ne $match) { $instancesGrid.SelectedItem = $match }
     }
+    if ($null -ne $instancesGrid.SelectedItem) {
+        $instanceScanState.SelectedInstanceId = [string]$instancesGrid.SelectedItem.InstanceId
+    }
+    elseif ($Items.Count -eq 0) {
+        $instanceScanState.SelectedInstanceId = $null
+    }
+    $instanceScanState.Items = @($Items)
+    Update-DependentInstanceCombos -Items $Items -PreferredInstanceId $instanceScanState.SelectedInstanceId
     Update-InstanceLockButtons
 }
 
@@ -634,13 +717,9 @@ function Update-InstanceViews {
         # @() で包むと unary-comma 返り値が「1 要素 = 配列まるごと」に化けるので使わない
         [object[]]$items = Get-Ec2Instances -Profile $name
         if ($null -eq $items) { $items = @() }
+        $instanceScanState.Profile = $name
+        $instanceScanState.LastUpdated = Get-Date
         Update-InstancesGridFromItems -Items $items
-        if ($null -ne (Get-Command -Name Update-SgInstanceComboBoxFromItems -ErrorAction SilentlyContinue)) {
-            Update-SgInstanceComboBoxFromItems -Items $items
-        }
-        if ($null -ne (Get-Command -Name Update-SsmInstanceComboBoxFromItems -ErrorAction SilentlyContinue)) {
-            Update-SsmInstanceComboBoxFromItems -Items $items
-        }
         $statusBarText.Text = "インスタンス $($items.Count) 件を更新しました"
         Write-AppLog -Level 'INFO' -Message "インスタンス一括更新: $($items.Count) 件 (Profile=$name)"
     }
@@ -1390,15 +1469,27 @@ function Show-SgDetailWindow {
 function Update-SgInstanceComboBox {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper, not a system-state change.')]
     [CmdletBinding()]
-    param()
+    param(
+        [switch]$Refresh
+    )
     try {
         $name = Get-SelectedProfile
         if ($null -eq $name) { return }
+        [object[]]$cachedItems = @(Get-SharedInstanceItems -Profile $name)
+        if ((-not $Refresh) -and @($cachedItems).Count -gt 0) {
+            $count = Update-SgInstanceComboBoxFromItems -Items $cachedItems -PreferredInstanceId $instanceScanState.SelectedInstanceId
+            $statusBarText.Text = "スキャン済みインスタンス $count 件を SG に反映しました"
+            return
+        }
         $statusBarText.Text = 'インスタンス取得中…'
         & $pumpUi
         [object[]]$items = Get-Ec2Instances -Profile $name
         if ($null -eq $items) { $items = @() }
-        $count = Update-SgInstanceComboBoxFromItems -Items $items
+        $instanceScanState.Profile = $name
+        $instanceScanState.Items = @($items)
+        $instanceScanState.LastUpdated = Get-Date
+        Update-InstancesGridFromItems -Items $items
+        $count = $items.Count
         $statusBarText.Text = "インスタンス $count 件"
     }
     catch {
@@ -1411,12 +1502,20 @@ function Update-SgInstanceComboBoxFromItems {
     [CmdletBinding()]
     param(
         [AllowNull()]
-        [object[]]$Items
+        [object[]]$Items,
+        [AllowNull()]
+        [string]$PreferredInstanceId
     )
     if ($null -eq $Items) { $Items = @() }
     $prevId = $null
-    if ($null -ne $sgInstanceComboBox.SelectedItem) {
+    if (-not [string]::IsNullOrWhiteSpace($PreferredInstanceId)) {
+        $prevId = $PreferredInstanceId
+    }
+    elseif ($null -ne $sgInstanceComboBox.SelectedItem) {
         $prevId = [string]$sgInstanceComboBox.SelectedItem.InstanceId
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace([string]$instanceScanState.SelectedInstanceId)) {
+        $prevId = [string]$instanceScanState.SelectedInstanceId
     }
     $display = New-Object System.Collections.Generic.List[PSCustomObject]
     foreach ($it in $Items) {
@@ -1664,7 +1763,8 @@ $applySgButton.Add_Click({
                 }
                 Write-AppLog -Level 'INFO' -Message "SG 適用完了: $instanceId"
                 # Reload the current instance state by re-fetching describe-instances.
-                Update-SgInstanceComboBox
+                $instanceScanState.SelectedInstanceId = $instanceId
+                Update-SgInstanceComboBox -Refresh
                 $match = $null
                 if ($null -ne $sgInstanceComboBox.ItemsSource) {
                     $match = $sgInstanceComboBox.ItemsSource | Where-Object { $_.InstanceId -eq $instanceId } | Select-Object -First 1
@@ -1691,8 +1791,11 @@ $ssmInstanceComboBox = Find-Control -Name 'SsmInstanceComboBox'
 $loadSsmButton = Find-Control -Name 'LoadSsmButton'
 $rescanYamlButton = Find-Control -Name 'RescanYamlButton'
 $openYamlFolderButton = Find-Control -Name 'OpenYamlFolderButton'
+$addYamlButton = Find-Control -Name 'AddYamlButton'
 $yamlListBox = Find-Control -Name 'YamlListBox'
 $yamlInfoText = Find-Control -Name 'YamlInfoText'
+$yamlScriptPreviewText = Find-Control -Name 'YamlScriptPreviewText'
+$saveYamlButton = Find-Control -Name 'SaveYamlButton'
 $runSsmButton = Find-Control -Name 'RunSsmButton'
 $ssmProgressBar = Find-Control -Name 'SsmProgressBar'
 $ssmOutputText = Find-Control -Name 'SsmOutputText'
@@ -1736,6 +1839,7 @@ function Get-SsmYamlList {
                 Platform    = $Platform
                 Timeout     = $to
                 Script      = $scr
+                RawText     = $text
             })
         }
         catch {
@@ -1781,6 +1885,8 @@ function Update-YamlListBoxForInstance {
     if ($null -eq $Instance) {
         $yamlListBox.ItemsSource = $null
         $runSsmButton.IsEnabled = $true
+        $yamlInfoText.Text = ''
+        $yamlScriptPreviewText.Text = ''
         return
     }
     $isLocked = Test-InstanceLocked -InstanceId ([string]$Instance.InstanceId)
@@ -1794,6 +1900,7 @@ function Update-YamlListBoxForInstance {
         $yamlListBox.ItemsSource = $tab3State.LinuxYamls
     }
     $yamlInfoText.Text = ''
+    $yamlScriptPreviewText.Text = ''
     if ($isLocked) {
         $statusBarText.Text = "$($Instance.InstanceId) はロック中です。SSM コマンド実行はできません"
     }
@@ -1803,7 +1910,301 @@ function Get-SafeFileName {
     param([string]$Name)
     if ([string]::IsNullOrEmpty($Name)) { return 'task' }
     $invalid = '\\/:\*\?"<>\|'
-    return ([regex]::Replace($Name, "[$invalid]", '_'))
+    $safe = ([regex]::Replace($Name.Trim(), "[$invalid]", '_'))
+    if ([string]::IsNullOrWhiteSpace($safe)) { return 'task' }
+    return $safe
+}
+
+function ConvertTo-YamlScalarText {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [AllowNull()]
+        [string]$Value
+    )
+
+    if ($null -eq $Value) { return '' }
+    return (($Value -replace "`r", ' ') -replace "`n", ' ').Trim()
+}
+
+function Set-YamlNameText {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $true)][string]$Text,
+        [Parameter(Mandatory = $true)][string]$Name
+    )
+
+    $safeName = ConvertTo-YamlScalarText -Value $Name
+    $line = "name: $safeName"
+    if ($Text -match '(?m)^\s*name\s*:') {
+        $nameRegex = New-Object System.Text.RegularExpressions.Regex '(?m)^\s*name\s*:.*$'
+        return $nameRegex.Replace($Text, $line, 1)
+    }
+    return "$line`r`n$Text"
+}
+
+function Show-TextInputDialog {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $true)][string]$Title,
+        [Parameter(Mandatory = $true)][string]$Label,
+        [AllowNull()][string]$InitialValue
+    )
+
+    $inputXaml = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Input"
+        Width="460" Height="170"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#0F172A"
+        FontFamily="Yu Gothic UI, Meiryo UI, Segoe UI"
+        FontSize="13">
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <TextBlock x:Name="LabelText" Grid.Row="0" Foreground="#E2E8F0" FontWeight="SemiBold" Margin="0,0,0,8" />
+        <TextBox x:Name="InputTextBox" Grid.Row="1" Padding="8,5" Background="#0B1220" Foreground="#F8FAFC" BorderBrush="#334155" />
+        <TextBlock Grid.Row="2" Text="" />
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="OkButton" Content="OK" Width="86" Padding="0,5" Margin="0,0,8,0" IsDefault="True" />
+            <Button x:Name="CancelButton" Content="キャンセル" Width="86" Padding="0,5" IsCancel="True" />
+        </StackPanel>
+    </Grid>
+</Window>
+'@
+
+    [xml]$xamlDoc = $inputXaml
+    $reader2 = New-Object System.Xml.XmlNodeReader $xamlDoc
+    $dialog = [Windows.Markup.XamlReader]::Load($reader2)
+    $dialog.Owner = $window
+    $dialog.Title = $Title
+
+    $labelText = $dialog.FindName('LabelText')
+    $inputTextBox = $dialog.FindName('InputTextBox')
+    $okButton = $dialog.FindName('OkButton')
+    $cancelButton = $dialog.FindName('CancelButton')
+
+    $labelText.Text = $Label
+    $inputTextBox.Text = [string]$InitialValue
+    $inputTextBox.SelectAll()
+    $okButton.Add_Click({
+            if ([string]::IsNullOrWhiteSpace($inputTextBox.Text)) {
+                $inputTextBox.Focus() | Out-Null
+                return
+            }
+            $dialog.DialogResult = $true
+            $dialog.Close()
+        })
+    $cancelButton.Add_Click({
+            $dialog.DialogResult = $false
+            $dialog.Close()
+        })
+    $dialog.Add_ContentRendered({
+            $inputTextBox.Focus() | Out-Null
+        })
+
+    if ($dialog.ShowDialog() -eq $true) {
+        return ([string]$inputTextBox.Text).Trim()
+    }
+    return $null
+}
+
+function Save-SelectedYamlText {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'User-driven YAML file save.')]
+    [CmdletBinding()]
+    param()
+
+    $sel = $yamlListBox.SelectedItem
+    if ($null -eq $sel) {
+        $statusBarText.Text = '保存する YAML を選択してください'
+        return
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$sel.Path)) {
+        $statusBarText.Text = 'YAML ファイルのパスを特定できません'
+        return
+    }
+
+    $text = [string]$yamlScriptPreviewText.Text
+    try {
+        $parsed = ConvertFrom-MinimalYaml -Text $text
+        if (-not $parsed.ContainsKey('script') -or [string]::IsNullOrWhiteSpace([string]$parsed['script'])) {
+            $statusBarText.Text = '保存できません: script が空です'
+            return
+        }
+
+        $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+        [System.IO.File]::WriteAllText([string]$sel.Path, $text, $utf8NoBom)
+
+        $path = [string]$sel.Path
+        Update-YamlListsFromDisk
+        $inst = $ssmInstanceComboBox.SelectedItem
+        if ($null -ne $inst) {
+            Update-YamlListBoxForInstance -Instance $inst
+        }
+
+        $match = $null
+        if ($null -ne $yamlListBox.ItemsSource) {
+            $match = $yamlListBox.ItemsSource | Where-Object { [string]$_.Path -eq $path } | Select-Object -First 1
+        }
+        if ($null -ne $match) {
+            $yamlListBox.SelectedItem = $match
+        }
+
+        $statusBarText.Text = "YAML を保存しました: $([System.IO.Path]::GetFileName($path))"
+        Write-AppLog -Level 'INFO' -Message "YAML 保存: $path"
+    }
+    catch {
+        $statusBarText.Text = "YAML 保存エラー: $($_.Exception.Message)"
+    }
+}
+
+function New-SsmYamlTask {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'User-driven YAML file creation.')]
+    [CmdletBinding()]
+    param()
+
+    $inst = $ssmInstanceComboBox.SelectedItem
+    if ($null -eq $inst) {
+        $statusBarText.Text = '新規追加する前にインスタンスを選択してください'
+        return
+    }
+
+    try {
+        $taskName = Show-TextInputDialog -Title '新規タスク' -Label 'タスク名' -InitialValue '新規タスク'
+        if ([string]::IsNullOrWhiteSpace($taskName)) {
+            $statusBarText.Text = '新規追加をキャンセルしました'
+            return
+        }
+
+        $dir = Get-SsmYamlDirectory -Instance $inst
+        if (-not (Test-Path -LiteralPath $dir)) {
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        }
+
+        $baseName = Get-SafeFileName -Name $taskName
+        $path = Join-Path $dir "$baseName.yaml"
+        $index = 2
+        while (Test-Path -LiteralPath $path) {
+            $path = Join-Path $dir "$baseName-$index.yaml"
+            $index++
+        }
+
+        $yamlName = ConvertTo-YamlScalarText -Value $taskName
+        $template = @"
+name: $yamlName
+description:
+output: text
+timeout: 300
+script: |
+  echo hello
+"@
+        $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+        [System.IO.File]::WriteAllText($path, $template, $utf8NoBom)
+
+        Update-YamlListsFromDisk
+        Update-YamlListBoxForInstance -Instance $inst
+        $match = $null
+        if ($null -ne $yamlListBox.ItemsSource) {
+            $match = $yamlListBox.ItemsSource | Where-Object { [string]$_.Path -eq $path } | Select-Object -First 1
+        }
+        if ($null -ne $match) {
+            $yamlListBox.SelectedItem = $match
+        }
+
+        $statusBarText.Text = "YAML を追加しました: $([System.IO.Path]::GetFileName($path))"
+        Write-AppLog -Level 'INFO' -Message "YAML 新規追加: $path"
+    }
+    catch {
+        $statusBarText.Text = "YAML 追加エラー: $($_.Exception.Message)"
+    }
+}
+
+function Update-SsmInstanceComboBox {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper, not a system-state change.')]
+    [CmdletBinding()]
+    param()
+
+    try {
+        $name = Get-SelectedProfile
+        if ($null -eq $name) { return }
+
+        [object[]]$cachedItems = @(Get-SharedInstanceItems -Profile $name)
+        if (@($cachedItems).Count -gt 0) {
+            $count = Update-SsmInstanceComboBoxFromItems -Items $cachedItems -PreferredInstanceId $instanceScanState.SelectedInstanceId
+            $statusBarText.Text = "スキャン済みインスタンス $count 件を SSM に反映しました"
+            return
+        }
+
+        Update-InstanceViews
+    }
+    catch {
+        $statusBarText.Text = "SSM インスタンス更新エラー: $($_.Exception.Message)"
+        Write-AppLog -Level 'ERROR' -Message "SSM インスタンス更新エラー: $($_.Exception.Message)"
+    }
+}
+
+function Rename-SelectedYamlTask {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'User-driven YAML task rename.')]
+    [CmdletBinding()]
+    param()
+
+    $sel = $yamlListBox.SelectedItem
+    if ($null -eq $sel) {
+        $statusBarText.Text = '名前を変更する YAML を選択してください'
+        return
+    }
+
+    try {
+        $newName = Show-TextInputDialog -Title 'タスク名の変更' -Label '新しいタスク名' -InitialValue ([string]$sel.Name)
+        if ([string]::IsNullOrWhiteSpace($newName)) {
+            $statusBarText.Text = '名前変更をキャンセルしました'
+            return
+        }
+
+        $text = [string]$yamlScriptPreviewText.Text
+        if ([string]::IsNullOrWhiteSpace($text) -and ($sel.PSObject.Properties.Name -contains 'RawText')) {
+            $text = [string]$sel.RawText
+        }
+        $updatedText = Set-YamlNameText -Text $text -Name $newName
+
+        $parsed = ConvertFrom-MinimalYaml -Text $updatedText
+        if (-not $parsed.ContainsKey('script') -or [string]::IsNullOrWhiteSpace([string]$parsed['script'])) {
+            $statusBarText.Text = '名前変更できません: script が空です'
+            return
+        }
+
+        $path = [string]$sel.Path
+        $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+        [System.IO.File]::WriteAllText($path, $updatedText, $utf8NoBom)
+
+        Update-YamlListsFromDisk
+        $inst = $ssmInstanceComboBox.SelectedItem
+        if ($null -ne $inst) {
+            Update-YamlListBoxForInstance -Instance $inst
+        }
+
+        $match = $null
+        if ($null -ne $yamlListBox.ItemsSource) {
+            $match = $yamlListBox.ItemsSource | Where-Object { [string]$_.Path -eq $path } | Select-Object -First 1
+        }
+        if ($null -ne $match) {
+            $yamlListBox.SelectedItem = $match
+        }
+
+        $statusBarText.Text = "タスク名を変更しました: $newName"
+        Write-AppLog -Level 'INFO' -Message "YAML タスク名変更: $path -> $newName"
+    }
+    catch {
+        $statusBarText.Text = "名前変更エラー: $($_.Exception.Message)"
+    }
 }
 
 function Update-SsmInstanceComboBoxFromItems {
@@ -1811,12 +2212,20 @@ function Update-SsmInstanceComboBoxFromItems {
     [CmdletBinding()]
     param(
         [AllowNull()]
-        [object[]]$Items
+        [object[]]$Items,
+        [AllowNull()]
+        [string]$PreferredInstanceId
     )
     if ($null -eq $Items) { $Items = @() }
     $prevId = $null
-    if ($null -ne $ssmInstanceComboBox.SelectedItem) {
+    if (-not [string]::IsNullOrWhiteSpace($PreferredInstanceId)) {
+        $prevId = $PreferredInstanceId
+    }
+    elseif ($null -ne $ssmInstanceComboBox.SelectedItem) {
         $prevId = [string]$ssmInstanceComboBox.SelectedItem.InstanceId
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace([string]$instanceScanState.SelectedInstanceId)) {
+        $prevId = [string]$instanceScanState.SelectedInstanceId
     }
     $display = New-Object System.Collections.Generic.List[PSCustomObject]
     foreach ($it in $Items) {
@@ -1858,7 +2267,7 @@ catch {
 }
 
 $loadSsmButton.Add_Click({
-        Update-InstanceViews
+        Update-SsmInstanceComboBox
     })
 
 $ssmInstanceComboBox.Add_SelectionChanged({
@@ -1877,14 +2286,33 @@ $yamlListBox.Add_SelectionChanged({
             $sel = $yamlListBox.SelectedItem
             if ($null -eq $sel) {
                 $yamlInfoText.Text = ''
+                $yamlScriptPreviewText.Text = ''
                 return
             }
             $desc = if ([string]::IsNullOrEmpty($sel.Description)) { '(なし)' } else { $sel.Description }
             $yamlInfoText.Text = "name: $($sel.Name)`ndescription: $desc`noutput: $($sel.Output)`ntimeout: $($sel.Timeout)"
+            if ($sel.PSObject.Properties.Name -contains 'RawText') {
+                $yamlScriptPreviewText.Text = [string]$sel.RawText
+            }
+            else {
+                $yamlScriptPreviewText.Text = [string]$sel.Script
+            }
         }
         catch {
             $statusBarText.Text = "エラー: $($_.Exception.Message)"
         }
+    })
+
+$yamlListBox.Add_MouseDoubleClick({
+        Rename-SelectedYamlTask
+    })
+
+$saveYamlButton.Add_Click({
+        Save-SelectedYamlText
+    })
+
+$addYamlButton.Add_Click({
+        New-SsmYamlTask
     })
 
 $rescanYamlButton.Add_Click({
@@ -1894,7 +2322,7 @@ $rescanYamlButton.Add_Click({
             if ($null -ne $sel) {
                 Update-YamlListBoxForInstance -Instance $sel
             }
-            $statusBarText.Text = "YAML 再スキャン完了 (Linux $($tab3State.LinuxYamls.Count) / Windows $($tab3State.WindowsYamls.Count))"
+            $statusBarText.Text = "YAML 再スキャン完了 (Linux $(@($tab3State.LinuxYamls).Count) / Windows $(@($tab3State.WindowsYamls).Count))"
         }
         catch {
             $statusBarText.Text = "エラー: $($_.Exception.Message)"
@@ -1962,7 +2390,7 @@ $runSsmButton.Add_Click({
                 & $pumpUi
             }
 
-            $result = Invoke-SsmTask -Profile $name -InstanceId $inst.InstanceId -YamlPath $yaml.Path -StatusCallback $ssmStatusCallback
+            $result = Invoke-SsmTask -Profile $name -InstanceId $inst.InstanceId -YamlPath $yaml.Path -Platform $yaml.Platform -StatusCallback $ssmStatusCallback
 
             $ssmProgressBar.Visibility = [System.Windows.Visibility]::Collapsed
 
@@ -2000,8 +2428,15 @@ $runSsmButton.Add_Click({
         }
         catch {
             $ssmProgressBar.Visibility = [System.Windows.Visibility]::Collapsed
-            $statusBarText.Text = "エラー: $($_.Exception.Message)"
-            $ssmOutputText.Text = "エラー:`n$($_.Exception.Message)"
+            $errText = [string]$_.Exception.Message
+            if ([string]::IsNullOrWhiteSpace($errText)) {
+                $errText = [string]$_
+            }
+            if ([string]::IsNullOrWhiteSpace($errText)) {
+                $errText = '詳細のないエラーが発生しました。操作ログまたは AWS CLI の状態を確認してください。'
+            }
+            $statusBarText.Text = "エラー: $errText"
+            $ssmOutputText.Text = "エラー:`n$errText"
         }
     })
 

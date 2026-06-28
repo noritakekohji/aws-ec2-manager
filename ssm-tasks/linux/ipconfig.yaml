@@ -1,0 +1,6 @@
+name: ipconfig
+description:
+output: text
+timeout: 300
+script: |
+  ipconfig
