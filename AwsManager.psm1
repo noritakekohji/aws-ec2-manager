@@ -423,7 +423,10 @@ function Invoke-SsmTask {
         [Parameter(Mandatory = $true)][string]$InstanceId,
         [Parameter(Mandatory = $true)][string]$YamlPath,
         [ValidateSet('Linux', 'Windows')]
-        [string]$Platform
+        [string]$Platform,
+        [Parameter()]
+        [AllowNull()]
+        [scriptblock]$StatusCallback = $null
     )
 
     if (-not (Test-Path -LiteralPath $YamlPath)) {
@@ -462,6 +465,7 @@ function Invoke-SsmTask {
     $document = if ($effectivePlatform -eq 'Windows') { 'AWS-RunPowerShellScript' } else { 'AWS-RunShellScript' }
 
     $paramJson = (@{ commands = @($script) } | ConvertTo-Json -Compress -Depth 5)
+    $awsTimeoutArgs = @('--cli-connect-timeout', '10', '--cli-read-timeout', '30')
 
     $sendArgs = @(
         'ssm', 'send-command',
@@ -471,6 +475,7 @@ function Invoke-SsmTask {
         '--parameters', $paramJson,
         '--output', 'json'
     )
+    $sendArgs += $awsTimeoutArgs
     $sendResult = Invoke-AwsCli -Arguments $sendArgs
     if (-not $sendResult.Success) {
         throw "aws ssm send-command failed: $($sendResult.Output)"
@@ -481,21 +486,37 @@ function Invoke-SsmTask {
 
     $startTime = Get-Date
     $finalStatus = $null
+    $lastStatus = 'Pending'
+    $lastError = ''
     $stdout = ''
     $stderr = ''
+    $pollCount = 0
+
+    if ($null -ne $StatusCallback) {
+        & $StatusCallback "CommandId: $commandId`nStatus: Pending`nElapsed: 0s / Timeout: ${timeoutSec}s"
+    }
 
     while ($true) {
-        $invResult = Invoke-AwsCli -Arguments @(
+        $pollCount++
+        $elapsed = (Get-Date) - $startTime
+        if ($null -ne $StatusCallback) {
+            & $StatusCallback "CommandId: $commandId`nStatus: $lastStatus`nElapsed: $([int]$elapsed.TotalSeconds)s / Timeout: ${timeoutSec}s`nPolling: #$pollCount"
+        }
+
+        $invArgs = @(
             'ssm', 'get-command-invocation',
             '--profile', $Profile,
             '--command-id', $commandId,
             '--instance-id', $InstanceId,
             '--output', 'json'
         )
+        $invArgs += $awsTimeoutArgs
+        $invResult = Invoke-AwsCli -Arguments $invArgs
 
         if ($invResult.Success -and -not [string]::IsNullOrWhiteSpace($invResult.Output)) {
             $inv = $invResult.Output | ConvertFrom-Json
             $status = [string]$inv.Status
+            $lastStatus = $status
             if ($status -ne 'InProgress' -and $status -ne 'Pending') {
                 $finalStatus = $status
                 if ($inv.PSObject.Properties.Name -contains 'StandardOutputContent') {
@@ -507,10 +528,24 @@ function Invoke-SsmTask {
                 break
             }
         }
+        elseif (-not $invResult.Success) {
+            if (-not [string]::IsNullOrWhiteSpace($invResult.Stderr)) {
+                $lastError = [string]$invResult.Stderr
+            }
+            else {
+                $lastError = [string]$invResult.Output
+            }
+        }
 
         $elapsed = (Get-Date) - $startTime
         if ($elapsed.TotalSeconds -ge $timeoutSec) {
             $finalStatus = 'TimedOut'
+            if ([string]::IsNullOrWhiteSpace($stderr)) {
+                $stderr = "Timed out after ${timeoutSec}s while waiting for SSM command $commandId. Last status: $lastStatus"
+                if (-not [string]::IsNullOrWhiteSpace($lastError)) {
+                    $stderr = "$stderr`nLast AWS CLI error: $lastError"
+                }
+            }
             break
         }
         Start-Sleep -Seconds 2
@@ -530,6 +565,7 @@ function Invoke-SsmTask {
         Error      = $stderr
         OutputType = $outputType
         Duration   = $duration
+        CommandId  = $commandId
     }
 }
 

@@ -889,8 +889,9 @@ function Add-SgDiffExpander {
         [Parameter(Mandatory = $true)]$SecurityGroup
     )
 
-    $isAdd = ($Mark -eq '[+]')
-    $color = if ($isAdd) { '#38BDF8' } else { '#F97373' }
+    $color = '#94A3B8'
+    if ($Mark -eq '[+]') { $color = '#38BDF8' }
+    if ($Mark -eq '[-]') { $color = '#F97373' }
     $expander = New-Object System.Windows.Controls.Expander
     $expander.IsExpanded = $false
     $expander.Margin = New-Object System.Windows.Thickness 0,4,0,6
@@ -937,24 +938,31 @@ function Render-SgDiffPanel {
     Add-SgDiffText -Text "適用後SG: $($Diff.AfterIds -join ', ')" -Color '#94A3B8' -Bottom 10 | Out-Null
 
     Add-SgDiffText -Text 'Security Group 差分' -Color '#BAE6FD' -Bold $true -FontSize 14 | Out-Null
-    if (-not $Diff.Changed) {
+    if ($Diff.Changed) {
+        foreach ($sg in @($Diff.AddedSgs)) {
+            Add-SgDiffText -Text ('[+] ' + (Get-SgLabel -Item $sg)) -Color '#38BDF8' -Bold $true | Out-Null
+        }
+        foreach ($sg in @($Diff.RemovedSgs)) {
+            Add-SgDiffText -Text ('[-] ' + (Get-SgLabel -Item $sg)) -Color '#F97373' -Bold $true | Out-Null
+        }
+
+        Add-SgDiffText -Text '差分SGの内容（クリックで開閉）' -Color '#BAE6FD' -Bold $true -FontSize 14 -Bottom 6 | Out-Null
+        foreach ($sg in @($Diff.AddedSgs)) {
+            Add-SgDiffExpander -Mark '[+]' -SecurityGroup $sg
+        }
+        foreach ($sg in @($Diff.RemovedSgs)) {
+            Add-SgDiffExpander -Mark '[-]' -SecurityGroup $sg
+        }
+    }
+    else {
         Add-SgDiffText -Text 'SG差分はありません。' -Color '#94A3B8' | Out-Null
-        return
     }
 
-    foreach ($sg in @($Diff.AddedSgs)) {
-        Add-SgDiffText -Text ('[+] ' + (Get-SgLabel -Item $sg)) -Color '#38BDF8' -Bold $true | Out-Null
-    }
-    foreach ($sg in @($Diff.RemovedSgs)) {
-        Add-SgDiffText -Text ('[-] ' + (Get-SgLabel -Item $sg)) -Color '#F97373' -Bold $true | Out-Null
-    }
-
-    Add-SgDiffText -Text '差分SGの内容（クリックで開閉）' -Color '#BAE6FD' -Bold $true -FontSize 14 -Bottom 6 | Out-Null
-    foreach ($sg in @($Diff.AddedSgs)) {
-        Add-SgDiffExpander -Mark '[+]' -SecurityGroup $sg
-    }
-    foreach ($sg in @($Diff.RemovedSgs)) {
-        Add-SgDiffExpander -Mark '[-]' -SecurityGroup $sg
+    if (@($Diff.ExistingSgs).Count -gt 0) {
+        Add-SgDiffText -Text '元からあるSGの内容（クリックで開閉）' -Color '#BAE6FD' -Bold $true -FontSize 14 -Bottom 6 | Out-Null
+        foreach ($sg in @($Diff.ExistingSgs)) {
+            Add-SgDiffExpander -Mark '[=]' -SecurityGroup $sg
+        }
     }
 }
 
@@ -1078,6 +1086,11 @@ function Get-SgDiffData {
         if ($originalIds -notcontains [string]$item.GroupId) { $addedSgs += $item }
     }
 
+    $existingSgs = @()
+    foreach ($item in $currentItems) {
+        if ($originalIds -contains [string]$item.GroupId) { $existingSgs += $item }
+    }
+
     $removedSgs = @()
     foreach ($item in $originalItems) {
         if ($currentIds -notcontains [string]$item.GroupId) { $removedSgs += $item }
@@ -1088,6 +1101,7 @@ function Get-SgDiffData {
         AfterIds     = $currentIds
         AddedSgs     = $addedSgs
         RemovedSgs   = $removedSgs
+        ExistingSgs  = $existingSgs
         ChangedSgs   = @($addedSgs + $removedSgs)
         Changed      = (($addedSgs.Count -gt 0) -or ($removedSgs.Count -gt 0))
     }
@@ -1221,6 +1235,20 @@ function New-SgReportHtml {
         $detailBlocks += "</details>`r`n"
     }
 
+    $existingBlocks = ''
+    foreach ($sg in @($diff.ExistingSgs)) {
+        $ruleRows = ''
+        foreach ($rule in @(Get-SgRuleRowsForItems -Items @($sg))) {
+            $ruleRows += "<tr><td>$(ConvertTo-HtmlText $rule.Direction)</td><td>$(ConvertTo-HtmlText $rule.Protocol)</td><td>$(ConvertTo-HtmlText $rule.Port)</td><td>$(ConvertTo-HtmlText $rule.Target)</td><td>$(ConvertTo-HtmlText $rule.Description)</td></tr>`r`n"
+        }
+        if ([string]::IsNullOrWhiteSpace($ruleRows)) {
+            $ruleRows = "<tr><td colspan='5'>ルールなし</td></tr>`r`n"
+        }
+        $existingBlocks += "<details class='sg-detail'><summary class='existing'>[=] $(ConvertTo-HtmlText (Get-SgLabel -Item $sg))</summary>`r`n"
+        $existingBlocks += "<table><thead><tr><th>方向</th><th>Protocol</th><th>Port</th><th>Source / Destination</th><th>Description</th></tr></thead><tbody>$ruleRows</tbody></table>`r`n"
+        $existingBlocks += "</details>`r`n"
+    }
+
     $beforeRows = ''
     foreach ($id in @($diff.BeforeIds)) { $beforeRows += "<li>$(ConvertTo-HtmlText $id)</li>`r`n" }
     $afterRows = ''
@@ -1246,6 +1274,7 @@ th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; vertica
 th { background: #e2e8f0; }
 .added { color: #0369a1; font-weight: 700; }
 .removed { color: #b91c1c; font-weight: 700; }
+.existing { color: #475569; font-weight: 700; }
 .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 ul { margin-top: 8px; }
 </style>
@@ -1265,6 +1294,10 @@ $sgRows
 <div class="panel">
 <h2>差分SGの内容</h2>
 $detailBlocks
+</div>
+<div class="panel">
+<h2>元からあるSGの内容</h2>
+$existingBlocks
 </div>
 <div class="panel cols">
 <div><h2>適用前</h2><ul>$beforeRows</ul></div>
@@ -1916,7 +1949,20 @@ $runSsmButton.Add_Click({
             Write-AppLog -Level 'INFO' -Message "SSM 実行開始: $($yaml.Name) on $($inst.InstanceId)"
             & $pumpUi
 
-            $result = Invoke-SsmTask -Profile $name -InstanceId $inst.InstanceId -YamlPath $yaml.Path
+            $ssmStatusCallback = {
+                param([string]$Message)
+                $ssmOutputText.Text = $Message
+                $firstLine = ($Message -split "`n" | Select-Object -First 1)
+                if ([string]::IsNullOrWhiteSpace($firstLine)) {
+                    $statusBarText.Text = "$($yaml.Name) 実行中..."
+                }
+                else {
+                    $statusBarText.Text = "$($yaml.Name) 実行中... $firstLine"
+                }
+                & $pumpUi
+            }
+
+            $result = Invoke-SsmTask -Profile $name -InstanceId $inst.InstanceId -YamlPath $yaml.Path -StatusCallback $ssmStatusCallback
 
             $ssmProgressBar.Visibility = [System.Windows.Visibility]::Collapsed
 
@@ -1955,6 +2001,7 @@ $runSsmButton.Add_Click({
         catch {
             $ssmProgressBar.Visibility = [System.Windows.Visibility]::Collapsed
             $statusBarText.Text = "エラー: $($_.Exception.Message)"
+            $ssmOutputText.Text = "エラー:`n$($_.Exception.Message)"
         }
     })
 
