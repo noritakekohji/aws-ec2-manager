@@ -477,7 +477,33 @@ function Get-SharedInstanceItems {
     if ([string]::IsNullOrWhiteSpace($Profile)) { return @() }
     if ($instanceScanState.Profile -ne $Profile) { return @() }
     if ($null -eq $instanceScanState.Items) { return @() }
-    return , @($instanceScanState.Items)
+    return ConvertTo-InstanceItemArray -Items $instanceScanState.Items
+}
+
+function ConvertTo-InstanceItemArray {
+    [CmdletBinding()]
+    [OutputType([object[]])]
+    param(
+        [AllowNull()]
+        [object[]]$Items
+    )
+
+    $list = New-Object System.Collections.Generic.List[object]
+    if ($null -eq $Items) { return @() }
+    foreach ($item in @($Items)) {
+        if ($null -eq $item) { continue }
+        if ($item -is [System.Array]) {
+            foreach ($nested in @($item)) {
+                if ($null -ne $nested) {
+                    $list.Add($nested)
+                }
+            }
+        }
+        else {
+            $list.Add($item)
+        }
+    }
+    return $list.ToArray()
 }
 
 function Update-DependentInstanceCombos {
@@ -490,7 +516,7 @@ function Update-DependentInstanceCombos {
         [string]$PreferredInstanceId
     )
 
-    if ($null -eq $Items) { $Items = @() }
+    [object[]]$Items = @(ConvertTo-InstanceItemArray -Items $Items)
     if ($null -ne (Get-Command -Name Update-SgInstanceComboBoxFromItems -ErrorAction SilentlyContinue) -and
         $null -ne (Get-Variable -Name sgInstanceComboBox -ErrorAction SilentlyContinue) -and
         $null -ne $sgInstanceComboBox) {
@@ -678,7 +704,7 @@ function Update-InstancesGridFromItems {
         [AllowNull()]
         [object[]]$Items
     )
-    if ($null -eq $Items) { $Items = @() }
+    [object[]]$Items = @(ConvertTo-InstanceItemArray -Items $Items)
     foreach ($it in $Items) {
         Add-InstanceLockMetadata -Instance $it | Out-Null
     }
@@ -1506,7 +1532,7 @@ function Update-SgInstanceComboBoxFromItems {
         [AllowNull()]
         [string]$PreferredInstanceId
     )
-    if ($null -eq $Items) { $Items = @() }
+    [object[]]$Items = @(ConvertTo-InstanceItemArray -Items $Items)
     $prevId = $null
     if (-not [string]::IsNullOrWhiteSpace($PreferredInstanceId)) {
         $prevId = $PreferredInstanceId
@@ -2216,7 +2242,7 @@ function Update-SsmInstanceComboBoxFromItems {
         [AllowNull()]
         [string]$PreferredInstanceId
     )
-    if ($null -eq $Items) { $Items = @() }
+    [object[]]$Items = @(ConvertTo-InstanceItemArray -Items $Items)
     $prevId = $null
     if (-not [string]::IsNullOrWhiteSpace($PreferredInstanceId)) {
         $prevId = $PreferredInstanceId
