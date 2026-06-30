@@ -2,7 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="ツールランチャー"
         Width="1180"
-        Height="760"
+        Height="780"
         MinWidth="980"
         MinHeight="640"
         WindowStartupLocation="CenterScreen"
@@ -22,6 +22,7 @@
             <Setter Property="BorderBrush" Value="{StaticResource BorderBrushSoft}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Padding" Value="8,5" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
         <Style TargetType="Button">
             <Setter Property="Background" Value="#25313B" />
@@ -39,66 +40,95 @@
             <Setter Property="Background" Value="#176CCB" />
             <Setter Property="BorderBrush" Value="#2E8CFF" />
         </Style>
+        <Style x:Key="SmallBrowseButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="MinWidth" Value="36" />
+            <Setter Property="Padding" Value="6,4" />
+        </Style>
         <Style x:Key="FieldLabel" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
             <Setter Property="Margin" Value="0,0,8,0" />
         </Style>
     </Window.Resources>
 
-    <Grid Margin="16">
+    <Grid Margin="14">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <Border Grid.Row="0" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1" CornerRadius="6" Padding="14" Margin="0,0,0,12">
+        <!-- Header (slim) -->
+        <Border Grid.Row="0" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1" CornerRadius="6" Padding="14,10" Margin="0,0,0,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="ツールランチャー" FontSize="22" FontWeight="SemiBold" />
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="0,0,12,0">
+                    <TextBlock Text="AWS Profile" Style="{StaticResource FieldLabel}" />
+                    <TextBox x:Name="HeaderAwsProfileTextBox" Width="200" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="3" Orientation="Horizontal">
+                    <Button x:Name="OpenOutputButton" Content="保存先" Margin="0,0,8,0" />
+                    <Button x:Name="OpenLogButton" Content="ログ" Margin="0,0,8,0" />
+                    <Button x:Name="OpenSettingsButton" Content="設定" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Snapshot integration tool (top-level) -->
+        <Border Grid.Row="1" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1" CornerRadius="6" Padding="14" Margin="0,0,0,10">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
+                <TextBlock Text="スナップショット統合ツール" FontWeight="SemiBold" FontSize="15" />
 
-                <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal">
-                    <TextBlock Text="ツールランチャー" FontSize="22" FontWeight="SemiBold" />
-                    <TextBlock x:Name="ConfigPathText" Foreground="{StaticResource MutedTextBrush}" Margin="14,3,0,0" />
-                </StackPanel>
-                <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal">
-                    <Button x:Name="SaveSettingsButton" Content="設定保存" Margin="0,0,8,0" />
-                    <Button x:Name="OpenConfigButton" Content="設定場所" Margin="0,0,8,0" />
-                    <Button x:Name="OpenOutputButton" Content="保存先を開く" />
-                </StackPanel>
-
-                <Grid Grid.Row="1" Grid.ColumnSpan="2" Margin="0,12,0,0">
+                <Grid Grid.Row="1" Margin="0,10,0,0">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="110" />
+                        <ColumnDefinition Width="100" />
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="112" />
-                        <ColumnDefinition Width="210" />
+                        <ColumnDefinition Width="120" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="ツールルート" Style="{StaticResource FieldLabel}" />
-                    <TextBox x:Name="ToolsRootTextBox" Grid.Column="1" Margin="0,0,12,0" />
-                    <TextBlock Grid.Column="2" Text="AWS Profile" Style="{StaticResource FieldLabel}" />
-                    <TextBox x:Name="AwsProfileTextBox" Grid.Column="3" />
+                    <TextBlock Text="収集ラベル" Style="{StaticResource FieldLabel}" />
+                    <TextBox x:Name="SnapshotLabelTextBox" Grid.Column="1" Margin="0,0,12,0" />
+                    <Button x:Name="RunCollectSnapshotButton" Grid.Column="2" Content="収集実行" Style="{StaticResource PrimaryButton}" />
                 </Grid>
 
-                <Grid Grid.Row="2" Grid.ColumnSpan="2" Margin="0,8,0,0">
+                <Grid Grid.Row="2" Margin="0,8,0,0">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="110" />
+                        <ColumnDefinition Width="100" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="44" />
+                        <ColumnDefinition Width="80" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="44" />
+                        <ColumnDefinition Width="92" />
+                        <ColumnDefinition Width="120" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="出力保存先" Style="{StaticResource FieldLabel}" />
-                    <TextBox x:Name="OutputRootTextBox" Grid.Column="1" />
+                    <TextBlock Text="出力先" Style="{StaticResource FieldLabel}" />
+                    <TextBox x:Name="SnapshotZipTextBox" Grid.Column="1" Margin="0,0,4,0" />
+                    <Button x:Name="BrowseSnapshotZipButton" Grid.Column="2" Content="..." Style="{StaticResource SmallBrowseButton}" Margin="0,0,12,0" />
+                    <TextBlock Grid.Column="3" Text="比較 ZIP" Style="{StaticResource FieldLabel}" />
+                    <TextBox x:Name="SnapshotCompareZipTextBox" Grid.Column="4" Margin="0,0,4,0" />
+                    <Button x:Name="BrowseSnapshotCompareZipButton" Grid.Column="5" Content="..." Style="{StaticResource SmallBrowseButton}" Margin="0,0,12,0" />
+                    <CheckBox x:Name="SnapshotDiffOnlyCheckBox" Grid.Column="6" Content="差分のみ" />
+                    <Button x:Name="RunSnapshotReportButton" Grid.Column="7" Content="レポート生成" />
                 </Grid>
             </Grid>
         </Border>
 
-        <Grid Grid.Row="1">
+        <!-- Split pane: tools (left) + parameters/preview/log (right) -->
+        <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="285" />
                 <ColumnDefinition Width="12" />
@@ -123,54 +153,15 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="105" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <Border Grid.Row="0" Background="#121820" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,12">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <TextBlock Text="スナップショット統合ツール" FontWeight="SemiBold" FontSize="15" />
+                    <TextBlock x:Name="ToolTitleText" Grid.Row="0" FontSize="18" FontWeight="SemiBold" />
+                    <TextBlock x:Name="ToolDescriptionText" Grid.Row="1" Foreground="{StaticResource MutedTextBrush}" Margin="0,4,0,12" TextWrapping="Wrap" />
 
-                            <Grid Grid.Row="1" Margin="0,10,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="130" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="112" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="収集ラベル" Style="{StaticResource FieldLabel}" />
-                                <TextBox x:Name="SnapshotLabelTextBox" Grid.Column="1" Margin="0,0,10,0" />
-                                <Button x:Name="RunCollectSnapshotButton" Grid.Column="2" Content="収集実行" Style="{StaticResource PrimaryButton}" />
-                            </Grid>
-
-                            <Grid Grid.Row="2" Margin="0,8,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="130" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="92" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="92" />
-                                    <ColumnDefinition Width="112" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="ZIP パス" Style="{StaticResource FieldLabel}" />
-                                <TextBox x:Name="SnapshotZipTextBox" Grid.Column="1" Margin="0,0,10,0" />
-                                <TextBlock Grid.Column="2" Text="比較 ZIP" Style="{StaticResource FieldLabel}" />
-                                <TextBox x:Name="SnapshotCompareZipTextBox" Grid.Column="3" Margin="0,0,10,0" />
-                                <CheckBox x:Name="SnapshotDiffOnlyCheckBox" Grid.Column="4" Content="差分のみ" />
-                                <Button x:Name="RunSnapshotReportButton" Grid.Column="5" Content="レポート生成" />
-                            </Grid>
-                        </Grid>
-                    </Border>
-
-                    <TextBlock x:Name="ToolTitleText" Grid.Row="1" FontSize="18" FontWeight="SemiBold" />
-                    <TextBlock x:Name="ToolDescriptionText" Grid.Row="2" Foreground="{StaticResource MutedTextBrush}" Margin="0,4,0,12" TextWrapping="Wrap" />
-
-                    <Grid Grid.Row="3" Margin="0,0,0,12">
+                    <Grid Grid.Row="2" Margin="0,0,0,12">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
@@ -203,14 +194,13 @@
                         </Grid>
                     </Grid>
 
-                    <TextBlock Grid.Row="4" Text="コマンドプレビュー" FontWeight="SemiBold" Margin="0,0,0,5" />
-                    <TextBox x:Name="CommandPreviewTextBox" Grid.Row="4" Margin="0,24,0,0" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+                    <TextBlock Grid.Row="3" Text="コマンドプレビュー" FontWeight="SemiBold" Margin="0,0,0,5" />
+                    <TextBox x:Name="CommandPreviewTextBox" Grid.Row="4" Margin="0,28,0,0" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="78" />
 
-                    <StackPanel Grid.Row="5" Orientation="Horizontal" Margin="0,12,0,10">
+                    <StackPanel Grid.Row="5" Orientation="Horizontal" Margin="0,12,0,8">
                         <Button x:Name="RefreshPreviewButton" Content="プレビュー更新" Margin="0,0,8,0" />
                         <Button x:Name="RunButton" Content="実行" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0" />
                         <Button x:Name="StopButton" Content="停止" Margin="0,0,8,0" IsEnabled="False" />
-                        <Button x:Name="OpenLastRunButton" Content="直近出力" />
                     </StackPanel>
 
                     <TextBox x:Name="LogTextBox" Grid.Row="6" IsReadOnly="True" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12" />
@@ -218,6 +208,6 @@
             </Border>
         </Grid>
 
-        <TextBlock x:Name="StatusText" Grid.Row="2" Foreground="{StaticResource MutedTextBrush}" Margin="2,10,0,0" />
+        <TextBlock x:Name="StatusText" Grid.Row="3" Foreground="{StaticResource MutedTextBrush}" Margin="2,10,0,0" />
     </Grid>
 </Window>

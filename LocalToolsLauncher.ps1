@@ -8,6 +8,7 @@ Set-StrictMode -Version Latest
 $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $CatalogPath = Join-Path $ScriptRoot 'tools\tool-catalog.yaml'
 $XamlPath = Join-Path $ScriptRoot 'LocalToolsLauncher.xaml'
+$SettingsXamlPath = Join-Path $ScriptRoot 'LocalToolsLauncherSettings.xaml'
 $ConfigDir = Join-Path $env:LOCALAPPDATA 'aws-ec2-manager'
 $ConfigPath = Join-Path $ConfigDir 'tool-launcher.json'
 $DefaultToolsRoot = Join-Path $ScriptRoot 'tools'
@@ -24,6 +25,9 @@ $script:CurrentRunspace = $null
 $script:CurrentPowerShell = $null
 $script:CurrentHandle = $null
 $script:WaitTimer = $null
+$script:ToolsRoot = $DefaultToolsRoot
+$script:OutputRoot = $DefaultOutputRoot
+$script:AwsProfile = ''
 
 function ConvertTo-DisplayPath {
     param([string]$Path)
@@ -79,9 +83,9 @@ function Save-LauncherConfig {
     $openReport = Get-ConfigBool -Config $script:LoadedConfig -Name 'OpenReportAfterRun' -DefaultValue $true
     $keepConsole = Get-ConfigBool -Config $script:LoadedConfig -Name 'KeepConsoleOpen' -DefaultValue $false
     $obj = [pscustomobject]@{
-        ToolsRoot = $ToolsRootTextBox.Text.Trim()
-        OutputRoot = $OutputRootTextBox.Text.Trim()
-        DefaultAwsProfile = $AwsProfileTextBox.Text.Trim()
+        ToolsRoot = $script:ToolsRoot
+        OutputRoot = $script:OutputRoot
+        DefaultAwsProfile = $script:AwsProfile
         OpenReportAfterRun = $openReport
         KeepConsoleOpen = $keepConsole
     }
@@ -91,7 +95,6 @@ function Save-LauncherConfig {
     $obj | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $ConfigPath -Encoding UTF8
     $script:LoadedConfig = $obj
     Set-Status "設定を保存しました: $ConfigPath"
-    Update-Header
 }
 
 function ConvertFrom-ToolCatalogScalar {
@@ -231,13 +234,13 @@ function Get-ToolDir {
     if (-not $relativePath) { $relativePath = [string]$Tool.LinuxPath }
     $normalized = $relativePath.Replace('/', '\')
     $dir = Split-Path -Parent $normalized
-    if (-not $dir) { return $ToolsRootTextBox.Text.Trim() }
-    return Join-Path $ToolsRootTextBox.Text.Trim() $dir
+    if (-not $dir) { return $script:ToolsRoot }
+    return Join-Path $script:ToolsRoot $dir
 }
 
 function New-RunDirectory {
     param([string]$ToolId)
-    $root = $OutputRootTextBox.Text.Trim()
+    $root = $script:OutputRoot
     if (-not $root) { throw 'OutputRoot is empty.' }
     $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
     $dir = Join-Path (Join-Path $root $ToolId) $stamp
@@ -258,7 +261,7 @@ function Expand-ArgumentTemplate {
     $value = $value.Replace('{ToolDir}', (ConvertTo-DisplayPath $toolDir))
     $value = $value.Replace('{RunDir}', (ConvertTo-DisplayPath $RunDir))
     $value = $value.Replace('{ArtifactsDir}', (ConvertTo-DisplayPath $artifacts))
-    $value = $value.Replace('{AwsProfile}', $AwsProfileTextBox.Text.Trim())
+    $value = $value.Replace('{AwsProfile}', $script:AwsProfile)
     return $value
 }
 
@@ -402,7 +405,7 @@ function Build-Command {
         [switch]$RequireEntry
     )
     $toolDir = Get-ToolDir -Tool $Tool
-    $entry = Join-Path $ToolsRootTextBox.Text.Trim() ([string]$Tool.WindowsPath).Replace('/', '\')
+    $entry = Join-Path $script:ToolsRoot ([string]$Tool.WindowsPath).Replace('/', '\')
     if ($RequireEntry -and -not (Test-Path -LiteralPath $entry)) {
         throw "入口ファイルが見つかりません: $entry"
     }
@@ -422,7 +425,9 @@ function Build-Command {
 }
 
 function Update-Header {
-    $ConfigPathText.Text = "設定: $ConfigPath"
+    if ($null -ne $StatusText) {
+        # status bar shows config location while idle
+    }
 }
 
 function Set-Status {
@@ -454,7 +459,7 @@ function Set-ParameterDefaults {
     param($Tool)
     $script:TextParameterControls = @()
     $script:CheckParameterControls = @()
-    $sampleRun = Join-Path (Join-Path $OutputRootTextBox.Text.Trim() $Tool.Id) '<timestamp>'
+    $sampleRun = Join-Path (Join-Path $script:OutputRoot $Tool.Id) '<timestamp>'
     $textSlots = @(
         @{ Label = $Param1Label; Control = $Param1TextBox },
         @{ Label = $Param2Label; Control = $Param2TextBox },
@@ -513,7 +518,7 @@ function Update-CommandPreview {
             $CommandPreviewTextBox.Text = ''
             return
         }
-        $sampleRun = Join-Path (Join-Path $OutputRootTextBox.Text.Trim() $tool.Id) '<timestamp>'
+        $sampleRun = Join-Path (Join-Path $script:OutputRoot $tool.Id) '<timestamp>'
         $cmd = Build-Command -Tool $tool -RunDir $sampleRun
         $CommandPreviewTextBox.Text = $cmd.Preview
         Update-Header
@@ -559,8 +564,8 @@ function Invoke-ToolExecution {
         [System.Windows.MessageBox]::Show('既に実行中のツールがあります。停止してから再実行してください。', 'ツールランチャー') | Out-Null
         return
     }
-    if (-not (Test-Path -LiteralPath $ToolsRootTextBox.Text.Trim())) {
-        [System.Windows.MessageBox]::Show('ツールルートが存在しません。', 'ツールランチャー') | Out-Null
+    if (-not (Test-Path -LiteralPath $script:ToolsRoot)) {
+        [System.Windows.MessageBox]::Show('ツールルートが存在しません。設定からパスを確認してください。', 'ツールランチャー') | Out-Null
         return
     }
     $runDir = New-RunDirectory -ToolId $tool.Id
@@ -776,6 +781,103 @@ function Invoke-SnapshotReport {
     }
 }
 
+function Select-FolderDialog {
+    param([string]$InitialPath, [string]$Description)
+    Add-Type -AssemblyName System.Windows.Forms | Out-Null
+    $folder = New-Object System.Windows.Forms.FolderBrowserDialog
+    if ($Description) { $folder.Description = $Description }
+    if ($InitialPath -and (Test-Path -LiteralPath $InitialPath)) {
+        $folder.SelectedPath = $InitialPath
+    }
+    $result = $folder.ShowDialog()
+    if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+        return $folder.SelectedPath
+    }
+    return $null
+}
+
+function Select-FileDialog {
+    param([string]$InitialPath, [string]$Filter, [string]$Title)
+    $dialog = New-Object Microsoft.Win32.OpenFileDialog
+    if ($Title) { $dialog.Title = $Title }
+    if ($Filter) { $dialog.Filter = $Filter }
+    if ($InitialPath) {
+        try {
+            $dir = Split-Path -Parent $InitialPath
+            if ($dir -and (Test-Path -LiteralPath $dir)) { $dialog.InitialDirectory = $dir }
+            if (Test-Path -LiteralPath $InitialPath) { $dialog.FileName = $InitialPath }
+        } catch { }
+    }
+    $result = $dialog.ShowDialog()
+    if ($result) { return $dialog.FileName }
+    return $null
+}
+
+function Show-SettingsDialog {
+    [xml]$settingsXaml = Get-Content -LiteralPath $SettingsXamlPath -Raw -Encoding UTF8
+    $reader = New-Object System.Xml.XmlNodeReader $settingsXaml
+    $dlg = [Windows.Markup.XamlReader]::Load($reader)
+    $dlg.Owner = $window
+
+    $tbTools = $dlg.FindName('ToolsRootTextBox')
+    $tbOut = $dlg.FindName('OutputRootTextBox')
+    $tbAws = $dlg.FindName('AwsProfileTextBox')
+    $cbOpen = $dlg.FindName('OpenReportAfterRunCheckBox')
+    $cbKeep = $dlg.FindName('KeepConsoleOpenCheckBox')
+    $cfgText = $dlg.FindName('ConfigPathText')
+    $btnTools = $dlg.FindName('BrowseToolsRootButton')
+    $btnOut = $dlg.FindName('BrowseOutputRootButton')
+    $btnCfg = $dlg.FindName('OpenConfigDirButton')
+    $btnCancel = $dlg.FindName('CancelButton')
+    $btnOk = $dlg.FindName('OkButton')
+
+    $tbTools.Text = $script:ToolsRoot
+    $tbOut.Text = $script:OutputRoot
+    $tbAws.Text = $script:AwsProfile
+    $cbOpen.IsChecked = (Get-ConfigBool -Config $script:LoadedConfig -Name 'OpenReportAfterRun' -DefaultValue $true)
+    $cbKeep.IsChecked = (Get-ConfigBool -Config $script:LoadedConfig -Name 'KeepConsoleOpen' -DefaultValue $false)
+    $cfgText.Text = "設定ファイル: $ConfigPath"
+
+    $btnTools.Add_Click({
+        $sel = Select-FolderDialog -InitialPath $tbTools.Text -Description 'ツールルートを選択'
+        if ($sel) { $tbTools.Text = $sel }
+    }.GetNewClosure())
+    $btnOut.Add_Click({
+        $sel = Select-FolderDialog -InitialPath $tbOut.Text -Description '出力保存先を選択'
+        if ($sel) { $tbOut.Text = $sel }
+    }.GetNewClosure())
+    $btnCfg.Add_Click({
+        if (-not (Test-Path -LiteralPath $ConfigDir)) { New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null }
+        Start-Process explorer.exe -ArgumentList $ConfigDir
+    })
+    $btnCancel.Add_Click({ $dlg.Close() }.GetNewClosure())
+    $btnOk.Add_Click({
+        $script:ToolsRoot = $tbTools.Text.Trim()
+        $script:OutputRoot = $tbOut.Text.Trim()
+        $script:AwsProfile = $tbAws.Text.Trim()
+        $obj = [pscustomobject]@{
+            ToolsRoot = $script:ToolsRoot
+            OutputRoot = $script:OutputRoot
+            DefaultAwsProfile = $script:AwsProfile
+            OpenReportAfterRun = [bool]$cbOpen.IsChecked
+            KeepConsoleOpen = [bool]$cbKeep.IsChecked
+        }
+        if (-not (Test-Path -LiteralPath $ConfigDir)) {
+            New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null
+        }
+        $obj | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $ConfigPath -Encoding UTF8
+        $script:LoadedConfig = $obj
+        if ($HeaderAwsProfileTextBox.Text -ne $script:AwsProfile) {
+            $HeaderAwsProfileTextBox.Text = $script:AwsProfile
+        }
+        Set-Status "設定を保存しました: $ConfigPath"
+        Update-CommandPreview
+        $dlg.Close()
+    }.GetNewClosure())
+
+    [void]$dlg.ShowDialog()
+}
+
 Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName PresentationCore
 Add-Type -AssemblyName WindowsBase
@@ -784,29 +886,27 @@ Add-Type -AssemblyName WindowsBase
 $reader = New-Object System.Xml.XmlNodeReader $xaml
 $window = [Windows.Markup.XamlReader]::Load($reader)
 
-$ToolsRootTextBox = $window.FindName('ToolsRootTextBox')
-$OutputRootTextBox = $window.FindName('OutputRootTextBox')
-$AwsProfileTextBox = $window.FindName('AwsProfileTextBox')
+$HeaderAwsProfileTextBox = $window.FindName('HeaderAwsProfileTextBox')
+$OpenOutputButton = $window.FindName('OpenOutputButton')
+$OpenLogButton = $window.FindName('OpenLogButton')
+$OpenSettingsButton = $window.FindName('OpenSettingsButton')
 $ToolListBox = $window.FindName('ToolListBox')
 $ToolTitleText = $window.FindName('ToolTitleText')
 $ToolDescriptionText = $window.FindName('ToolDescriptionText')
 $CommandPreviewTextBox = $window.FindName('CommandPreviewTextBox')
 $LogTextBox = $window.FindName('LogTextBox')
-$ConfigPathText = $window.FindName('ConfigPathText')
 $StatusText = $window.FindName('StatusText')
 $RunButton = $window.FindName('RunButton')
 $StopButton = $window.FindName('StopButton')
 $RefreshPreviewButton = $window.FindName('RefreshPreviewButton')
-$SaveSettingsButton = $window.FindName('SaveSettingsButton')
-$OpenConfigButton = $window.FindName('OpenConfigButton')
-$OpenOutputButton = $window.FindName('OpenOutputButton')
-$OpenLastRunButton = $window.FindName('OpenLastRunButton')
 $SnapshotLabelTextBox = $window.FindName('SnapshotLabelTextBox')
 $SnapshotZipTextBox = $window.FindName('SnapshotZipTextBox')
 $SnapshotCompareZipTextBox = $window.FindName('SnapshotCompareZipTextBox')
 $SnapshotDiffOnlyCheckBox = $window.FindName('SnapshotDiffOnlyCheckBox')
 $RunCollectSnapshotButton = $window.FindName('RunCollectSnapshotButton')
 $RunSnapshotReportButton = $window.FindName('RunSnapshotReportButton')
+$BrowseSnapshotZipButton = $window.FindName('BrowseSnapshotZipButton')
+$BrowseSnapshotCompareZipButton = $window.FindName('BrowseSnapshotCompareZipButton')
 $Param1Label = $window.FindName('Param1Label')
 $Param2Label = $window.FindName('Param2Label')
 $Param3Label = $window.FindName('Param3Label')
@@ -818,9 +918,11 @@ $Option2CheckBox = $window.FindName('Option2CheckBox')
 
 $config = Load-LauncherConfig
 $script:LoadedConfig = $config
-$ToolsRootTextBox.Text = Get-ConfigValue -Config $config -Name 'ToolsRoot' -DefaultValue $DefaultToolsRoot
-$OutputRootTextBox.Text = Get-ConfigValue -Config $config -Name 'OutputRoot' -DefaultValue $DefaultOutputRoot
-$AwsProfileTextBox.Text = Get-ConfigValue -Config $config -Name 'DefaultAwsProfile' -DefaultValue ''
+$script:ToolsRoot = Get-ConfigValue -Config $config -Name 'ToolsRoot' -DefaultValue $DefaultToolsRoot
+$script:OutputRoot = Get-ConfigValue -Config $config -Name 'OutputRoot' -DefaultValue $DefaultOutputRoot
+$script:AwsProfile = Get-ConfigValue -Config $config -Name 'DefaultAwsProfile' -DefaultValue ''
+$HeaderAwsProfileTextBox.Text = $script:AwsProfile
+
 $script:Catalog = Read-ToolCatalog
 foreach ($tool in $script:Catalog) {
     if ([bool]$tool.Menu) {
@@ -837,32 +939,41 @@ $Option1CheckBox.Add_Checked({ Update-CommandPreview })
 $Option1CheckBox.Add_Unchecked({ Update-CommandPreview })
 $Option2CheckBox.Add_Checked({ Update-CommandPreview })
 $Option2CheckBox.Add_Unchecked({ Update-CommandPreview })
-$ToolsRootTextBox.Add_TextChanged({ Update-CommandPreview })
-$OutputRootTextBox.Add_TextChanged({ Update-CommandPreview })
-$AwsProfileTextBox.Add_TextChanged({ Update-CommandPreview })
+$HeaderAwsProfileTextBox.Add_TextChanged({
+    $script:AwsProfile = $HeaderAwsProfileTextBox.Text.Trim()
+    Update-CommandPreview
+})
 $RefreshPreviewButton.Add_Click({ Update-CommandPreview })
-$SaveSettingsButton.Add_Click({ Save-LauncherConfig })
 $RunButton.Add_Click({ Invoke-SelectedTool })
 $StopButton.Add_Click({ Invoke-StopExecution })
-$window.Add_Closing({
-    if (Test-Running) {
-        try { $script:CurrentProc.Kill() } catch {}
-    }
-})
 $RunCollectSnapshotButton.Add_Click({ Invoke-CollectSnapshot })
 $RunSnapshotReportButton.Add_Click({ Invoke-SnapshotReport })
-$OpenConfigButton.Add_Click({
-    if (-not (Test-Path -LiteralPath $ConfigDir)) { New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null }
-    Start-Process explorer.exe -ArgumentList $ConfigDir
+$BrowseSnapshotZipButton.Add_Click({
+    $sel = Select-FileDialog -InitialPath $SnapshotZipTextBox.Text -Filter 'ZIP files|*.zip|All files|*.*' -Title 'ZIP を選択'
+    if ($sel) { $SnapshotZipTextBox.Text = $sel }
 })
+$BrowseSnapshotCompareZipButton.Add_Click({
+    $sel = Select-FileDialog -InitialPath $SnapshotCompareZipTextBox.Text -Filter 'ZIP files|*.zip|All files|*.*' -Title '比較 ZIP を選択'
+    if ($sel) { $SnapshotCompareZipTextBox.Text = $sel }
+})
+$OpenSettingsButton.Add_Click({ Show-SettingsDialog })
 $OpenOutputButton.Add_Click({
-    $path = $OutputRootTextBox.Text.Trim()
+    $path = $script:OutputRoot
     if (-not (Test-Path -LiteralPath $path)) { New-Item -ItemType Directory -Path $path -Force | Out-Null }
     Start-Process explorer.exe -ArgumentList $path
 })
-$OpenLastRunButton.Add_Click({
+$OpenLogButton.Add_Click({
     if ($script:LastRunDir -and (Test-Path -LiteralPath $script:LastRunDir)) {
         Start-Process explorer.exe -ArgumentList $script:LastRunDir
+        return
+    }
+    if (Test-Path -LiteralPath $script:OutputRoot) {
+        Start-Process explorer.exe -ArgumentList $script:OutputRoot
+    }
+})
+$window.Add_Closing({
+    if (Test-Running) {
+        try { $script:CurrentProc.Kill() } catch {}
     }
 })
 
