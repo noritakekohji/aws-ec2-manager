@@ -216,6 +216,6 @@ aws-ec2-manager/
 
 ## 9. 参照
 
-- 移植元: `C:\Users\kohji\data\claude\projects\ops-scripts-template\tools\`
+- 移植元: `C:\Users\kohji\data\ai-work\projects\ops-scripts-template\tools\`
 - AWS CLI Reference: https://docs.aws.amazon.com/cli/latest/reference/ec2/
 - SSM Run Command: https://docs.aws.amazon.com/systems-manager/latest/userguide/execute-remote-commands.html

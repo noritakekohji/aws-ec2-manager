@@ -32,5 +32,5 @@ Invoke-Pester -Path tests/
 
 ## 関連プロジェクト
 
-- 移植元: `C:\Users\kohji\data\claude\projects\ops-scripts-template`
+- 移植元: `C:\Users\kohji\data\ai-work\projects\ops-scripts-template`
 - GitHub: https://github.com/noritakekohji/aws-ec2-manager
