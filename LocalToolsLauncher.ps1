@@ -713,7 +713,7 @@ function Complete-ToolExecution {
                         Sort-Object LastWriteTime -Descending | Select-Object -First 1
                     if ($null -ne $producedZip) {
                         $SnapshotZipTextBox.Text = $producedZip.FullName
-                        Append-Log "出力先に自動設定: $($producedZip.FullName)"
+                        Append-Log "出力対象ZIPに自動設定: $($producedZip.FullName)"
                     }
                 }
             }
@@ -761,7 +761,7 @@ function Get-CollectSnapshotArguments {
 function Get-SnapshotReportArguments {
     param([string]$RunDir)
     $zipPath = $SnapshotZipTextBox.Text.Trim()
-    if (-not $zipPath) { throw '「出力先」にレポート対象の ZIP を指定してください（収集実行で作成された ZIP のパス）。' }
+    if (-not $zipPath) { throw '「出力対象ZIP」にレポート対象の ZIP を指定してください（収集実行で作成された ZIP のパス）。' }
     $argList = New-Object System.Collections.Generic.List[string]
     $artifacts = Get-ArtifactsDir -RunDir $RunDir
     Add-ArgumentValue -Arguments $argList -Name '-ZipPath' -Value $zipPath
