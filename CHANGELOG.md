@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-01
+
+### Added
+- ローカルツールランチャー（Windows WPF / Linux Bash）を追加。`tools/` 配下の運用ツールをサーバー上でローカル実行するための独立 GUI / CLI
+  - `LocalToolsLauncher.ps1` / `LocalToolsLauncher.xaml` / `launch-tools.bat`: PowerShell 5.1 + WPF の独立ランチャー。バックグラウンド Runspace + DispatcherTimer によるノンブロッキング実行、Stop ボタン、stdout/stderr の UTF-8 エンコーディング指定、出力集約レイアウト（`reports/local-tools/<tool>/<timestamp>/`）
+  - `tools/tool-catalog.yaml`: Windows / Linux の入口パスと GUI 入力欄を統合した共通カタログ。インデント幅判定方式の最小 YAML パーサで読み込み
+  - `local-tools-launcher.sh`: Linux 対話式 CLI の暫定版。Windows 版確定後に同仕様で書き直す予定
+- `docs/superpowers/specs/2026-06-29-local-tools-launcher.md` / `docs/superpowers/plans/2026-06-29-local-tools-launcher.md`: 仕様と実装計画
+
+### Changed
+- `.gitignore`: `reports/local-tools/` をランチャー実行ログとして無視
+
 ## [1.0.0] - 2026-06-27
 
 ### Changed
