@@ -642,6 +642,7 @@ function Invoke-ToolExecution {
         $script:CurrentHandle = $ps.BeginInvoke()
         $script:CurrentRunCtx = [pscustomobject]@{
             ToolName = $tool.Name
+            ToolId = $tool.Id
             RunDir = $runDir
             StdoutPath = $stdoutPath
             StderrPath = $stderrPath
@@ -705,6 +706,17 @@ function Complete-ToolExecution {
             }
             Append-Log "ExitCode: $exitCode"
             Set-Status "完了: ExitCode $exitCode / $($ctx.RunDir)"
+            if ($ctx.ToolId -eq 'collect-snapshot' -and $null -ne $SnapshotZipTextBox) {
+                $artifactsDir = Join-Path $ctx.RunDir 'artifacts'
+                if (Test-Path -LiteralPath $artifactsDir) {
+                    $producedZip = Get-ChildItem -LiteralPath $artifactsDir -Filter '*.zip' -File -ErrorAction SilentlyContinue |
+                        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                    if ($null -ne $producedZip) {
+                        $SnapshotZipTextBox.Text = $producedZip.FullName
+                        Append-Log "出力先に自動設定: $($producedZip.FullName)"
+                    }
+                }
+            }
         }
     } catch {
         Append-Log "ERROR: $($_.Exception.Message)"
@@ -749,7 +761,7 @@ function Get-CollectSnapshotArguments {
 function Get-SnapshotReportArguments {
     param([string]$RunDir)
     $zipPath = $SnapshotZipTextBox.Text.Trim()
-    if (-not $zipPath) { throw 'ZIP パスを指定してください。' }
+    if (-not $zipPath) { throw '「出力先」にレポート対象の ZIP を指定してください（収集実行で作成された ZIP のパス）。' }
     $argList = New-Object System.Collections.Generic.List[string]
     $artifacts = Get-ArtifactsDir -RunDir $RunDir
     Add-ArgumentValue -Arguments $argList -Name '-ZipPath' -Value $zipPath
