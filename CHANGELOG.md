@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-01
+
+### Changed
+- ローカルツールランチャーのレイアウトを再構成
+  - ヘッダーをスリム化し、AWS Profile と「保存先 / ログ / 設定」ボタンのみ常時表示
+  - ツールルート・出力保存先・各種フラグは別ウィンドウの設定ダイアログ (`LocalToolsLauncherSettings.xaml`) に集約。`FolderBrowserDialog` で参照可能
+  - スナップショット統合ツールセクションをヘッダー直下に独立配置
+  - 「出力先」「比較 ZIP」に `OpenFileDialog` 連動の `...` 参照ボタンを追加
+  - 左ペインにツール一覧、右ペインに実行パラメータ・コマンドプレビュー・実行/停止・ログを集約
+
 ## [1.1.0] - 2026-07-01
 
 ### Added
