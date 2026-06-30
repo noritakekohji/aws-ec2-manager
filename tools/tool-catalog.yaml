@@ -1,0 +1,256 @@
+tools:
+  - id: aws-instance-audit
+    name: AWS Instance Audit
+    description: Collect AWS context from the current EC2 instance.
+    menu: true
+    windowsPath: aws-instance-audit/Get-AwsInstanceAudit.ps1
+    linuxPath: aws-instance-audit/aws_instance_audit.sh
+    defaultArgs: -OutputPath "{ArtifactsDir}/aws-instance-audit.json" -HtmlReport "{ArtifactsDir}/aws-instance-audit.html"
+    parameters:
+      - key: category
+        label: カテゴリ
+        type: text
+        argument: -Category
+        default: all
+      - key: region
+        label: リージョン
+        type: text
+        argument: -Region
+        default: ""
+      - key: output
+        label: JSON 出力
+        type: hidden
+        argument: -OutputPath
+        value: "{ArtifactsDir}/aws-instance-audit.json"
+      - key: html
+        label: HTML レポート
+        type: checkbox
+        argument: -HtmlReport
+        value: "{ArtifactsDir}/aws-instance-audit.html"
+        default: true
+
+  - id: cert-check
+    name: Certificate Check
+    description: Check TLS certificate expiry for target hosts.
+    menu: true
+    windowsPath: cert-check/CertCheck.ps1
+    linuxPath: cert-check/cert_check.sh
+    defaultArgs: -TargetList "{ToolDir}/cert_targets.lst" -HtmlReport "{ArtifactsDir}/cert-check.html"
+    parameters:
+      - key: targetList
+        label: ターゲットリスト
+        type: text
+        argument: -TargetList
+        default: "{ToolDir}/cert_targets.lst"
+      - key: timeoutSec
+        label: タイムアウト秒
+        type: text
+        argument: -TimeoutSec
+        default: 10
+      - key: html
+        label: HTML レポート
+        type: checkbox
+        argument: -HtmlReport
+        value: "{ArtifactsDir}/cert-check.html"
+        default: true
+      - key: failOnly
+        label: 失敗のみ
+        type: checkbox
+        argument: -FailOnly
+        default: false
+
+  - id: collect-snapshot
+    name: Collect Snapshot
+    description: Collect local server evidence and package a ZIP snapshot.
+    menu: false
+    windowsPath: collect-snapshot/CollectSnapshot.ps1
+    linuxPath: collect-snapshot/collect_snapshot.sh
+    defaultArgs: -Output "{ArtifactsDir}"
+    parameters:
+      - key: label
+        label: 収集ラベル
+        type: text
+        argument: -Label
+        default: ""
+      - key: output
+        label: 出力先
+        type: hidden
+        argument: -Output
+        value: "{ArtifactsDir}"
+
+  - id: collect-snapshot-report
+    name: Snapshot Report
+    description: Generate an HTML report from collect-snapshot ZIP files.
+    menu: false
+    windowsPath: collect-snapshot/ReportSnapshot.ps1
+    linuxPath: ""
+    defaultArgs: -OutputDir "{ArtifactsDir}"
+    parameters:
+      - key: zipPath
+        label: ZIP パス
+        type: text
+        argument: -ZipPath
+        default: ""
+        required: true
+      - key: compareWith
+        label: 比較 ZIP
+        type: text
+        argument: -CompareWith
+        default: ""
+      - key: outputDir
+        label: 出力先
+        type: hidden
+        argument: -OutputDir
+        value: "{ArtifactsDir}"
+      - key: diffOnly
+        label: 差分のみ
+        type: checkbox
+        argument: -DiffOnly
+        default: false
+
+  - id: log-collector
+    name: Log Collector
+    description: Collect incident response logs by preset.
+    menu: true
+    windowsPath: log-collector/LogCollector.ps1
+    linuxPath: log-collector/log_collector.sh
+    defaultArgs: -Target os -OutputDir "{ArtifactsDir}"
+    parameters:
+      - key: target
+        label: プリセット
+        type: text
+        argument: -Target
+        default: os
+      - key: since
+        label: 期間
+        type: text
+        argument: -Since
+        default: 24h
+      - key: maxSizeMb
+        label: 最大 MB
+        type: text
+        argument: -MaxSizeMB
+        default: 500
+      - key: outputDir
+        label: 出力先
+        type: hidden
+        argument: -OutputDir
+        value: "{ArtifactsDir}"
+
+  - id: network-check
+    name: Network Check
+    description: Check DNS, ping, and TCP reachability from a target list.
+    menu: true
+    windowsPath: network-check/Check-NetworkConnectivity.ps1
+    linuxPath: network-check/check_network_connectivity.sh
+    defaultArgs: -TargetList "{ToolDir}/targets.lst" -HtmlReport "{ArtifactsDir}/network-check.html"
+    parameters:
+      - key: targetList
+        label: ターゲットリスト
+        type: text
+        argument: -TargetList
+        default: "{ToolDir}/targets.lst"
+      - key: pingCount
+        label: Ping 回数
+        type: text
+        argument: -PingCount
+        default: 3
+      - key: timeoutSec
+        label: タイムアウト秒
+        type: text
+        argument: -TimeoutSec
+        default: 3
+      - key: html
+        label: HTML レポート
+        type: checkbox
+        argument: -HtmlReport
+        value: "{ArtifactsDir}/network-check.html"
+        default: true
+      - key: failOnly
+        label: 失敗のみ
+        type: checkbox
+        argument: -FailOnly
+        default: false
+
+  - id: perf-monitor
+    name: Performance Monitor
+    description: Collect or inspect performance monitor sessions.
+    menu: true
+    windowsPath: perf-monitor/PerfMonitor.ps1
+    linuxPath: perf-monitor/perf_monitor.sh
+    defaultArgs: status
+    parameters:
+      - key: command
+        label: アクション
+        type: text
+        argument: ""
+        default: status
+      - key: sessionDir
+        label: セッション
+        type: text
+        argument: ""
+        default: ""
+      - key: outputDir
+        label: 出力先
+        type: hidden
+        argument: -OutputDir
+        value: "{ArtifactsDir}"
+      - key: duration
+        label: Duration 秒
+        type: text
+        argument: -Duration
+        default: ""
+
+  - id: port-inventory
+    name: Port Inventory
+    description: Inventory listening ports and compare with an expected list.
+    menu: true
+    windowsPath: port-inventory/PortInventory.ps1
+    linuxPath: port-inventory/port_inventory.sh
+    defaultArgs: -ExpectedList "{ToolDir}/expected_ports.lst" -HtmlReport "{ArtifactsDir}/port-inventory.html"
+    parameters:
+      - key: expectedList
+        label: 期待ポートリスト
+        type: text
+        argument: -ExpectedList
+        default: "{ToolDir}/expected_ports.lst"
+      - key: html
+        label: HTML レポート
+        type: checkbox
+        argument: -HtmlReport
+        value: "{ArtifactsDir}/port-inventory.html"
+        default: true
+      - key: failOnly
+        label: 失敗のみ
+        type: checkbox
+        argument: -FailOnly
+        default: false
+
+  - id: server-snapshot
+    name: Server Snapshot
+    description: Collect or compare server configuration snapshots.
+    menu: true
+    windowsPath: server-snapshot/ServerSnapshot.ps1
+    linuxPath: server-snapshot/server_snapshot.sh
+    defaultArgs: collect -OutputPath "{ArtifactsDir}/server-snapshot.json"
+    parameters:
+      - key: command
+        label: アクション
+        type: text
+        argument: ""
+        default: collect
+      - key: category
+        label: カテゴリ
+        type: text
+        argument: -Category
+        default: all
+      - key: label
+        label: ラベル
+        type: text
+        argument: -Label
+        default: ""
+      - key: outputPath
+        label: JSON 出力
+        type: hidden
+        argument: -OutputPath
+        value: "{ArtifactsDir}/server-snapshot.json"

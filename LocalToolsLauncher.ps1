@@ -1,0 +1,872 @@
+﻿#Requires -Version 5.1
+[CmdletBinding()]
+param()
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+$ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$CatalogPath = Join-Path $ScriptRoot 'tools\tool-catalog.yaml'
+$XamlPath = Join-Path $ScriptRoot 'LocalToolsLauncher.xaml'
+$ConfigDir = Join-Path $env:LOCALAPPDATA 'aws-ec2-manager'
+$ConfigPath = Join-Path $ConfigDir 'tool-launcher.json'
+$DefaultToolsRoot = Join-Path $ScriptRoot 'tools'
+$DefaultOutputRoot = Join-Path $ScriptRoot 'reports\local-tools'
+$script:Catalog = @()
+$script:CurrentTool = $null
+$script:LastRunDir = ''
+$script:TextParameterControls = @()
+$script:CheckParameterControls = @()
+$script:LoadedConfig = $null
+$script:CurrentProc = $null
+$script:CurrentRunCtx = $null
+$script:CurrentRunspace = $null
+$script:CurrentPowerShell = $null
+$script:CurrentHandle = $null
+$script:WaitTimer = $null
+
+function ConvertTo-DisplayPath {
+    param([string]$Path)
+    if (-not $Path) { return '' }
+    return $Path.Replace('\', '/')
+}
+
+function Load-LauncherConfig {
+    if (-not (Test-Path -LiteralPath $ConfigDir)) {
+        New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null
+    }
+    if (Test-Path -LiteralPath $ConfigPath) {
+        try {
+            return Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        } catch {
+            [System.Windows.MessageBox]::Show("設定ファイルを読み込めませんでした。既定値で起動します。`n$($_.Exception.Message)", 'ツールランチャー') | Out-Null
+        }
+    }
+    return [pscustomobject]@{
+        ToolsRoot = $DefaultToolsRoot
+        OutputRoot = $DefaultOutputRoot
+        DefaultAwsProfile = ''
+        OpenReportAfterRun = $true
+        KeepConsoleOpen = $false
+    }
+}
+
+function Get-ConfigBool {
+    param(
+        $Config,
+        [string]$Name,
+        [bool]$DefaultValue
+    )
+    if ($null -eq $Config) { return $DefaultValue }
+    $prop = $Config.PSObject.Properties[$Name]
+    if ($null -eq $prop -or $null -eq $prop.Value) { return $DefaultValue }
+    return [bool]$prop.Value
+}
+
+function Get-ConfigValue {
+    param(
+        $Config,
+        [string]$Name,
+        [string]$DefaultValue
+    )
+    if ($null -eq $Config) { return $DefaultValue }
+    $prop = $Config.PSObject.Properties[$Name]
+    if ($prop -and $null -ne $prop.Value) { return [string]$prop.Value }
+    return $DefaultValue
+}
+
+function Save-LauncherConfig {
+    $openReport = Get-ConfigBool -Config $script:LoadedConfig -Name 'OpenReportAfterRun' -DefaultValue $true
+    $keepConsole = Get-ConfigBool -Config $script:LoadedConfig -Name 'KeepConsoleOpen' -DefaultValue $false
+    $obj = [pscustomobject]@{
+        ToolsRoot = $ToolsRootTextBox.Text.Trim()
+        OutputRoot = $OutputRootTextBox.Text.Trim()
+        DefaultAwsProfile = $AwsProfileTextBox.Text.Trim()
+        OpenReportAfterRun = $openReport
+        KeepConsoleOpen = $keepConsole
+    }
+    if (-not (Test-Path -LiteralPath $ConfigDir)) {
+        New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null
+    }
+    $obj | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $ConfigPath -Encoding UTF8
+    $script:LoadedConfig = $obj
+    Set-Status "設定を保存しました: $ConfigPath"
+    Update-Header
+}
+
+function ConvertFrom-ToolCatalogScalar {
+    param([string]$Value)
+    $v = $Value.Trim()
+    if (($v.StartsWith('"') -and $v.EndsWith('"')) -or ($v.StartsWith("'") -and $v.EndsWith("'"))) {
+        return $v.Substring(1, $v.Length - 2)
+    }
+    return $v
+}
+
+function Read-ToolCatalog {
+    if (-not (Test-Path -LiteralPath $CatalogPath)) {
+        throw "Catalog not found: $CatalogPath"
+    }
+    $result = New-Object System.Collections.Generic.List[object]
+    $current = $null
+    $currentParam = $null
+    $toolSubKeyIndent = -1
+    $paramSubKeyIndent = -1
+
+    foreach ($rawLine in (Get-Content -LiteralPath $CatalogPath -Encoding UTF8)) {
+        $line = $rawLine.TrimEnd()
+        if (-not $line.Trim()) { continue }
+        if ($line.TrimStart().StartsWith('#')) { continue }
+
+        if ($line -match '^(\s*)-\s+id:\s*(.+?)\s*$') {
+            if ($null -ne $current) {
+                if ($null -ne $currentParam) {
+                    $current.Parameters += [pscustomobject]$currentParam
+                    $currentParam = $null
+                }
+                [void]$result.Add([pscustomobject]$current)
+            }
+            $current = [ordered]@{
+                Id = ConvertFrom-ToolCatalogScalar $Matches[2]
+                Name = ''
+                Description = ''
+                Menu = $true
+                WindowsPath = ''
+                LinuxPath = ''
+                DefaultArgs = ''
+                Parameters = @()
+            }
+            $toolSubKeyIndent = $Matches[1].Length + 2
+            $paramSubKeyIndent = -1
+            continue
+        }
+
+        if ($null -eq $current) { continue }
+
+        if ($line -match '^(\s*)-\s+key:\s*(.+?)\s*$') {
+            $listIndent = $Matches[1].Length
+            if ($listIndent -lt $toolSubKeyIndent) { continue }
+            if ($null -ne $currentParam) {
+                $current.Parameters += [pscustomobject]$currentParam
+            }
+            $currentParam = [ordered]@{
+                Key = ConvertFrom-ToolCatalogScalar $Matches[2]
+                Label = ''
+                Type = 'text'
+                Argument = ''
+                Default = ''
+                Value = ''
+                Required = $false
+            }
+            $paramSubKeyIndent = $listIndent + 2
+            continue
+        }
+
+        if ($line -match '^(\s+)([A-Za-z0-9_]+):\s*(.*?)\s*$') {
+            $lineIndent = $Matches[1].Length
+            $key = $Matches[2]
+            $value = ConvertFrom-ToolCatalogScalar $Matches[3]
+
+            if ($null -ne $currentParam -and $paramSubKeyIndent -ge 0 -and $lineIndent -ge $paramSubKeyIndent) {
+                switch ($key) {
+                    'label' { $currentParam.Label = $value }
+                    'type' { $currentParam.Type = $value }
+                    'argument' { $currentParam.Argument = $value }
+                    'default' { $currentParam.Default = $value }
+                    'value' { $currentParam.Value = $value }
+                    'required' { $currentParam.Required = ($value -eq 'true') }
+                }
+                continue
+            }
+
+            if ($null -ne $currentParam -and $lineIndent -le $toolSubKeyIndent) {
+                $current.Parameters += [pscustomobject]$currentParam
+                $currentParam = $null
+                $paramSubKeyIndent = -1
+            }
+
+            if ($lineIndent -ge $toolSubKeyIndent) {
+                if ($key -eq 'parameters') { continue }
+                switch ($key) {
+                    'name' { $current.Name = $value }
+                    'description' { $current.Description = $value }
+                    'menu' { $current.Menu = ($value -eq 'true') }
+                    'windowsPath' { $current.WindowsPath = $value }
+                    'linuxPath' { $current.LinuxPath = $value }
+                    'defaultArgs' { $current.DefaultArgs = $value }
+                }
+            }
+        }
+    }
+
+    if ($null -ne $current) {
+        if ($null -ne $currentParam) {
+            $current.Parameters += [pscustomobject]$currentParam
+        }
+        [void]$result.Add([pscustomobject]$current)
+    }
+    return $result.ToArray()
+}
+
+function Get-SelectedTool {
+    if ($null -eq $ToolListBox.SelectedItem) { return $null }
+    $selected = [string]$ToolListBox.SelectedItem
+    foreach ($tool in $script:Catalog) {
+        if ($selected -eq ("{0}  ({1})" -f $tool.Name, $tool.Id)) { return $tool }
+    }
+    return $null
+}
+
+function Get-ToolById {
+    param([string]$ToolId)
+    foreach ($tool in $script:Catalog) {
+        if ($tool.Id -eq $ToolId) { return $tool }
+    }
+    return $null
+}
+
+function Get-ToolDir {
+    param($Tool)
+    $relativePath = [string]$Tool.WindowsPath
+    if (-not $relativePath) { $relativePath = [string]$Tool.LinuxPath }
+    $normalized = $relativePath.Replace('/', '\')
+    $dir = Split-Path -Parent $normalized
+    if (-not $dir) { return $ToolsRootTextBox.Text.Trim() }
+    return Join-Path $ToolsRootTextBox.Text.Trim() $dir
+}
+
+function New-RunDirectory {
+    param([string]$ToolId)
+    $root = $OutputRootTextBox.Text.Trim()
+    if (-not $root) { throw 'OutputRoot is empty.' }
+    $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
+    $dir = Join-Path (Join-Path $root $ToolId) $stamp
+    $artifacts = Join-Path $dir 'artifacts'
+    New-Item -ItemType Directory -Path $artifacts -Force | Out-Null
+    return $dir
+}
+
+function Expand-ArgumentTemplate {
+    param(
+        [string]$Template,
+        $Tool,
+        [string]$RunDir
+    )
+    $toolDir = Get-ToolDir -Tool $Tool
+    $artifacts = Join-Path $RunDir 'artifacts'
+    $value = $Template
+    $value = $value.Replace('{ToolDir}', (ConvertTo-DisplayPath $toolDir))
+    $value = $value.Replace('{RunDir}', (ConvertTo-DisplayPath $RunDir))
+    $value = $value.Replace('{ArtifactsDir}', (ConvertTo-DisplayPath $artifacts))
+    $value = $value.Replace('{AwsProfile}', $AwsProfileTextBox.Text.Trim())
+    return $value
+}
+
+function Split-CommandLine {
+    param([string]$CommandLine)
+    $tokenMatches = [regex]::Matches($CommandLine, '("[^"]*"|''[^'']*''|\S+)')
+    $parts = New-Object System.Collections.Generic.List[string]
+    foreach ($m in $tokenMatches) {
+        $v = $m.Value
+        if (($v.StartsWith('"') -and $v.EndsWith('"')) -or ($v.StartsWith("'") -and $v.EndsWith("'"))) {
+            $v = $v.Substring(1, $v.Length - 2)
+        }
+        [void]$parts.Add($v)
+    }
+    return $parts.ToArray()
+}
+
+function Add-ArgumentValue {
+    param(
+        [System.Collections.Generic.List[string]]$Arguments,
+        [string]$Name,
+        [string]$Value
+    )
+    if ($Value -and $Value.Trim()) {
+        [void]$Arguments.Add($Name)
+        [void]$Arguments.Add($Value.Trim())
+    }
+}
+
+function Add-SwitchValue {
+    param(
+        [System.Collections.Generic.List[string]]$Arguments,
+        [string]$Name,
+        [bool]$Enabled
+    )
+    if ($Enabled) { [void]$Arguments.Add($Name) }
+}
+
+function Get-ArtifactsDir {
+    param([string]$RunDir)
+    return Join-Path $RunDir 'artifacts'
+}
+
+function Expand-LauncherValue {
+    param(
+        [string]$Value,
+        $Tool,
+        [string]$RunDir
+    )
+    return Expand-ArgumentTemplate -Template $Value -Tool $Tool -RunDir $RunDir
+}
+
+function Add-ParameterToArguments {
+    param(
+        [System.Collections.Generic.List[string]]$Arguments,
+        [string]$ArgumentName,
+        [string]$Value
+    )
+    if ($ArgumentName -and $ArgumentName.Trim()) {
+        [void]$Arguments.Add($ArgumentName.Trim())
+    }
+    if ($Value -and $Value.Trim()) {
+        [void]$Arguments.Add($Value.Trim())
+    }
+}
+
+function Get-ParameterValueByKey {
+    param([string]$Key)
+    foreach ($binding in $script:TextParameterControls) {
+        if ($binding.Parameter.Key -eq $Key) { return $binding.Control.Text.Trim() }
+    }
+    foreach ($binding in $script:CheckParameterControls) {
+        if ($binding.Parameter.Key -eq $Key) { return [bool]$binding.Control.IsChecked }
+    }
+    return $null
+}
+
+function Get-ToolArguments {
+    param(
+        $Tool,
+        [string]$RunDir
+    )
+    $argList = New-Object System.Collections.Generic.List[string]
+    foreach ($paramDef in @($Tool.Parameters)) {
+        $type = [string]$paramDef.Type
+        $argumentName = [string]$paramDef.Argument
+        $value = ''
+        if ($type -eq 'hidden') {
+            $value = Expand-LauncherValue -Value ([string]$paramDef.Value) -Tool $Tool -RunDir $RunDir
+            Add-ParameterToArguments -Arguments $argList -ArgumentName $argumentName -Value $value
+            continue
+        }
+        if ($type -eq 'checkbox') {
+            $checked = [bool](Get-ParameterValueByKey -Key $paramDef.Key)
+            if ($checked) {
+                $value = Expand-LauncherValue -Value ([string]$paramDef.Value) -Tool $Tool -RunDir $RunDir
+                Add-ParameterToArguments -Arguments $argList -ArgumentName $argumentName -Value $value
+            }
+            continue
+        }
+        $value = [string](Get-ParameterValueByKey -Key $paramDef.Key)
+        if ($paramDef.Required -and -not $value) {
+            throw "$($paramDef.Label) を指定してください。"
+        }
+        if ($value) {
+            $value = Expand-LauncherValue -Value $value -Tool $Tool -RunDir $RunDir
+            Add-ParameterToArguments -Arguments $argList -ArgumentName $argumentName -Value $value
+        }
+    }
+    return $argList.ToArray()
+}
+
+function Join-PreviewCommand {
+    param([string]$Exe, [string[]]$Arguments)
+    $all = @($Exe) + $Arguments
+    return ($all | ForEach-Object {
+        if ($_ -match '[\s"]') {
+            '"' + ($_ -replace '"', '\"') + '"'
+        } else {
+            $_
+        }
+    }) -join ' '
+}
+
+function Join-ProcessArguments {
+    param([string[]]$Arguments)
+    return ($Arguments | ForEach-Object {
+        if ($_ -match '[\s"]') {
+            '"' + ($_ -replace '"', '\"') + '"'
+        } else {
+            $_
+        }
+    }) -join ' '
+}
+
+function Build-Command {
+    param(
+        $Tool,
+        [string]$RunDir,
+        [string[]]$ToolArgsOverride = $null,
+        [switch]$RequireEntry
+    )
+    $toolDir = Get-ToolDir -Tool $Tool
+    $entry = Join-Path $ToolsRootTextBox.Text.Trim() ([string]$Tool.WindowsPath).Replace('/', '\')
+    if ($RequireEntry -and -not (Test-Path -LiteralPath $entry)) {
+        throw "入口ファイルが見つかりません: $entry"
+    }
+    $toolArgs = $ToolArgsOverride
+    if ($null -eq $toolArgs) {
+        $toolArgs = Get-ToolArguments -Tool $Tool -RunDir $RunDir
+    }
+    $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $entry) + $toolArgs
+    return [pscustomobject]@{
+        FileName = 'powershell.exe'
+        Arguments = $arguments
+        ArgumentString = Join-ProcessArguments -Arguments $arguments
+        WorkingDirectory = $toolDir
+        EntryPath = $entry
+        Preview = Join-PreviewCommand -Exe 'powershell.exe' -Arguments $arguments
+    }
+}
+
+function Update-Header {
+    $ConfigPathText.Text = "設定: $ConfigPath"
+}
+
+function Set-Status {
+    param([string]$Message)
+    $StatusText.Text = $Message
+}
+
+function Append-Log {
+    param([string]$Message)
+    if ($LogTextBox.Text) {
+        $LogTextBox.AppendText("`r`n$Message")
+    } else {
+        $LogTextBox.AppendText($Message)
+    }
+    $LogTextBox.ScrollToEnd()
+}
+
+function Update-SelectedTool {
+    $tool = Get-SelectedTool
+    $script:CurrentTool = $tool
+    if ($null -eq $tool) { return }
+    $ToolTitleText.Text = "{0} ({1})" -f $tool.Name, $tool.Id
+    $ToolDescriptionText.Text = $tool.Description
+    Set-ParameterDefaults -Tool $tool
+    Update-CommandPreview
+}
+
+function Set-ParameterDefaults {
+    param($Tool)
+    $script:TextParameterControls = @()
+    $script:CheckParameterControls = @()
+    $sampleRun = Join-Path (Join-Path $OutputRootTextBox.Text.Trim() $Tool.Id) '<timestamp>'
+    $textSlots = @(
+        @{ Label = $Param1Label; Control = $Param1TextBox },
+        @{ Label = $Param2Label; Control = $Param2TextBox },
+        @{ Label = $Param3Label; Control = $Param3TextBox }
+    )
+    $checkSlots = @($Option1CheckBox, $Option2CheckBox)
+
+    foreach ($slot in $textSlots) {
+        $slot.Label.Visibility = 'Collapsed'
+        $slot.Control.Visibility = 'Collapsed'
+        $slot.Control.Text = ''
+        $slot.Control.IsEnabled = $true
+    }
+    foreach ($slot in $checkSlots) {
+        $slot.Visibility = 'Collapsed'
+        $slot.IsChecked = $false
+        $slot.Content = ''
+    }
+
+    $textIndex = 0
+    $checkIndex = 0
+    foreach ($paramDef in @($Tool.Parameters)) {
+        $type = [string]$paramDef.Type
+        if ($type -eq 'hidden') { continue }
+        if ($type -eq 'checkbox') {
+            if ($checkIndex -ge $checkSlots.Count) { continue }
+            $control = $checkSlots[$checkIndex]
+            $control.Visibility = 'Visible'
+            $control.Content = [string]$paramDef.Label
+            $control.IsChecked = (([string]$paramDef.Default) -eq 'true')
+            $script:CheckParameterControls += [pscustomobject]@{
+                Parameter = $paramDef
+                Control = $control
+            }
+            $checkIndex++
+            continue
+        }
+        if ($textIndex -ge $textSlots.Count) { continue }
+        $slot = $textSlots[$textIndex]
+        $slot.Label.Visibility = 'Visible'
+        $slot.Control.Visibility = 'Visible'
+        $slot.Label.Text = [string]$paramDef.Label
+        $slot.Control.Text = Expand-LauncherValue -Value ([string]$paramDef.Default) -Tool $Tool -RunDir $sampleRun
+        $script:TextParameterControls += [pscustomobject]@{
+            Parameter = $paramDef
+            Control = $slot.Control
+        }
+        $textIndex++
+    }
+}
+
+function Update-CommandPreview {
+    try {
+        $tool = if ($script:CurrentTool) { $script:CurrentTool } else { Get-SelectedTool }
+        if ($null -eq $tool) {
+            $CommandPreviewTextBox.Text = ''
+            return
+        }
+        $sampleRun = Join-Path (Join-Path $OutputRootTextBox.Text.Trim() $tool.Id) '<timestamp>'
+        $cmd = Build-Command -Tool $tool -RunDir $sampleRun
+        $CommandPreviewTextBox.Text = $cmd.Preview
+        Update-Header
+    } catch {
+        $CommandPreviewTextBox.Text = "# 入力チェック中: $($_.Exception.Message)"
+    }
+}
+
+function Disable-RunButtons {
+    $RunButton.IsEnabled = $false
+    if ($null -ne $RunCollectSnapshotButton) { $RunCollectSnapshotButton.IsEnabled = $false }
+    if ($null -ne $RunSnapshotReportButton) { $RunSnapshotReportButton.IsEnabled = $false }
+    if ($null -ne $StopButton) { $StopButton.IsEnabled = $true }
+}
+
+function Enable-RunButtons {
+    $RunButton.IsEnabled = $true
+    if ($null -ne $RunCollectSnapshotButton) { $RunCollectSnapshotButton.IsEnabled = $true }
+    if ($null -ne $RunSnapshotReportButton) { $RunSnapshotReportButton.IsEnabled = $true }
+    if ($null -ne $StopButton) { $StopButton.IsEnabled = $false }
+}
+
+function Test-Running {
+    if ($null -ne $script:CurrentHandle -and -not $script:CurrentHandle.IsCompleted) { return $true }
+    if ($null -ne $script:CurrentProc) {
+        try { if (-not $script:CurrentProc.HasExited) { return $true } } catch { }
+    }
+    return $false
+}
+
+function Invoke-ToolExecution {
+    param(
+        $Tool,
+        [string[]]$ToolArgsOverride = $null,
+        [scriptblock]$ToolArgsFactory = $null
+    )
+    $tool = $Tool
+    if ($null -eq $tool) {
+        [System.Windows.MessageBox]::Show('ツールを選択してください。', 'ツールランチャー') | Out-Null
+        return
+    }
+    if (Test-Running) {
+        [System.Windows.MessageBox]::Show('既に実行中のツールがあります。停止してから再実行してください。', 'ツールランチャー') | Out-Null
+        return
+    }
+    if (-not (Test-Path -LiteralPath $ToolsRootTextBox.Text.Trim())) {
+        [System.Windows.MessageBox]::Show('ツールルートが存在しません。', 'ツールランチャー') | Out-Null
+        return
+    }
+    $runDir = New-RunDirectory -ToolId $tool.Id
+    $script:LastRunDir = $runDir
+    $stdoutPath = Join-Path $runDir 'stdout.log'
+    $stderrPath = Join-Path $runDir 'stderr.log'
+    $exitPath = Join-Path $runDir 'exit-code.txt'
+    $commandPath = Join-Path $runDir 'command.txt'
+
+    try {
+        if ($null -ne $ToolArgsFactory) {
+            $ToolArgsOverride = & $ToolArgsFactory $runDir
+        }
+        $cmd = Build-Command -Tool $tool -RunDir $runDir -ToolArgsOverride $ToolArgsOverride -RequireEntry
+    } catch {
+        $_.Exception.Message | Set-Content -LiteralPath $stderrPath -Encoding UTF8
+        '999' | Set-Content -LiteralPath $exitPath -Encoding ASCII
+        Append-Log "ERROR: $($_.Exception.Message)"
+        Set-Status "エラー: $($_.Exception.Message)"
+        return
+    }
+
+    $cmd.Preview | Set-Content -LiteralPath $commandPath -Encoding UTF8
+    Append-Log "=== $($tool.Name) ==="
+    Append-Log $cmd.Preview
+    Set-Status "実行中: $($tool.Name)"
+    Disable-RunButtons
+
+    try {
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $cmd.FileName
+        $psi.Arguments = $cmd.ArgumentString
+        $psi.WorkingDirectory = $cmd.WorkingDirectory
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.StandardOutputEncoding = [Console]::OutputEncoding
+        $psi.StandardErrorEncoding = [Console]::OutputEncoding
+
+        $proc = [System.Diagnostics.Process]::Start($psi)
+
+        $rs = [RunspaceFactory]::CreateRunspace()
+        $rs.ApartmentState = 'STA'
+        $rs.ThreadOptions = 'ReuseThread'
+        $rs.Open()
+        $rs.SessionStateProxy.SetVariable('childProc', $proc)
+        $rs.SessionStateProxy.SetVariable('stdoutPath', $stdoutPath)
+        $rs.SessionStateProxy.SetVariable('stderrPath', $stderrPath)
+        $rs.SessionStateProxy.SetVariable('exitPath', $exitPath)
+
+        $ps = [System.Management.Automation.PowerShell]::Create()
+        $ps.Runspace = $rs
+        [void]$ps.AddScript({
+            try {
+                $stdoutTask = $childProc.StandardOutput.ReadToEndAsync()
+                $stderrTask = $childProc.StandardError.ReadToEndAsync()
+                $childProc.WaitForExit()
+                $stdout = $stdoutTask.Result
+                $stderr = $stderrTask.Result
+                Set-Content -LiteralPath $stdoutPath -Value $stdout -Encoding UTF8
+                Set-Content -LiteralPath $stderrPath -Value $stderr -Encoding UTF8
+                Set-Content -LiteralPath $exitPath -Value ([string]$childProc.ExitCode) -Encoding ASCII
+            } catch {
+                Set-Content -LiteralPath $stderrPath -Value $_.Exception.Message -Encoding UTF8
+                Set-Content -LiteralPath $exitPath -Value '999' -Encoding ASCII
+            }
+        })
+
+        $script:CurrentProc = $proc
+        $script:CurrentRunspace = $rs
+        $script:CurrentPowerShell = $ps
+        $script:CurrentHandle = $ps.BeginInvoke()
+        $script:CurrentRunCtx = [pscustomobject]@{
+            ToolName = $tool.Name
+            RunDir = $runDir
+            StdoutPath = $stdoutPath
+            StderrPath = $stderrPath
+            ExitPath = $exitPath
+        }
+
+        $script:WaitTimer = New-Object System.Windows.Threading.DispatcherTimer
+        $script:WaitTimer.Interval = [TimeSpan]::FromMilliseconds(300)
+        $script:WaitTimer.Add_Tick({ Poll-RunningProcess })
+        $script:WaitTimer.Start()
+    } catch {
+        $_.Exception.Message | Set-Content -LiteralPath $stderrPath -Encoding UTF8
+        '999' | Set-Content -LiteralPath $exitPath -Encoding ASCII
+        Append-Log "ERROR: $($_.Exception.Message)"
+        Set-Status "エラー: $($_.Exception.Message)"
+        $script:CurrentProc = $null
+        $script:CurrentRunCtx = $null
+        $script:CurrentRunspace = $null
+        $script:CurrentPowerShell = $null
+        $script:CurrentHandle = $null
+        Enable-RunButtons
+    }
+}
+
+function Poll-RunningProcess {
+    if ($null -eq $script:CurrentHandle) {
+        if ($null -ne $script:WaitTimer) { $script:WaitTimer.Stop(); $script:WaitTimer = $null }
+        return
+    }
+    if ($script:CurrentHandle.IsCompleted) {
+        Complete-ToolExecution
+    }
+}
+
+function Complete-ToolExecution {
+    if ($null -ne $script:WaitTimer) {
+        $script:WaitTimer.Stop()
+        $script:WaitTimer = $null
+    }
+    $ctx = $script:CurrentRunCtx
+    $ps = $script:CurrentPowerShell
+    $handle = $script:CurrentHandle
+    $rs = $script:CurrentRunspace
+    $proc = $script:CurrentProc
+    try {
+        if ($null -ne $ps -and $null -ne $handle) {
+            try { [void]$ps.EndInvoke($handle) } catch { }
+        }
+        if ($null -ne $ctx) {
+            $exitCode = '?'
+            if (Test-Path -LiteralPath $ctx.ExitPath) {
+                $exitCode = (Get-Content -LiteralPath $ctx.ExitPath -Raw).Trim()
+            }
+            if (Test-Path -LiteralPath $ctx.StdoutPath) {
+                $stdout = (Get-Content -LiteralPath $ctx.StdoutPath -Raw -Encoding UTF8)
+                if ($stdout) { Append-Log $stdout.TrimEnd() }
+            }
+            if (Test-Path -LiteralPath $ctx.StderrPath) {
+                $stderr = (Get-Content -LiteralPath $ctx.StderrPath -Raw -Encoding UTF8)
+                if ($stderr) { Append-Log $stderr.TrimEnd() }
+            }
+            Append-Log "ExitCode: $exitCode"
+            Set-Status "完了: ExitCode $exitCode / $($ctx.RunDir)"
+        }
+    } catch {
+        Append-Log "ERROR: $($_.Exception.Message)"
+        Set-Status "エラー: $($_.Exception.Message)"
+    } finally {
+        try { if ($null -ne $proc) { $proc.Dispose() } } catch { }
+        try { if ($null -ne $ps) { $ps.Dispose() } } catch { }
+        try { if ($null -ne $rs) { $rs.Close(); $rs.Dispose() } } catch { }
+        $script:CurrentProc = $null
+        $script:CurrentRunCtx = $null
+        $script:CurrentRunspace = $null
+        $script:CurrentPowerShell = $null
+        $script:CurrentHandle = $null
+        Enable-RunButtons
+    }
+}
+
+function Invoke-StopExecution {
+    if (-not (Test-Running)) { return }
+    try {
+        $script:CurrentProc.Kill()
+        Append-Log "[STOP] 中断要求を送信しました。"
+        Set-Status "停止中..."
+    } catch {
+        Append-Log "[STOP] 失敗: $($_.Exception.Message)"
+    }
+}
+
+function Invoke-SelectedTool {
+    Invoke-ToolExecution -Tool (Get-SelectedTool)
+}
+
+function Get-CollectSnapshotArguments {
+    param([string]$RunDir)
+    $argList = New-Object System.Collections.Generic.List[string]
+    $artifacts = Get-ArtifactsDir -RunDir $RunDir
+    Add-ArgumentValue -Arguments $argList -Name '-Label' -Value $SnapshotLabelTextBox.Text
+    Add-ArgumentValue -Arguments $argList -Name '-Output' -Value $artifacts
+    return $argList.ToArray()
+}
+
+function Get-SnapshotReportArguments {
+    param([string]$RunDir)
+    $zipPath = $SnapshotZipTextBox.Text.Trim()
+    if (-not $zipPath) { throw 'ZIP パスを指定してください。' }
+    $argList = New-Object System.Collections.Generic.List[string]
+    $artifacts = Get-ArtifactsDir -RunDir $RunDir
+    Add-ArgumentValue -Arguments $argList -Name '-ZipPath' -Value $zipPath
+    Add-ArgumentValue -Arguments $argList -Name '-CompareWith' -Value $SnapshotCompareZipTextBox.Text
+    Add-ArgumentValue -Arguments $argList -Name '-OutputDir' -Value $artifacts
+    Add-SwitchValue -Arguments $argList -Name '-DiffOnly' -Enabled ([bool]$SnapshotDiffOnlyCheckBox.IsChecked)
+    return $argList.ToArray()
+}
+
+function Invoke-CollectSnapshot {
+    $tool = Get-ToolById -ToolId 'collect-snapshot'
+    if ($null -eq $tool) {
+        [System.Windows.MessageBox]::Show('collect-snapshot がカタログに見つかりません。', 'ツールランチャー') | Out-Null
+        return
+    }
+    Invoke-ToolExecution -Tool $tool -ToolArgsFactory { param($runDir) Get-CollectSnapshotArguments -RunDir $runDir }
+}
+
+function Invoke-SnapshotReport {
+    $tool = Get-ToolById -ToolId 'collect-snapshot-report'
+    if ($null -eq $tool) {
+        [System.Windows.MessageBox]::Show('snapshot report がカタログに見つかりません。', 'ツールランチャー') | Out-Null
+        return
+    }
+    try {
+        Invoke-ToolExecution -Tool $tool -ToolArgsFactory { param($runDir) Get-SnapshotReportArguments -RunDir $runDir }
+    } catch {
+        [System.Windows.MessageBox]::Show($_.Exception.Message, 'ツールランチャー') | Out-Null
+    }
+}
+
+Add-Type -AssemblyName PresentationFramework
+Add-Type -AssemblyName PresentationCore
+Add-Type -AssemblyName WindowsBase
+
+[xml]$xaml = Get-Content -LiteralPath $XamlPath -Raw -Encoding UTF8
+$reader = New-Object System.Xml.XmlNodeReader $xaml
+$window = [Windows.Markup.XamlReader]::Load($reader)
+
+$ToolsRootTextBox = $window.FindName('ToolsRootTextBox')
+$OutputRootTextBox = $window.FindName('OutputRootTextBox')
+$AwsProfileTextBox = $window.FindName('AwsProfileTextBox')
+$ToolListBox = $window.FindName('ToolListBox')
+$ToolTitleText = $window.FindName('ToolTitleText')
+$ToolDescriptionText = $window.FindName('ToolDescriptionText')
+$CommandPreviewTextBox = $window.FindName('CommandPreviewTextBox')
+$LogTextBox = $window.FindName('LogTextBox')
+$ConfigPathText = $window.FindName('ConfigPathText')
+$StatusText = $window.FindName('StatusText')
+$RunButton = $window.FindName('RunButton')
+$StopButton = $window.FindName('StopButton')
+$RefreshPreviewButton = $window.FindName('RefreshPreviewButton')
+$SaveSettingsButton = $window.FindName('SaveSettingsButton')
+$OpenConfigButton = $window.FindName('OpenConfigButton')
+$OpenOutputButton = $window.FindName('OpenOutputButton')
+$OpenLastRunButton = $window.FindName('OpenLastRunButton')
+$SnapshotLabelTextBox = $window.FindName('SnapshotLabelTextBox')
+$SnapshotZipTextBox = $window.FindName('SnapshotZipTextBox')
+$SnapshotCompareZipTextBox = $window.FindName('SnapshotCompareZipTextBox')
+$SnapshotDiffOnlyCheckBox = $window.FindName('SnapshotDiffOnlyCheckBox')
+$RunCollectSnapshotButton = $window.FindName('RunCollectSnapshotButton')
+$RunSnapshotReportButton = $window.FindName('RunSnapshotReportButton')
+$Param1Label = $window.FindName('Param1Label')
+$Param2Label = $window.FindName('Param2Label')
+$Param3Label = $window.FindName('Param3Label')
+$Param1TextBox = $window.FindName('Param1TextBox')
+$Param2TextBox = $window.FindName('Param2TextBox')
+$Param3TextBox = $window.FindName('Param3TextBox')
+$Option1CheckBox = $window.FindName('Option1CheckBox')
+$Option2CheckBox = $window.FindName('Option2CheckBox')
+
+$config = Load-LauncherConfig
+$script:LoadedConfig = $config
+$ToolsRootTextBox.Text = Get-ConfigValue -Config $config -Name 'ToolsRoot' -DefaultValue $DefaultToolsRoot
+$OutputRootTextBox.Text = Get-ConfigValue -Config $config -Name 'OutputRoot' -DefaultValue $DefaultOutputRoot
+$AwsProfileTextBox.Text = Get-ConfigValue -Config $config -Name 'DefaultAwsProfile' -DefaultValue ''
+$script:Catalog = Read-ToolCatalog
+foreach ($tool in $script:Catalog) {
+    if ([bool]$tool.Menu) {
+        [void]$ToolListBox.Items.Add(("{0}  ({1})" -f $tool.Name, $tool.Id))
+    }
+}
+if ($ToolListBox.Items.Count -gt 0) { $ToolListBox.SelectedIndex = 0 }
+
+$ToolListBox.Add_SelectionChanged({ Update-SelectedTool })
+$Param1TextBox.Add_TextChanged({ Update-CommandPreview })
+$Param2TextBox.Add_TextChanged({ Update-CommandPreview })
+$Param3TextBox.Add_TextChanged({ Update-CommandPreview })
+$Option1CheckBox.Add_Checked({ Update-CommandPreview })
+$Option1CheckBox.Add_Unchecked({ Update-CommandPreview })
+$Option2CheckBox.Add_Checked({ Update-CommandPreview })
+$Option2CheckBox.Add_Unchecked({ Update-CommandPreview })
+$ToolsRootTextBox.Add_TextChanged({ Update-CommandPreview })
+$OutputRootTextBox.Add_TextChanged({ Update-CommandPreview })
+$AwsProfileTextBox.Add_TextChanged({ Update-CommandPreview })
+$RefreshPreviewButton.Add_Click({ Update-CommandPreview })
+$SaveSettingsButton.Add_Click({ Save-LauncherConfig })
+$RunButton.Add_Click({ Invoke-SelectedTool })
+$StopButton.Add_Click({ Invoke-StopExecution })
+$window.Add_Closing({
+    if (Test-Running) {
+        try { $script:CurrentProc.Kill() } catch {}
+    }
+})
+$RunCollectSnapshotButton.Add_Click({ Invoke-CollectSnapshot })
+$RunSnapshotReportButton.Add_Click({ Invoke-SnapshotReport })
+$OpenConfigButton.Add_Click({
+    if (-not (Test-Path -LiteralPath $ConfigDir)) { New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null }
+    Start-Process explorer.exe -ArgumentList $ConfigDir
+})
+$OpenOutputButton.Add_Click({
+    $path = $OutputRootTextBox.Text.Trim()
+    if (-not (Test-Path -LiteralPath $path)) { New-Item -ItemType Directory -Path $path -Force | Out-Null }
+    Start-Process explorer.exe -ArgumentList $path
+})
+$OpenLastRunButton.Add_Click({
+    if ($script:LastRunDir -and (Test-Path -LiteralPath $script:LastRunDir)) {
+        Start-Process explorer.exe -ArgumentList $script:LastRunDir
+    }
+})
+
+Update-Header
+Update-SelectedTool
+Set-Status "設定ファイル: $ConfigPath"
+[void]$window.ShowDialog()

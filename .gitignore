@@ -11,3 +11,7 @@ publish/
 
 # PSScriptAnalyzer キャッシュ
 .psscriptanalyzer/
+
+# ========== Local Tools Launcher ==========
+# ランチャー実行ログ
+reports/local-tools/
