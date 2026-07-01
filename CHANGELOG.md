@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-01
+
 ### Added
 - server-snapshot に `filelist` カテゴリを追加。設定ファイル `filelist.conf` で
   指定したディレクトリ配下のファイル・ディレクトリ一覧を権限・オーナー情報付きで
@@ -14,6 +16,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Windows: NTFS Owner / ACL、Linux: POSIX mode / uid / gid / owner / group
   - `hash = true` でファイル sha256 を計算し、内容変化も検出
   - `exclude` パターン、`depth` 制限、`max_entries_per_target` セーフガード対応
+- ローカルツールランチャーで、各ツールの設定ファイルを「設定ファイル」セクション
+  として表示。「...」でエクスプローラから別ファイルを選択、「開く」で関連付け
+  エディタ起動。
+  - 選択した override パスは `%LOCALAPPDATA%\aws-ec2-manager\tool-launcher.json`
+    に per-tool per-label で永続化
+  - routing を `tool-catalog.yaml` の `configFiles` で指定可能
+    - `envVar`: 子プロセスの env var で渡す（server-snapshot の
+      `_OPS_MW_CONF` / `_OPS_FILELIST_CONF`）
+    - `argName`: CLI 引数として付与（log-collector `-ConfigFile`、
+      perf-monitor `-Config`）
+    - `paramKey`: 既存パラメータ textbox に反映（cert-check / network-check /
+      port-inventory のターゲットリスト）
+
+### Changed
+- ランチャーの各ツール説明を短い日本語に置き換え、説明欄の余白を詰めて
+  スペース節約。
+
+### Fixed
+- server-snapshot の compare で Windows 側 filelist エントリの `mode` / `group`
+  が `System.Collections.Hashtable` と表示されていた件を修正（`Obj-To-Dict` が
+  null 値を空 hashtable に変換する挙動を回避）。
+- filelist の symlink `link_target` を PS 5.1 で scalar string として出力
+  （元々 `IEnumerable<string>` で配列化されていた）。
 
 ## [1.2.2] - 2026-07-01
 
