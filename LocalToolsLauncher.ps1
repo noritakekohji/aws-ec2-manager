@@ -28,6 +28,7 @@ $script:WaitTimer = $null
 $script:ToolsRoot = $DefaultToolsRoot
 $script:OutputRoot = $DefaultOutputRoot
 $script:AwsProfile = ''
+$script:ConfigFileOverrides = @{}   # "<toolId>::<label>" -> user-selected absolute path
 
 function ConvertTo-DisplayPath {
     param([string]$Path)
@@ -88,6 +89,7 @@ function Save-LauncherConfig {
         DefaultAwsProfile = $script:AwsProfile
         OpenReportAfterRun = $openReport
         KeepConsoleOpen = $keepConsole
+        ConfigFileOverrides = $script:ConfigFileOverrides
     }
     if (-not (Test-Path -LiteralPath $ConfigDir)) {
         New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null
@@ -95,6 +97,18 @@ function Save-LauncherConfig {
     $obj | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $ConfigPath -Encoding UTF8
     $script:LoadedConfig = $obj
     Set-Status "設定を保存しました: $ConfigPath"
+}
+
+function Load-ConfigFileOverrides {
+    param($Config)
+    $map = @{}
+    if ($null -eq $Config) { return $map }
+    $prop = $Config.PSObject.Properties['ConfigFileOverrides']
+    if ($null -eq $prop -or $null -eq $prop.Value) { return $map }
+    foreach ($p in $prop.Value.PSObject.Properties) {
+        if ($null -ne $p.Value) { $map[$p.Name] = [string]$p.Value }
+    }
+    return $map
 }
 
 function ConvertFrom-ToolCatalogScalar {
@@ -194,6 +208,9 @@ function Read-ToolCatalog {
             $currentConfig = [ordered]@{
                 Label = ConvertFrom-ToolCatalogScalar $Matches[2]
                 Path = ''
+                EnvVar = ''
+                ParamKey = ''
+                ArgName = ''
             }
             $configSubKeyIndent = $listIndent + 2
             continue
@@ -206,7 +223,10 @@ function Read-ToolCatalog {
 
             if ($null -ne $currentConfig -and $configSubKeyIndent -ge 0 -and $lineIndent -ge $configSubKeyIndent) {
                 switch ($key) {
-                    'path' { $currentConfig.Path = $value }
+                    'path'     { $currentConfig.Path = $value }
+                    'envVar'   { $currentConfig.EnvVar = $value }
+                    'paramKey' { $currentConfig.ParamKey = $value }
+                    'argName'  { $currentConfig.ArgName = $value }
                 }
                 continue
             }
@@ -388,12 +408,44 @@ function Get-ParameterValueByKey {
     return $null
 }
 
+function Add-ConfigFileArgs {
+    param(
+        [System.Collections.Generic.List[string]]$Arguments,
+        $Tool
+    )
+    if ($null -eq $Tool) { return }
+    if ($null -eq (Get-Member -InputObject $Tool -Name 'ConfigFiles' -ErrorAction SilentlyContinue)) { return }
+    foreach ($cf in @($Tool.ConfigFiles)) {
+        $argName = [string]$cf.ArgName
+        if (-not $argName) { continue }
+        $path = Get-ConfigFileEffectivePath -ToolId ([string]$Tool.Id) -ConfigFile $cf
+        if (-not $path) { continue }
+        [void]$Arguments.Add($argName)
+        [void]$Arguments.Add($path)
+    }
+}
+
+function Get-ConfigFileEnvVars {
+    param($Tool)
+    $map = @{}
+    if ($null -eq $Tool) { return $map }
+    if ($null -eq (Get-Member -InputObject $Tool -Name 'ConfigFiles' -ErrorAction SilentlyContinue)) { return $map }
+    foreach ($cf in @($Tool.ConfigFiles)) {
+        $envVar = [string]$cf.EnvVar
+        if (-not $envVar) { continue }
+        $path = Get-ConfigFileEffectivePath -ToolId ([string]$Tool.Id) -ConfigFile $cf
+        if ($path) { $map[$envVar] = $path }
+    }
+    return $map
+}
+
 function Get-ToolArguments {
     param(
         $Tool,
         [string]$RunDir
     )
     $argList = New-Object System.Collections.Generic.List[string]
+    Add-ConfigFileArgs -Arguments $argList -Tool $Tool
     foreach ($paramDef in @($Tool.Parameters)) {
         $type = [string]$paramDef.Type
         $argumentName = [string]$paramDef.Argument
@@ -494,11 +546,45 @@ function Append-Log {
     $LogTextBox.ScrollToEnd()
 }
 
-function Get-ToolConfigFilePath {
+function Get-ToolConfigDefaultPath {
     param([string]$RelativePath)
     if (-not $RelativePath) { return '' }
     $normalized = $RelativePath.Replace('/', '\')
     return Join-Path $script:ToolsRoot $normalized
+}
+
+function Get-ConfigOverrideKey {
+    param([string]$ToolId, [string]$Label)
+    return "$ToolId::$Label"
+}
+
+function Get-ConfigFileEffectivePath {
+    param([string]$ToolId, $ConfigFile)
+    $key = Get-ConfigOverrideKey -ToolId $ToolId -Label ([string]$ConfigFile.Label)
+    if ($script:ConfigFileOverrides.ContainsKey($key)) {
+        $ov = [string]$script:ConfigFileOverrides[$key]
+        if ($ov) { return $ov }
+    }
+    return Get-ToolConfigDefaultPath -RelativePath ([string]$ConfigFile.Path)
+}
+
+function Set-ConfigFileOverride {
+    param([string]$ToolId, [string]$Label, [string]$NewPath, [string]$DefaultPath)
+    $key = Get-ConfigOverrideKey -ToolId $ToolId -Label $Label
+    if (-not $NewPath -or $NewPath -eq $DefaultPath) {
+        [void]$script:ConfigFileOverrides.Remove($key)
+    } else {
+        $script:ConfigFileOverrides[$key] = $NewPath
+    }
+    try { Save-LauncherConfig } catch { }
+}
+
+function Get-ParameterControlByKey {
+    param([string]$Key)
+    foreach ($binding in $script:TextParameterControls) {
+        if ($binding.Parameter.Key -eq $Key) { return $binding.Control }
+    }
+    return $null
 }
 
 function Open-ConfigFileInEditor {
@@ -530,21 +616,43 @@ function Open-ConfigFileInEditor {
     }
 }
 
-function Show-ConfigFileInExplorer {
-    param([string]$FullPath)
-    if (-not $FullPath) { return }
-    if (Test-Path -LiteralPath $FullPath) {
-        Start-Process -FilePath 'explorer.exe' -ArgumentList ('/select,"{0}"' -f $FullPath) | Out-Null
+function Invoke-SelectConfigFile {
+    param(
+        [string]$ToolId,
+        $ConfigFile,
+        [System.Windows.Controls.TextBox]$PathBox
+    )
+    Add-Type -AssemblyName System.Windows.Forms
+    $dlg = New-Object System.Windows.Forms.OpenFileDialog
+    $dlg.Title = "設定ファイルを選択: $($ConfigFile.Label)"
+    $dlg.Filter = "設定ファイル (*.conf;*.lst;*.ini;*.cfg;*.txt)|*.conf;*.lst;*.ini;*.cfg;*.txt|すべてのファイル (*.*)|*.*"
+    $current = [string]$PathBox.Text
+    if ($current -and (Test-Path -LiteralPath $current)) {
+        $dlg.InitialDirectory = Split-Path -Parent $current
+        $dlg.FileName = Split-Path -Leaf $current
     } else {
-        $parent = Split-Path -Parent $FullPath
-        if ($parent -and (Test-Path -LiteralPath $parent)) {
-            Start-Process -FilePath 'explorer.exe' -ArgumentList ('"{0}"' -f $parent) | Out-Null
-        } else {
-            [System.Windows.MessageBox]::Show(
-                "場所が存在しません:`n$FullPath",
-                'ツールランチャー') | Out-Null
+        $defaultPath = Get-ToolConfigDefaultPath -RelativePath ([string]$ConfigFile.Path)
+        $defaultDir = Split-Path -Parent $defaultPath
+        if ($defaultDir -and (Test-Path -LiteralPath $defaultDir)) {
+            $dlg.InitialDirectory = $defaultDir
         }
     }
+    $result = $dlg.ShowDialog()
+    if ($result -ne [System.Windows.Forms.DialogResult]::OK) { return }
+    $selected = $dlg.FileName
+    $defaultPath = Get-ToolConfigDefaultPath -RelativePath ([string]$ConfigFile.Path)
+    Set-ConfigFileOverride -ToolId $ToolId -Label ([string]$ConfigFile.Label) -NewPath $selected -DefaultPath $defaultPath
+    $PathBox.Text = $selected
+
+    # If this configFile routes via paramKey, also update the corresponding parameter textbox
+    $paramKey = [string]$ConfigFile.ParamKey
+    if ($paramKey) {
+        $paramCtl = Get-ParameterControlByKey -Key $paramKey
+        if ($null -ne $paramCtl) {
+            $paramCtl.Text = $selected
+        }
+    }
+    Update-CommandPreview
 }
 
 function Update-ConfigFilesPanel {
@@ -558,8 +666,9 @@ function Update-ConfigFilesPanel {
         $ConfigFilesPanel.Visibility = 'Collapsed'
         return
     }
+    $toolId = [string]$Tool.Id
     foreach ($cf in $files) {
-        $fullPath = Get-ToolConfigFilePath -RelativePath ([string]$cf.Path)
+        $effectivePath = Get-ConfigFileEffectivePath -ToolId $toolId -ConfigFile $cf
         $row = New-Object System.Windows.Controls.Grid
         $row.Margin = '0,0,0,6'
         $col0 = New-Object System.Windows.Controls.ColumnDefinition; $col0.Width = '145'
@@ -574,34 +683,41 @@ function Update-ConfigFilesPanel {
         $label = New-Object System.Windows.Controls.TextBlock
         $label.Text = [string]$cf.Label
         $label.Style = $window.FindResource('FieldLabel')
-        $label.ToolTip = $fullPath
+        $label.ToolTip = $effectivePath
         [System.Windows.Controls.Grid]::SetColumn($label, 0)
         [void]$row.Children.Add($label)
 
         $pathBox = New-Object System.Windows.Controls.TextBox
-        $pathBox.Text = $fullPath
+        $pathBox.Text = $effectivePath
         $pathBox.IsReadOnly = $true
         $pathBox.Margin = '0,0,4,0'
-        $pathBox.ToolTip = $fullPath
+        $pathBox.ToolTip = $effectivePath
         [System.Windows.Controls.Grid]::SetColumn($pathBox, 1)
         [void]$row.Children.Add($pathBox)
 
-        $revealBtn = New-Object System.Windows.Controls.Button
-        $revealBtn.Content = '...'
-        $revealBtn.Style = $window.FindResource('SmallBrowseButton')
-        $revealBtn.Margin = '0,0,4,0'
-        $revealBtn.Tag = $fullPath
-        $revealBtn.ToolTip = 'エクスプローラで場所を表示'
-        $revealBtn.Add_Click({ param($s,$e) Show-ConfigFileInExplorer -FullPath ([string]$s.Tag) }.GetNewClosure())
-        [System.Windows.Controls.Grid]::SetColumn($revealBtn, 2)
-        [void]$row.Children.Add($revealBtn)
+        # Capture per-row context in closure to survive scope changes across iterations.
+        $capturedToolId = $toolId
+        $capturedCf = $cf
+        $capturedBox = $pathBox
+
+        $browseBtn = New-Object System.Windows.Controls.Button
+        $browseBtn.Content = '...'
+        $browseBtn.Style = $window.FindResource('SmallBrowseButton')
+        $browseBtn.Margin = '0,0,4,0'
+        $browseBtn.ToolTip = 'エクスプローラから設定ファイルを選択'
+        $browseBtn.Add_Click({ param($s,$e)
+            Invoke-SelectConfigFile -ToolId $capturedToolId -ConfigFile $capturedCf -PathBox $capturedBox
+        }.GetNewClosure())
+        [System.Windows.Controls.Grid]::SetColumn($browseBtn, 2)
+        [void]$row.Children.Add($browseBtn)
 
         $openBtn = New-Object System.Windows.Controls.Button
         $openBtn.Content = '開く'
         $openBtn.MinWidth = 60
-        $openBtn.Tag = $fullPath
-        $openBtn.ToolTip = '関連付けエディタで開く（未存在ならテンプレートから作成）'
-        $openBtn.Add_Click({ param($s,$e) Open-ConfigFileInEditor -FullPath ([string]$s.Tag) }.GetNewClosure())
+        $openBtn.ToolTip = '関連付けエディタで開く（未存在なら作成の可否を確認）'
+        $openBtn.Add_Click({ param($s,$e)
+            Open-ConfigFileInEditor -FullPath ([string]$capturedBox.Text)
+        }.GetNewClosure())
         [System.Windows.Controls.Grid]::SetColumn($openBtn, 3)
         [void]$row.Children.Add($openBtn)
 
@@ -619,9 +735,29 @@ function Update-SelectedTool {
     }
     $ToolTitleText.Text = "{0} ({1})" -f $tool.Name, $tool.Id
     $ToolDescriptionText.Text = $tool.Description
-    Update-ConfigFilesPanel -Tool $tool
     Set-ParameterDefaults -Tool $tool
+    Sync-ParamKeyOverridesToTextBoxes -Tool $tool
+    Update-ConfigFilesPanel -Tool $tool
     Update-CommandPreview
+}
+
+function Sync-ParamKeyOverridesToTextBoxes {
+    param($Tool)
+    if ($null -eq $Tool) { return }
+    $files = @()
+    if ($null -ne (Get-Member -InputObject $Tool -Name 'ConfigFiles' -ErrorAction SilentlyContinue)) {
+        $files = @($Tool.ConfigFiles)
+    }
+    foreach ($cf in $files) {
+        $paramKey = [string]$cf.ParamKey
+        if (-not $paramKey) { continue }
+        $key = Get-ConfigOverrideKey -ToolId ([string]$Tool.Id) -Label ([string]$cf.Label)
+        if (-not $script:ConfigFileOverrides.ContainsKey($key)) { continue }
+        $ctl = Get-ParameterControlByKey -Key $paramKey
+        if ($null -ne $ctl) {
+            $ctl.Text = [string]$script:ConfigFileOverrides[$key]
+        }
+    }
 }
 
 function Set-ParameterDefaults {
@@ -775,6 +911,11 @@ function Invoke-ToolExecution {
         $psi.RedirectStandardError = $true
         $psi.StandardOutputEncoding = [Console]::OutputEncoding
         $psi.StandardErrorEncoding = [Console]::OutputEncoding
+
+        # Route configFile env-var overrides (e.g. _OPS_MW_CONF / _OPS_FILELIST_CONF)
+        foreach ($kv in (Get-ConfigFileEnvVars -Tool $tool).GetEnumerator()) {
+            $psi.EnvironmentVariables[$kv.Key] = $kv.Value
+        }
 
         $proc = [System.Diagnostics.Process]::Start($psi)
 
@@ -1104,6 +1245,7 @@ $script:LoadedConfig = $config
 $script:ToolsRoot = Get-ConfigValue -Config $config -Name 'ToolsRoot' -DefaultValue $DefaultToolsRoot
 $script:OutputRoot = Get-ConfigValue -Config $config -Name 'OutputRoot' -DefaultValue $DefaultOutputRoot
 $script:AwsProfile = Get-ConfigValue -Config $config -Name 'DefaultAwsProfile' -DefaultValue ''
+$script:ConfigFileOverrides = Load-ConfigFileOverrides -Config $config
 $HeaderAwsProfileTextBox.Text = $script:AwsProfile
 
 $script:Catalog = Read-ToolCatalog
