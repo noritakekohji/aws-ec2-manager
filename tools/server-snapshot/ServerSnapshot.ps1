@@ -976,7 +976,7 @@ function Invoke-Collect {
         [string]$SnapLabel
     )
     # Resolve categories
-    $allCategories = @('os','network','services','packages','users','filesystem','environment','security','patches','tuning','scheduled','middleware')
+    $allCategories = @('os','network','services','packages','users','filesystem','environment','security','patches','tuning','scheduled','middleware','filelist')
     $resolved = if ($Categories -contains 'all') { $allCategories } else {
         $Categories | Where-Object { $allCategories -contains $_ }
     }
@@ -1019,6 +1019,7 @@ function Invoke-Collect {
             'tuning'      { Get-TuningInfo }
             'scheduled'   { Get-ScheduledInfo }
             'middleware'  { Get-MiddlewareInfo }
+            'filelist'    { ,@(Get-FilelistInfo) }
         }
     }
 
