@@ -226,6 +226,47 @@ def cat_middleware(b, a):
             out += compare_list(b_cfg, a_cfg, 'name', ['sha256'])
     return out
 
+def cat_filelist(b, a):
+    """Compare filelist categories. Returns [(state, key, before, after)].
+
+    key format: '<target_key>::<rel_path>' (mirrors cat_middleware's file-key
+    convention). sha256 is compared only when hash_enabled is true on BOTH
+    sides.
+    """
+    bl = b.get('filelist') or []
+    al = a.get('filelist') or []
+    if not isinstance(bl, list): bl = []
+    if not isinstance(al, list): al = []
+    b_by = {t.get('key'): t for t in bl if isinstance(t, dict) and t.get('key')}
+    a_by = {t.get('key'): t for t in al if isinstance(t, dict) and t.get('key')}
+    out = []
+    for key in sorted(set(list(b_by.keys()) + list(a_by.keys()))):
+        bt = b_by.get(key)
+        at = a_by.get(key)
+        b_entries = (bt or {}).get('entries') or []
+        a_entries = (at or {}).get('entries') or []
+        b_hash = bool((bt or {}).get('hash_enabled'))
+        a_hash = bool((at or {}).get('hash_enabled'))
+        fields = ['type','size','mtime','mode','owner','group']
+        if b_hash and a_hash:
+            fields.append('sha256')
+
+        def _rows(entries, target_key):
+            rows = []
+            for e in entries:
+                if not isinstance(e, dict):
+                    continue
+                row = {'name': f"{target_key}::{e.get('rel_path')}"}
+                for f in fields:
+                    row[f] = e.get(f)
+                rows.append(row)
+            return rows
+
+        b_rows = _rows(b_entries, key)
+        a_rows = _rows(a_entries, key)
+        out += compare_list(b_rows, a_rows, 'name', fields)
+    return out
+
 CATEGORIES = [
     ('os',          cat_os),
     ('services',    cat_services),
@@ -239,6 +280,7 @@ CATEGORIES = [
     ('tuning',      cat_tuning),
     ('scheduled',   cat_scheduled),
     ('middleware',  cat_middleware),
+    ('filelist',    cat_filelist),
 ]
 
 # ────────────────────────────────────────────────────────────────
