@@ -156,33 +156,39 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <TextBlock x:Name="ToolTitleText" Grid.Row="0" FontSize="18" FontWeight="SemiBold" />
+                    <!-- Title row: name on the left, action buttons on the right -->
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="ToolTitleText" Grid.Column="0" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button x:Name="RefreshPreviewButton" Content="プレビュー更新" Margin="8,0,0,0" />
+                            <Button x:Name="RunButton" Content="実行" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" />
+                            <Button x:Name="StopButton" Content="停止" Margin="8,0,0,0" IsEnabled="False" />
+                        </StackPanel>
+                    </Grid>
+
                     <TextBlock x:Name="ToolDescriptionText" Grid.Row="1" Foreground="{StaticResource MutedTextBrush}" Margin="0,2,0,8" FontSize="12" TextWrapping="Wrap" />
 
                     <TextBlock Grid.Row="2" Text="コマンドプレビュー" FontWeight="SemiBold" Margin="0,0,0,5" />
-                    <TextBox x:Name="CommandPreviewTextBox" Grid.Row="3" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="56" MaxHeight="90" />
+                    <TextBox x:Name="CommandPreviewTextBox" Grid.Row="3" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="56" MaxHeight="90" Margin="0,0,0,10" />
 
-                    <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,10,0,10">
-                        <Button x:Name="RefreshPreviewButton" Content="プレビュー更新" Margin="0,0,8,0" />
-                        <Button x:Name="RunButton" Content="実行" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0" />
-                        <Button x:Name="StopButton" Content="停止" Margin="0,0,8,0" IsEnabled="False" />
-                    </StackPanel>
-
-                    <StackPanel x:Name="ConfigFilesPanel" Grid.Row="5" Margin="0,0,0,12" Visibility="Collapsed">
+                    <StackPanel x:Name="ConfigFilesPanel" Grid.Row="4" Margin="0,0,0,12" Visibility="Collapsed">
                         <TextBlock Text="設定ファイル" FontWeight="SemiBold" Margin="0,0,0,6" />
                         <StackPanel x:Name="ConfigFilesItems" />
                     </StackPanel>
 
-                    <StackPanel Grid.Row="6" Margin="0,0,0,10">
+                    <StackPanel Grid.Row="5" Margin="0,0,0,10">
                         <TextBlock Text="実行パラメーター" FontWeight="SemiBold" Margin="0,0,0,6" />
                         <StackPanel x:Name="ParametersItems" />
                     </StackPanel>
 
-                    <!-- Row 7 (*) is an empty spacer keeping content top-aligned. -->
+                    <!-- Row 6 (*) is an empty spacer keeping content top-aligned. -->
                 </Grid>
             </Border>
         </Grid>
