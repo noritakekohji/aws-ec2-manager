@@ -15,6 +15,7 @@ tools:
       - key: region
         label: リージョン
         type: text
+        width: short
         argument: -Region
         default: ""
       - key: output
@@ -127,11 +128,13 @@ tools:
       - key: target
         label: プリセット
         type: text
+        width: short
         argument: -Target
         default: os
       - key: since
         label: 期間
         type: text
+        width: short
         argument: -Since
         default: 24h
       - key: maxSizeMb
@@ -199,6 +202,7 @@ tools:
       - key: command
         label: アクション
         type: text
+        width: short
         argument: ""
         default: status
       - key: sessionDir
@@ -264,6 +268,7 @@ tools:
       - key: command
         label: アクション
         type: text
+        width: short
         argument: ""
         default: collect
       - key: category
@@ -274,6 +279,7 @@ tools:
       - key: label
         label: ラベル
         type: text
+        width: short
         argument: -Label
         default: ""
       - key: outputPath

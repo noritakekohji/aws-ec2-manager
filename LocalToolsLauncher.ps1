@@ -183,6 +183,7 @@ function Read-ToolCatalog {
                 Key = ConvertFrom-ToolCatalogScalar $Matches[2]
                 Label = ''
                 Type = 'text'
+                Width = ''
                 Argument = ''
                 Default = ''
                 Value = ''
@@ -235,6 +236,7 @@ function Read-ToolCatalog {
                 switch ($key) {
                     'label' { $currentParam.Label = $value }
                     'type' { $currentParam.Type = $value }
+                    'width' { $currentParam.Width = $value }
                     'argument' { $currentParam.Argument = $value }
                     'default' { $currentParam.Default = $value }
                     'value' { $currentParam.Value = $value }
@@ -786,16 +788,18 @@ function Set-ParameterDefaults {
     $toolId = [string]$Tool.Id
     $paramCfgMap = Get-ParamConfigFileMap -Tool $Tool
 
+    # Categorize params: full-width text rows, compact fields (numbers + short text
+    # packed into a WrapPanel), and checkboxes.
     $textParams = @()
-    $numberParams = @()
+    $compactFields = @()   # @{ Param; BoxWidth }
     $checkParams = @()
     foreach ($p in @($Tool.Parameters)) {
-        switch ([string]$p.Type) {
-            'hidden'   { }
-            'checkbox' { $checkParams += $p }
-            'number'   { $numberParams += $p }
-            default    { $textParams += $p }
-        }
+        $type = [string]$p.Type
+        if ($type -eq 'hidden') { continue }
+        if ($type -eq 'checkbox') { $checkParams += $p; continue }
+        if ($type -eq 'number') { $compactFields += @{ Param = $p; BoxWidth = 64 }; continue }
+        if ([string]$p.Width -eq 'short') { $compactFields += @{ Param = $p; BoxWidth = 150 }; continue }
+        $textParams += $p
     }
 
     # --- text params (full-width rows) ---
@@ -868,11 +872,12 @@ function Set-ParameterDefaults {
         $script:TextParameterControls += [pscustomobject]@{ Parameter = $p; Control = $box }
     }
 
-    # --- number params (compact, WrapPanel auto-wraps) ---
-    if ($numberParams.Count -gt 0) {
+    # --- compact fields: numbers + short text (WrapPanel auto-wraps) ---
+    if ($compactFields.Count -gt 0) {
         $wrap = New-Object System.Windows.Controls.WrapPanel
         $wrap.Margin = '0,0,0,4'
-        foreach ($p in $numberParams) {
+        foreach ($cfld in $compactFields) {
+            $p = $cfld.Param
             $cell = New-Object System.Windows.Controls.StackPanel
             $cell.Orientation = 'Horizontal'
             $cell.Margin = '0,0,18,4'
@@ -882,7 +887,7 @@ function Set-ParameterDefaults {
             $lbl.Margin = '0,0,6,0'
             [void]$cell.Children.Add($lbl)
             $box = New-Object System.Windows.Controls.TextBox
-            $box.Width = 64
+            $box.Width = [double]$cfld.BoxWidth
             $box.Text = Expand-LauncherValue -Value ([string]$p.Default) -Tool $Tool -RunDir $sampleRun
             $box.Add_TextChanged({ Update-CommandPreview })
             [void]$cell.Children.Add($box)
