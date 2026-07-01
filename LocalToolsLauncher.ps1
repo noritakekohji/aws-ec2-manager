@@ -113,8 +113,10 @@ function Read-ToolCatalog {
     $result = New-Object System.Collections.Generic.List[object]
     $current = $null
     $currentParam = $null
+    $currentConfig = $null
     $toolSubKeyIndent = -1
     $paramSubKeyIndent = -1
+    $configSubKeyIndent = -1
 
     foreach ($rawLine in (Get-Content -LiteralPath $CatalogPath -Encoding UTF8)) {
         $line = $rawLine.TrimEnd()
@@ -127,6 +129,10 @@ function Read-ToolCatalog {
                     $current.Parameters += [pscustomobject]$currentParam
                     $currentParam = $null
                 }
+                if ($null -ne $currentConfig) {
+                    $current.ConfigFiles += [pscustomobject]$currentConfig
+                    $currentConfig = $null
+                }
                 [void]$result.Add([pscustomobject]$current)
             }
             $current = [ordered]@{
@@ -138,9 +144,11 @@ function Read-ToolCatalog {
                 LinuxPath = ''
                 DefaultArgs = ''
                 Parameters = @()
+                ConfigFiles = @()
             }
             $toolSubKeyIndent = $Matches[1].Length + 2
             $paramSubKeyIndent = -1
+            $configSubKeyIndent = -1
             continue
         }
 
@@ -151,6 +159,11 @@ function Read-ToolCatalog {
             if ($listIndent -lt $toolSubKeyIndent) { continue }
             if ($null -ne $currentParam) {
                 $current.Parameters += [pscustomobject]$currentParam
+            }
+            if ($null -ne $currentConfig) {
+                $current.ConfigFiles += [pscustomobject]$currentConfig
+                $currentConfig = $null
+                $configSubKeyIndent = -1
             }
             $currentParam = [ordered]@{
                 Key = ConvertFrom-ToolCatalogScalar $Matches[2]
@@ -165,10 +178,38 @@ function Read-ToolCatalog {
             continue
         }
 
+        # ConfigFile list item — matches `- label: <value>` under `configFiles:`.
+        # Distinguished from `- key:` (parameters) by the leading key name.
+        if ($line -match '^(\s*)-\s+label:\s*(.+?)\s*$') {
+            $listIndent = $Matches[1].Length
+            if ($listIndent -lt $toolSubKeyIndent) { continue }
+            if ($null -ne $currentConfig) {
+                $current.ConfigFiles += [pscustomobject]$currentConfig
+            }
+            if ($null -ne $currentParam) {
+                $current.Parameters += [pscustomobject]$currentParam
+                $currentParam = $null
+                $paramSubKeyIndent = -1
+            }
+            $currentConfig = [ordered]@{
+                Label = ConvertFrom-ToolCatalogScalar $Matches[2]
+                Path = ''
+            }
+            $configSubKeyIndent = $listIndent + 2
+            continue
+        }
+
         if ($line -match '^(\s+)([A-Za-z0-9_]+):\s*(.*?)\s*$') {
             $lineIndent = $Matches[1].Length
             $key = $Matches[2]
             $value = ConvertFrom-ToolCatalogScalar $Matches[3]
+
+            if ($null -ne $currentConfig -and $configSubKeyIndent -ge 0 -and $lineIndent -ge $configSubKeyIndent) {
+                switch ($key) {
+                    'path' { $currentConfig.Path = $value }
+                }
+                continue
+            }
 
             if ($null -ne $currentParam -and $paramSubKeyIndent -ge 0 -and $lineIndent -ge $paramSubKeyIndent) {
                 switch ($key) {
@@ -187,9 +228,14 @@ function Read-ToolCatalog {
                 $currentParam = $null
                 $paramSubKeyIndent = -1
             }
+            if ($null -ne $currentConfig -and $lineIndent -le $toolSubKeyIndent) {
+                $current.ConfigFiles += [pscustomobject]$currentConfig
+                $currentConfig = $null
+                $configSubKeyIndent = -1
+            }
 
             if ($lineIndent -ge $toolSubKeyIndent) {
-                if ($key -eq 'parameters') { continue }
+                if ($key -eq 'parameters' -or $key -eq 'configFiles') { continue }
                 switch ($key) {
                     'name' { $current.Name = $value }
                     'description' { $current.Description = $value }
@@ -205,6 +251,9 @@ function Read-ToolCatalog {
     if ($null -ne $current) {
         if ($null -ne $currentParam) {
             $current.Parameters += [pscustomobject]$currentParam
+        }
+        if ($null -ne $currentConfig) {
+            $current.ConfigFiles += [pscustomobject]$currentConfig
         }
         [void]$result.Add([pscustomobject]$current)
     }
@@ -445,12 +494,132 @@ function Append-Log {
     $LogTextBox.ScrollToEnd()
 }
 
+function Get-ToolConfigFilePath {
+    param([string]$RelativePath)
+    if (-not $RelativePath) { return '' }
+    $normalized = $RelativePath.Replace('/', '\')
+    return Join-Path $script:ToolsRoot $normalized
+}
+
+function Open-ConfigFileInEditor {
+    param([string]$FullPath)
+    if (-not $FullPath) { return }
+    if (-not (Test-Path -LiteralPath $FullPath)) {
+        $answer = [System.Windows.MessageBox]::Show(
+            "設定ファイルが見つかりません:`n$FullPath`n`n空ファイルとして作成して開きますか？",
+            'ツールランチャー',
+            [System.Windows.MessageBoxButton]::YesNo,
+            [System.Windows.MessageBoxImage]::Question)
+        if ($answer -ne [System.Windows.MessageBoxResult]::Yes) { return }
+        $parent = Split-Path -Parent $FullPath
+        if ($parent -and -not (Test-Path -LiteralPath $parent)) {
+            New-Item -ItemType Directory -Path $parent -Force | Out-Null
+        }
+        New-Item -ItemType File -Path $FullPath -Force | Out-Null
+    }
+    try {
+        Start-Process -FilePath $FullPath -ErrorAction Stop
+    } catch {
+        try {
+            Start-Process -FilePath 'notepad.exe' -ArgumentList $FullPath -ErrorAction Stop
+        } catch {
+            [System.Windows.MessageBox]::Show(
+                "エディタでの起動に失敗しました:`n$($_.Exception.Message)",
+                'ツールランチャー') | Out-Null
+        }
+    }
+}
+
+function Show-ConfigFileInExplorer {
+    param([string]$FullPath)
+    if (-not $FullPath) { return }
+    if (Test-Path -LiteralPath $FullPath) {
+        Start-Process -FilePath 'explorer.exe' -ArgumentList ('/select,"{0}"' -f $FullPath) | Out-Null
+    } else {
+        $parent = Split-Path -Parent $FullPath
+        if ($parent -and (Test-Path -LiteralPath $parent)) {
+            Start-Process -FilePath 'explorer.exe' -ArgumentList ('"{0}"' -f $parent) | Out-Null
+        } else {
+            [System.Windows.MessageBox]::Show(
+                "場所が存在しません:`n$FullPath",
+                'ツールランチャー') | Out-Null
+        }
+    }
+}
+
+function Update-ConfigFilesPanel {
+    param($Tool)
+    $ConfigFilesItems.Children.Clear()
+    $files = @()
+    if ($null -ne $Tool -and $null -ne (Get-Member -InputObject $Tool -Name 'ConfigFiles' -ErrorAction SilentlyContinue)) {
+        $files = @($Tool.ConfigFiles)
+    }
+    if ($files.Count -eq 0) {
+        $ConfigFilesPanel.Visibility = 'Collapsed'
+        return
+    }
+    foreach ($cf in $files) {
+        $fullPath = Get-ToolConfigFilePath -RelativePath ([string]$cf.Path)
+        $row = New-Object System.Windows.Controls.Grid
+        $row.Margin = '0,0,0,6'
+        $col0 = New-Object System.Windows.Controls.ColumnDefinition; $col0.Width = '145'
+        $col1 = New-Object System.Windows.Controls.ColumnDefinition; $col1.Width = '*'
+        $col2 = New-Object System.Windows.Controls.ColumnDefinition; $col2.Width = 'Auto'
+        $col3 = New-Object System.Windows.Controls.ColumnDefinition; $col3.Width = 'Auto'
+        [void]$row.ColumnDefinitions.Add($col0)
+        [void]$row.ColumnDefinitions.Add($col1)
+        [void]$row.ColumnDefinitions.Add($col2)
+        [void]$row.ColumnDefinitions.Add($col3)
+
+        $label = New-Object System.Windows.Controls.TextBlock
+        $label.Text = [string]$cf.Label
+        $label.Style = $window.FindResource('FieldLabel')
+        $label.ToolTip = $fullPath
+        [System.Windows.Controls.Grid]::SetColumn($label, 0)
+        [void]$row.Children.Add($label)
+
+        $pathBox = New-Object System.Windows.Controls.TextBox
+        $pathBox.Text = $fullPath
+        $pathBox.IsReadOnly = $true
+        $pathBox.Margin = '0,0,4,0'
+        $pathBox.ToolTip = $fullPath
+        [System.Windows.Controls.Grid]::SetColumn($pathBox, 1)
+        [void]$row.Children.Add($pathBox)
+
+        $revealBtn = New-Object System.Windows.Controls.Button
+        $revealBtn.Content = '...'
+        $revealBtn.Style = $window.FindResource('SmallBrowseButton')
+        $revealBtn.Margin = '0,0,4,0'
+        $revealBtn.Tag = $fullPath
+        $revealBtn.ToolTip = 'エクスプローラで場所を表示'
+        $revealBtn.Add_Click({ param($s,$e) Show-ConfigFileInExplorer -FullPath ([string]$s.Tag) }.GetNewClosure())
+        [System.Windows.Controls.Grid]::SetColumn($revealBtn, 2)
+        [void]$row.Children.Add($revealBtn)
+
+        $openBtn = New-Object System.Windows.Controls.Button
+        $openBtn.Content = '開く'
+        $openBtn.MinWidth = 60
+        $openBtn.Tag = $fullPath
+        $openBtn.ToolTip = '関連付けエディタで開く（未存在ならテンプレートから作成）'
+        $openBtn.Add_Click({ param($s,$e) Open-ConfigFileInEditor -FullPath ([string]$s.Tag) }.GetNewClosure())
+        [System.Windows.Controls.Grid]::SetColumn($openBtn, 3)
+        [void]$row.Children.Add($openBtn)
+
+        [void]$ConfigFilesItems.Children.Add($row)
+    }
+    $ConfigFilesPanel.Visibility = 'Visible'
+}
+
 function Update-SelectedTool {
     $tool = Get-SelectedTool
     $script:CurrentTool = $tool
-    if ($null -eq $tool) { return }
+    if ($null -eq $tool) {
+        $ConfigFilesPanel.Visibility = 'Collapsed'
+        return
+    }
     $ToolTitleText.Text = "{0} ({1})" -f $tool.Name, $tool.Id
     $ToolDescriptionText.Text = $tool.Description
+    Update-ConfigFilesPanel -Tool $tool
     Set-ParameterDefaults -Tool $tool
     Update-CommandPreview
 }
@@ -919,6 +1088,8 @@ $RunCollectSnapshotButton = $window.FindName('RunCollectSnapshotButton')
 $RunSnapshotReportButton = $window.FindName('RunSnapshotReportButton')
 $BrowseSnapshotZipButton = $window.FindName('BrowseSnapshotZipButton')
 $BrowseSnapshotCompareZipButton = $window.FindName('BrowseSnapshotCompareZipButton')
+$ConfigFilesPanel = $window.FindName('ConfigFilesPanel')
+$ConfigFilesItems = $window.FindName('ConfigFilesItems')
 $Param1Label = $window.FindName('Param1Label')
 $Param2Label = $window.FindName('Param2Label')
 $Param3Label = $window.FindName('Param3Label')

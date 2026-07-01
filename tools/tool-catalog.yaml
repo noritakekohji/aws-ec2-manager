@@ -115,6 +115,9 @@ tools:
     windowsPath: log-collector/LogCollector.ps1
     linuxPath: log-collector/log_collector.sh
     defaultArgs: -Target os -OutputDir "{ArtifactsDir}"
+    configFiles:
+      - label: collect_targets.conf
+        path: log-collector/collect_targets.conf
     parameters:
       - key: target
         label: プリセット
@@ -179,6 +182,9 @@ tools:
     windowsPath: perf-monitor/PerfMonitor.ps1
     linuxPath: perf-monitor/perf_monitor.sh
     defaultArgs: status
+    configFiles:
+      - label: perf_monitor.conf
+        path: perf-monitor/perf_monitor.conf
     parameters:
       - key: command
         label: アクション
@@ -233,6 +239,11 @@ tools:
     windowsPath: server-snapshot/ServerSnapshot.ps1
     linuxPath: server-snapshot/server_snapshot.sh
     defaultArgs: collect -OutputPath "{ArtifactsDir}/server-snapshot.json"
+    configFiles:
+      - label: middleware.conf
+        path: server-snapshot/middleware.conf
+      - label: filelist.conf
+        path: server-snapshot/filelist.conf
     parameters:
       - key: command
         label: アクション

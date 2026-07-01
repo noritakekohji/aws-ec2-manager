@@ -155,13 +155,19 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
                     <TextBlock x:Name="ToolTitleText" Grid.Row="0" FontSize="18" FontWeight="SemiBold" />
                     <TextBlock x:Name="ToolDescriptionText" Grid.Row="1" Foreground="{StaticResource MutedTextBrush}" Margin="0,4,0,12" TextWrapping="Wrap" />
 
-                    <Grid Grid.Row="2" Margin="0,0,0,12">
+                    <StackPanel x:Name="ConfigFilesPanel" Grid.Row="2" Margin="0,0,0,12" Visibility="Collapsed">
+                        <TextBlock Text="設定ファイル" FontWeight="SemiBold" Margin="0,0,0,6" />
+                        <StackPanel x:Name="ConfigFilesItems" />
+                    </StackPanel>
+
+                    <Grid Grid.Row="3" Margin="0,0,0,12">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
@@ -194,16 +200,16 @@
                         </Grid>
                     </Grid>
 
-                    <TextBlock Grid.Row="3" Text="コマンドプレビュー" FontWeight="SemiBold" Margin="0,0,0,5" />
-                    <TextBox x:Name="CommandPreviewTextBox" Grid.Row="4" Margin="0,28,0,0" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="78" />
+                    <TextBlock Grid.Row="4" Text="コマンドプレビュー" FontWeight="SemiBold" Margin="0,0,0,5" />
+                    <TextBox x:Name="CommandPreviewTextBox" Grid.Row="5" Margin="0,28,0,0" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="78" />
 
-                    <StackPanel Grid.Row="5" Orientation="Horizontal" Margin="0,12,0,8">
+                    <StackPanel Grid.Row="6" Orientation="Horizontal" Margin="0,12,0,8">
                         <Button x:Name="RefreshPreviewButton" Content="プレビュー更新" Margin="0,0,8,0" />
                         <Button x:Name="RunButton" Content="実行" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0" />
                         <Button x:Name="StopButton" Content="停止" Margin="0,0,8,0" IsEnabled="False" />
                     </StackPanel>
 
-                    <TextBox x:Name="LogTextBox" Grid.Row="6" IsReadOnly="True" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12" />
+                    <TextBox x:Name="LogTextBox" Grid.Row="7" IsReadOnly="True" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12" />
                 </Grid>
             </Border>
         </Grid>
