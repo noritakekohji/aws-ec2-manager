@@ -101,4 +101,32 @@ hash = true
         $file = $result[0].entries | Where-Object { $_.rel_path -eq 'a.txt' }
         $file.sha256 | Should -Be '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824'
     }
+
+    It 'records symlink link_target as a scalar string, not a list' {
+        # New-Item symlink requires admin/Developer Mode; skip if permission denied.
+        $target = Join-Path $Script:TmpRoot 'sym-src'
+        New-Item -ItemType Directory -Path $target -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $target 'real.txt') -Value 'x' -NoNewline
+        $linkPath = Join-Path $target 'link.txt'
+        try {
+            New-Item -ItemType SymbolicLink -Path $linkPath -Value (Join-Path $target 'real.txt') -ErrorAction Stop | Out-Null
+        } catch {
+            Set-ItResult -Skipped -Because "Symlink creation requires elevated/developer-mode privileges: $($_.Exception.Message)"
+            return
+        }
+
+        $confPath = Join-Path $Script:TmpRoot 'flist.conf'
+        Set-Content -LiteralPath $confPath -Value @"
+[target:t]
+path = $target
+"@
+        $env:_OPS_FILELIST_CONF = $confPath
+        $result = @(Get-FilelistInfo)
+        $link = $result[0].entries | Where-Object { $_.rel_path -eq 'link.txt' }
+        $link      | Should -Not -BeNullOrEmpty
+        $link.type | Should -Be 'symlink'
+        # Critical: link_target must be a plain string, not an array
+        $link.link_target | Should -BeOfType [string]
+        $link.link_target | Should -Not -BeNullOrEmpty
+    }
 }

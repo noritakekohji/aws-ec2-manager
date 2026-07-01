@@ -711,7 +711,17 @@ function Get-FilelistEntryMeta {
         try { $entry.size = [int64]$Item.Length } catch {}
     }
     if ($isSymlink) {
-        try { $entry.link_target = $Item.Target } catch {}
+        try {
+            $t = $Item.Target
+            if ($null -eq $t) {
+                $entry.link_target = ''
+            } elseif ($t -is [string]) {
+                $entry.link_target = $t
+            } else {
+                # PS 5.1 FileInfo.Target is IEnumerable<string>; take first
+                $entry.link_target = @($t) | Select-Object -First 1
+            }
+        } catch {}
     }
 
     # Owner + ACL via Get-Acl. On failure, throw so caller (Get-FilelistTarget) records
