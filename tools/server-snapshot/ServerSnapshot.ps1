@@ -608,6 +608,78 @@ function Read-MwConf {
     return $conf
 }
 
+function Read-FilelistConf {
+    # Parse filelist.conf: returns @{ targets = @(...); max_entries_per_target = <int> }
+    # Each target: @{ key; path; os; depth; exclude; hash }
+    $conf = @{
+        targets = @()
+        max_entries_per_target = 100000
+    }
+    $path = if ($env:_OPS_FILELIST_CONF) { $env:_OPS_FILELIST_CONF } else { Join-Path $PSScriptRoot 'filelist.conf' }
+    if (-not (Test-Path -LiteralPath $path)) { return $conf }
+
+    $section = ''
+    $current = $null
+    $targets = @()
+
+    foreach ($line in (Get-Content -LiteralPath $path -ErrorAction SilentlyContinue)) {
+        $t = $line.Trim()
+        if (-not $t -or $t.StartsWith('#')) { continue }
+        if ($t -match '^\[(.+)\]$') {
+            if ($null -ne $current) { $targets += ,$current; $current = $null }
+            $header = $Matches[1].Trim()
+            if ($header -match '^target:(.+)$') {
+                $current = @{
+                    key     = $Matches[1].Trim()
+                    path    = ''
+                    os      = 'both'
+                    depth   = 'unlimited'
+                    exclude = @()
+                    hash    = $false
+                }
+                $section = 'target'
+            } else {
+                $section = $header.ToLower()
+            }
+            continue
+        }
+        $kv = $t -split '=', 2
+        if ($kv.Count -lt 2) { continue }
+        $key = $kv[0].Trim().ToLower()
+        $val = $kv[1].Trim()
+
+        if ($section -eq 'target' -and $null -ne $current) {
+            switch ($key) {
+                'path'    { $current.path = $val }
+                'os'      {
+                    $v = $val.ToLower()
+                    if ($v -eq 'windows' -or $v -eq 'linux' -or $v -eq 'both') { $current.os = $v }
+                }
+                'depth'   {
+                    if ($val -match '^\s*unlimited\s*$') { $current.depth = 'unlimited' }
+                    else {
+                        $n = 0
+                        if ([int]::TryParse($val, [ref]$n) -and $n -ge 0) { $current.depth = $n }
+                        else { $current.depth = 'unlimited' }
+                    }
+                }
+                'exclude' {
+                    $list = @($val -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+                    $current.exclude = $list
+                }
+                'hash'    { $current.hash = ($val.ToLower() -eq 'true') }
+            }
+        }
+        elseif ($section -eq 'limits' -and $key -eq 'max_entries_per_target') {
+            $n = 0
+            if ([int]::TryParse($val, [ref]$n) -and $n -gt 0) { $conf.max_entries_per_target = $n }
+        }
+    }
+    if ($null -ne $current) { $targets += ,$current }
+    $conf.targets = $targets
+    return $conf
+}
+
 function Mask-MwSecrets {
     param([string]$Text, [string[]]$Patterns)
     if (-not $Text -or -not $Patterns -or $Patterns.Count -eq 0) { return @{ Text = "$Text"; Masked = $false } }
