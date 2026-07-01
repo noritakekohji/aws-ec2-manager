@@ -167,41 +167,13 @@
                         <StackPanel x:Name="ConfigFilesItems" />
                     </StackPanel>
 
-                    <Grid Grid.Row="3" Margin="0,0,0,12">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="145" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-
-                        <TextBlock Text="実行パラメーター" FontWeight="SemiBold" Margin="0,0,0,8" Grid.ColumnSpan="2" />
-
-                        <TextBlock x:Name="Param1Label" Grid.Row="1" Text="Param1" Style="{StaticResource FieldLabel}" />
-                        <TextBox x:Name="Param1TextBox" Grid.Row="1" Grid.Column="1" Margin="0,0,0,8" />
-
-                        <TextBlock x:Name="Param2Label" Grid.Row="2" Text="Param2" Style="{StaticResource FieldLabel}" />
-                        <TextBox x:Name="Param2TextBox" Grid.Row="2" Grid.Column="1" Margin="0,0,0,8" />
-
-                        <TextBlock x:Name="Param3Label" Grid.Row="3" Text="Param3" Style="{StaticResource FieldLabel}" />
-                        <Grid Grid.Row="3" Grid.Column="1">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="160" />
-                                <ColumnDefinition Width="150" />
-                            </Grid.ColumnDefinitions>
-                            <TextBox x:Name="Param3TextBox" Margin="0,0,12,0" />
-                            <CheckBox x:Name="Option1CheckBox" Grid.Column="1" Content="HTML レポート" />
-                            <CheckBox x:Name="Option2CheckBox" Grid.Column="2" Content="失敗のみ" />
-                        </Grid>
-                    </Grid>
+                    <StackPanel Grid.Row="3" Margin="0,0,0,10">
+                        <TextBlock Text="実行パラメーター" FontWeight="SemiBold" Margin="0,0,0,6" />
+                        <StackPanel x:Name="ParametersItems" />
+                    </StackPanel>
 
                     <TextBlock Grid.Row="4" Text="コマンドプレビュー" FontWeight="SemiBold" Margin="0,0,0,5" />
-                    <TextBox x:Name="CommandPreviewTextBox" Grid.Row="5" Margin="0,28,0,0" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="78" />
+                    <TextBox x:Name="CommandPreviewTextBox" Grid.Row="5" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" MinHeight="56" MaxHeight="90" />
 
                     <StackPanel Grid.Row="6" Orientation="Horizontal" Margin="0,12,0,8">
                         <Button x:Name="RefreshPreviewButton" Content="プレビュー更新" Margin="0,0,8,0" />

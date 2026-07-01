@@ -587,6 +587,26 @@ function Get-ParameterControlByKey {
     return $null
 }
 
+function Get-ParamConfigFileMap {
+    # paramKey -> configFile object, for tools that route a config file into a parameter.
+    param($Tool)
+    $map = @{}
+    if ($null -eq $Tool) { return $map }
+    if ($null -ne (Get-Member -InputObject $Tool -Name 'ConfigFiles' -ErrorAction SilentlyContinue)) {
+        foreach ($cf in @($Tool.ConfigFiles)) {
+            $pk = [string]$cf.ParamKey
+            if ($pk) { $map[$pk] = $cf }
+        }
+    }
+    return $map
+}
+
+function Save-ConfigBoxOverride {
+    param([string]$ToolId, $ConfigFile, [string]$Path)
+    $default = Get-ToolConfigDefaultPath -RelativePath ([string]$ConfigFile.Path)
+    Set-ConfigFileOverride -ToolId $ToolId -Label ([string]$ConfigFile.Label) -NewPath $Path -DefaultPath $default
+}
+
 function Open-ConfigFileInEditor {
     param([string]$FullPath)
     if (-not $FullPath) { return }
@@ -667,11 +687,15 @@ function Update-ConfigFilesPanel {
         return
     }
     $toolId = [string]$Tool.Id
+    $rendered = 0
     foreach ($cf in $files) {
+        # paramKey config files are merged into their parameter row (Set-ParameterDefaults),
+        # so they are NOT shown again here — avoids the duplicate path field.
+        if ([string]$cf.ParamKey) { continue }
         $effectivePath = Get-ConfigFileEffectivePath -ToolId $toolId -ConfigFile $cf
         $row = New-Object System.Windows.Controls.Grid
-        $row.Margin = '0,0,0,6'
-        $col0 = New-Object System.Windows.Controls.ColumnDefinition; $col0.Width = '145'
+        $row.Margin = '0,0,0,4'
+        $col0 = New-Object System.Windows.Controls.ColumnDefinition; $col0.Width = '110'
         $col1 = New-Object System.Windows.Controls.ColumnDefinition; $col1.Width = '*'
         $col2 = New-Object System.Windows.Controls.ColumnDefinition; $col2.Width = 'Auto'
         $col3 = New-Object System.Windows.Controls.ColumnDefinition; $col3.Width = 'Auto'
@@ -689,9 +713,8 @@ function Update-ConfigFilesPanel {
 
         $pathBox = New-Object System.Windows.Controls.TextBox
         $pathBox.Text = $effectivePath
-        $pathBox.IsReadOnly = $true
         $pathBox.Margin = '0,0,4,0'
-        $pathBox.ToolTip = $effectivePath
+        $pathBox.ToolTip = 'パスを直接入力するか、... で選択'
         [System.Windows.Controls.Grid]::SetColumn($pathBox, 1)
         [void]$row.Children.Add($pathBox)
 
@@ -699,6 +722,11 @@ function Update-ConfigFilesPanel {
         $capturedToolId = $toolId
         $capturedCf = $cf
         $capturedBox = $pathBox
+
+        $pathBox.Add_LostFocus({ param($s,$e)
+            Save-ConfigBoxOverride -ToolId $capturedToolId -ConfigFile $capturedCf -Path ([string]$capturedBox.Text)
+            Update-CommandPreview
+        }.GetNewClosure())
 
         $browseBtn = New-Object System.Windows.Controls.Button
         $browseBtn.Content = '...'
@@ -713,7 +741,7 @@ function Update-ConfigFilesPanel {
 
         $openBtn = New-Object System.Windows.Controls.Button
         $openBtn.Content = '開く'
-        $openBtn.MinWidth = 60
+        $openBtn.MinWidth = 52
         $openBtn.ToolTip = '関連付けエディタで開く（未存在なら作成の可否を確認）'
         $openBtn.Add_Click({ param($s,$e)
             Open-ConfigFileInEditor -FullPath ([string]$capturedBox.Text)
@@ -722,8 +750,13 @@ function Update-ConfigFilesPanel {
         [void]$row.Children.Add($openBtn)
 
         [void]$ConfigFilesItems.Children.Add($row)
+        $rendered++
     }
-    $ConfigFilesPanel.Visibility = 'Visible'
+    if ($rendered -gt 0) {
+        $ConfigFilesPanel.Visibility = 'Visible'
+    } else {
+        $ConfigFilesPanel.Visibility = 'Collapsed'
+    }
 }
 
 function Update-SelectedTool {
@@ -736,83 +769,143 @@ function Update-SelectedTool {
     $ToolTitleText.Text = "{0} ({1})" -f $tool.Name, $tool.Id
     $ToolDescriptionText.Text = $tool.Description
     Set-ParameterDefaults -Tool $tool
-    Sync-ParamKeyOverridesToTextBoxes -Tool $tool
     Update-ConfigFilesPanel -Tool $tool
     Update-CommandPreview
 }
 
-function Sync-ParamKeyOverridesToTextBoxes {
-    param($Tool)
-    if ($null -eq $Tool) { return }
-    $files = @()
-    if ($null -ne (Get-Member -InputObject $Tool -Name 'ConfigFiles' -ErrorAction SilentlyContinue)) {
-        $files = @($Tool.ConfigFiles)
-    }
-    foreach ($cf in $files) {
-        $paramKey = [string]$cf.ParamKey
-        if (-not $paramKey) { continue }
-        $key = Get-ConfigOverrideKey -ToolId ([string]$Tool.Id) -Label ([string]$cf.Label)
-        if (-not $script:ConfigFileOverrides.ContainsKey($key)) { continue }
-        $ctl = Get-ParameterControlByKey -Key $paramKey
-        if ($null -ne $ctl) {
-            $ctl.Text = [string]$script:ConfigFileOverrides[$key]
-        }
-    }
-}
-
 function Set-ParameterDefaults {
+    # Build the parameter panel dynamically:
+    #   - text params   : full-width row (label + box); paramKey configs also get [...] [開く]
+    #   - number params : compact fields packed into a WrapPanel (auto-wraps ~3/row)
+    #   - checkbox      : packed into a WrapPanel
     param($Tool)
     $script:TextParameterControls = @()
     $script:CheckParameterControls = @()
+    $ParametersItems.Children.Clear()
     $sampleRun = Join-Path (Join-Path $script:OutputRoot $Tool.Id) '<timestamp>'
-    $textSlots = @(
-        @{ Label = $Param1Label; Control = $Param1TextBox },
-        @{ Label = $Param2Label; Control = $Param2TextBox },
-        @{ Label = $Param3Label; Control = $Param3TextBox }
-    )
-    $checkSlots = @($Option1CheckBox, $Option2CheckBox)
+    $toolId = [string]$Tool.Id
+    $paramCfgMap = Get-ParamConfigFileMap -Tool $Tool
 
-    foreach ($slot in $textSlots) {
-        $slot.Label.Visibility = 'Collapsed'
-        $slot.Control.Visibility = 'Collapsed'
-        $slot.Control.Text = ''
-        $slot.Control.IsEnabled = $true
-    }
-    foreach ($slot in $checkSlots) {
-        $slot.Visibility = 'Collapsed'
-        $slot.IsChecked = $false
-        $slot.Content = ''
+    $textParams = @()
+    $numberParams = @()
+    $checkParams = @()
+    foreach ($p in @($Tool.Parameters)) {
+        switch ([string]$p.Type) {
+            'hidden'   { }
+            'checkbox' { $checkParams += $p }
+            'number'   { $numberParams += $p }
+            default    { $textParams += $p }
+        }
     }
 
-    $textIndex = 0
-    $checkIndex = 0
-    foreach ($paramDef in @($Tool.Parameters)) {
-        $type = [string]$paramDef.Type
-        if ($type -eq 'hidden') { continue }
-        if ($type -eq 'checkbox') {
-            if ($checkIndex -ge $checkSlots.Count) { continue }
-            $control = $checkSlots[$checkIndex]
-            $control.Visibility = 'Visible'
-            $control.Content = [string]$paramDef.Label
-            $control.IsChecked = (([string]$paramDef.Default) -eq 'true')
-            $script:CheckParameterControls += [pscustomobject]@{
-                Parameter = $paramDef
-                Control = $control
-            }
-            $checkIndex++
-            continue
+    # --- text params (full-width rows) ---
+    foreach ($p in $textParams) {
+        $key = [string]$p.Key
+        $cf = $null
+        if ($paramCfgMap.ContainsKey($key)) { $cf = $paramCfgMap[$key] }
+        if ($null -ne $cf) {
+            $initial = Get-ConfigFileEffectivePath -ToolId $toolId -ConfigFile $cf
+        } else {
+            $initial = Expand-LauncherValue -Value ([string]$p.Default) -Tool $Tool -RunDir $sampleRun
         }
-        if ($textIndex -ge $textSlots.Count) { continue }
-        $slot = $textSlots[$textIndex]
-        $slot.Label.Visibility = 'Visible'
-        $slot.Control.Visibility = 'Visible'
-        $slot.Label.Text = [string]$paramDef.Label
-        $slot.Control.Text = Expand-LauncherValue -Value ([string]$paramDef.Default) -Tool $Tool -RunDir $sampleRun
-        $script:TextParameterControls += [pscustomobject]@{
-            Parameter = $paramDef
-            Control = $slot.Control
+
+        $row = New-Object System.Windows.Controls.Grid
+        $row.Margin = '0,0,0,4'
+        $c0 = New-Object System.Windows.Controls.ColumnDefinition; $c0.Width = '110'
+        $c1 = New-Object System.Windows.Controls.ColumnDefinition; $c1.Width = '*'
+        [void]$row.ColumnDefinitions.Add($c0)
+        [void]$row.ColumnDefinitions.Add($c1)
+
+        $label = New-Object System.Windows.Controls.TextBlock
+        $label.Text = [string]$p.Label
+        $label.Style = $window.FindResource('FieldLabel')
+        [System.Windows.Controls.Grid]::SetColumn($label, 0)
+        [void]$row.Children.Add($label)
+
+        $box = New-Object System.Windows.Controls.TextBox
+        $box.Text = $initial
+        [System.Windows.Controls.Grid]::SetColumn($box, 1)
+        $box.Add_TextChanged({ Update-CommandPreview })
+        [void]$row.Children.Add($box)
+
+        if ($null -ne $cf) {
+            $c2 = New-Object System.Windows.Controls.ColumnDefinition; $c2.Width = 'Auto'
+            $c3 = New-Object System.Windows.Controls.ColumnDefinition; $c3.Width = 'Auto'
+            [void]$row.ColumnDefinitions.Add($c2)
+            [void]$row.ColumnDefinitions.Add($c3)
+            $box.Margin = '0,0,4,0'
+            $box.ToolTip = 'パスを直接入力するか、... で選択'
+            $capToolId = $toolId
+            $capCf = $cf
+            $capBox = $box
+            $box.Add_LostFocus({ param($s,$e)
+                Save-ConfigBoxOverride -ToolId $capToolId -ConfigFile $capCf -Path ([string]$capBox.Text)
+            }.GetNewClosure())
+
+            $browseBtn = New-Object System.Windows.Controls.Button
+            $browseBtn.Content = '...'
+            $browseBtn.Style = $window.FindResource('SmallBrowseButton')
+            $browseBtn.Margin = '0,0,4,0'
+            $browseBtn.ToolTip = 'エクスプローラから設定ファイルを選択'
+            $browseBtn.Add_Click({ param($s,$e)
+                Invoke-SelectConfigFile -ToolId $capToolId -ConfigFile $capCf -PathBox $capBox
+            }.GetNewClosure())
+            [System.Windows.Controls.Grid]::SetColumn($browseBtn, 2)
+            [void]$row.Children.Add($browseBtn)
+
+            $openBtn = New-Object System.Windows.Controls.Button
+            $openBtn.Content = '開く'
+            $openBtn.MinWidth = 52
+            $openBtn.ToolTip = '関連付けエディタで開く（未存在なら作成の可否を確認）'
+            $openBtn.Add_Click({ param($s,$e)
+                Open-ConfigFileInEditor -FullPath ([string]$capBox.Text)
+            }.GetNewClosure())
+            [System.Windows.Controls.Grid]::SetColumn($openBtn, 3)
+            [void]$row.Children.Add($openBtn)
         }
-        $textIndex++
+
+        [void]$ParametersItems.Children.Add($row)
+        $script:TextParameterControls += [pscustomobject]@{ Parameter = $p; Control = $box }
+    }
+
+    # --- number params (compact, WrapPanel auto-wraps) ---
+    if ($numberParams.Count -gt 0) {
+        $wrap = New-Object System.Windows.Controls.WrapPanel
+        $wrap.Margin = '0,0,0,4'
+        foreach ($p in $numberParams) {
+            $cell = New-Object System.Windows.Controls.StackPanel
+            $cell.Orientation = 'Horizontal'
+            $cell.Margin = '0,0,18,4'
+            $lbl = New-Object System.Windows.Controls.TextBlock
+            $lbl.Text = [string]$p.Label
+            $lbl.Style = $window.FindResource('FieldLabel')
+            $lbl.Margin = '0,0,6,0'
+            [void]$cell.Children.Add($lbl)
+            $box = New-Object System.Windows.Controls.TextBox
+            $box.Width = 64
+            $box.Text = Expand-LauncherValue -Value ([string]$p.Default) -Tool $Tool -RunDir $sampleRun
+            $box.Add_TextChanged({ Update-CommandPreview })
+            [void]$cell.Children.Add($box)
+            [void]$wrap.Children.Add($cell)
+            $script:TextParameterControls += [pscustomobject]@{ Parameter = $p; Control = $box }
+        }
+        [void]$ParametersItems.Children.Add($wrap)
+    }
+
+    # --- checkboxes (WrapPanel) ---
+    if ($checkParams.Count -gt 0) {
+        $wrap = New-Object System.Windows.Controls.WrapPanel
+        foreach ($p in $checkParams) {
+            $cb = New-Object System.Windows.Controls.CheckBox
+            $cb.Content = [string]$p.Label
+            $cb.Margin = '0,0,18,0'
+            $cb.IsChecked = (([string]$p.Default) -eq 'true')
+            $cb.Add_Checked({ Update-CommandPreview })
+            $cb.Add_Unchecked({ Update-CommandPreview })
+            [void]$wrap.Children.Add($cb)
+            $script:CheckParameterControls += [pscustomobject]@{ Parameter = $p; Control = $cb }
+        }
+        [void]$ParametersItems.Children.Add($wrap)
     }
 }
 
@@ -1231,14 +1324,7 @@ $BrowseSnapshotZipButton = $window.FindName('BrowseSnapshotZipButton')
 $BrowseSnapshotCompareZipButton = $window.FindName('BrowseSnapshotCompareZipButton')
 $ConfigFilesPanel = $window.FindName('ConfigFilesPanel')
 $ConfigFilesItems = $window.FindName('ConfigFilesItems')
-$Param1Label = $window.FindName('Param1Label')
-$Param2Label = $window.FindName('Param2Label')
-$Param3Label = $window.FindName('Param3Label')
-$Param1TextBox = $window.FindName('Param1TextBox')
-$Param2TextBox = $window.FindName('Param2TextBox')
-$Param3TextBox = $window.FindName('Param3TextBox')
-$Option1CheckBox = $window.FindName('Option1CheckBox')
-$Option2CheckBox = $window.FindName('Option2CheckBox')
+$ParametersItems = $window.FindName('ParametersItems')
 
 $config = Load-LauncherConfig
 $script:LoadedConfig = $config
@@ -1257,13 +1343,6 @@ foreach ($tool in $script:Catalog) {
 if ($ToolListBox.Items.Count -gt 0) { $ToolListBox.SelectedIndex = 0 }
 
 $ToolListBox.Add_SelectionChanged({ Update-SelectedTool })
-$Param1TextBox.Add_TextChanged({ Update-CommandPreview })
-$Param2TextBox.Add_TextChanged({ Update-CommandPreview })
-$Param3TextBox.Add_TextChanged({ Update-CommandPreview })
-$Option1CheckBox.Add_Checked({ Update-CommandPreview })
-$Option1CheckBox.Add_Unchecked({ Update-CommandPreview })
-$Option2CheckBox.Add_Checked({ Update-CommandPreview })
-$Option2CheckBox.Add_Unchecked({ Update-CommandPreview })
 $HeaderAwsProfileTextBox.Add_TextChanged({
     $script:AwsProfile = $HeaderAwsProfileTextBox.Text.Trim()
     Update-CommandPreview

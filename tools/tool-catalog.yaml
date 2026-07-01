@@ -48,7 +48,7 @@ tools:
         default: "{ToolDir}/cert_targets.lst"
       - key: timeoutSec
         label: タイムアウト秒
-        type: text
+        type: number
         argument: -TimeoutSec
         default: 10
       - key: html
@@ -136,7 +136,7 @@ tools:
         default: 24h
       - key: maxSizeMb
         label: 最大 MB
-        type: text
+        type: number
         argument: -MaxSizeMB
         default: 500
       - key: outputDir
@@ -164,12 +164,12 @@ tools:
         default: "{ToolDir}/targets.lst"
       - key: pingCount
         label: Ping 回数
-        type: text
+        type: number
         argument: -PingCount
         default: 3
       - key: timeoutSec
         label: タイムアウト秒
-        type: text
+        type: number
         argument: -TimeoutSec
         default: 3
       - key: html
@@ -213,7 +213,7 @@ tools:
         value: "{ArtifactsDir}"
       - key: duration
         label: Duration 秒
-        type: text
+        type: number
         argument: -Duration
         default: ""
 
