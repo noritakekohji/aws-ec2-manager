@@ -1300,6 +1300,58 @@ function Compare-Middleware($b, $a) {
     return $results
 }
 
+function Compare-Filelist($b, $a) {
+    # Compare filelist categories. Emits one CategoryResult per target key.
+    # $b / $a are arrays of target hashtables (from snapshot.filelist).
+    $results = [System.Collections.Generic.List[CategoryResult]]::new()
+
+    $bArr = @(As-Array $b | ForEach-Object { Obj-To-Dict $_ })
+    $aArr = @(As-Array $a | ForEach-Object { Obj-To-Dict $_ })
+
+    $bByKey = @{}
+    foreach ($t in $bArr) { $k = "$($t['key'])"; if ($k) { $bByKey[$k] = $t } }
+    $aByKey = @{}
+    foreach ($t in $aArr) { $k = "$($t['key'])"; if ($k) { $aByKey[$k] = $t } }
+
+    $allKeys = @($bByKey.Keys) + @($aByKey.Keys) | Sort-Object -Unique
+
+    foreach ($key in $allKeys) {
+        $catName = "filelist/$key"
+        $bt = $bByKey[$key]
+        $at = $aByKey[$key]
+
+        $bHash = if ($bt) { [bool]$bt['hash_enabled'] } else { $false }
+        $aHash = if ($at) { [bool]$at['hash_enabled'] } else { $false }
+        $bothHash = $bHash -and $aHash
+
+        # Field set — sha256 only when both sides opted in (per spec §5)
+        $fields = @('type','size','mtime','mode','owner','group')
+        if ($bothHash) { $fields += 'sha256' }
+
+        $bEntries = if ($bt) { (Obj-To-Dict $bt)['entries'] } else { @() }
+        $aEntries = if ($at) { (Obj-To-Dict $at)['entries'] } else { @() }
+
+        # Project entries to comparable rows keyed by rel_path
+        $bRows = @()
+        foreach ($e in (As-Array $bEntries)) {
+            $d = Obj-To-Dict $e
+            $h = @{ name = "$($d['rel_path'])" }
+            foreach ($f in $fields) { $h[$f] = "$($d[$f])" }
+            $bRows += ,$h
+        }
+        $aRows = @()
+        foreach ($e in (As-Array $aEntries)) {
+            $d = Obj-To-Dict $e
+            $h = @{ name = "$($d['rel_path'])" }
+            foreach ($f in $fields) { $h[$f] = "$($d[$f])" }
+            $aRows += ,$h
+        }
+
+        $results.Add((Compare-List $bRows $aRows 'name' $fields $catName))
+    }
+    return $results
+}
+
 # ============================================================
 # Console output
 # ============================================================
@@ -1496,7 +1548,7 @@ function Invoke-Compare {
     $bMeta = Obj-To-Dict ($bData['meta'])
     $aMeta = Obj-To-Dict ($aData['meta'])
 
-    $allCats   = @('os','network','services','packages','users','filesystem','environment','security','patches','tuning','scheduled','middleware')
+    $allCats   = @('os','network','services','packages','users','filesystem','environment','security','patches','tuning','scheduled','middleware','filelist')
     $availCats = $allCats | Where-Object { $bData.ContainsKey($_) -and $aData.ContainsKey($_) }
     $compareCats = if ($Categories -contains 'all') { $availCats } else {
         $Categories | Where-Object { $availCats -contains $_ }
@@ -1520,6 +1572,7 @@ function Invoke-Compare {
             'tuning'      { @(Compare-Tuning      $bCat $aCat) }
             'scheduled'   { @(Compare-Scheduled   $bCat $aCat) }
             'middleware'  { @(Compare-Middleware  $bCat $aCat) }
+            'filelist'    { @(Compare-Filelist    $bCat $aCat) }
         }
         foreach ($cr in $catResults) { $allResults.Add($cr) }
     }
