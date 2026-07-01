@@ -144,6 +144,7 @@ collect_snapshot() {
     export _OPS_CATEGORIES="$resolved"
     export _OPS_OUTPUT="$snap_file"
     export _OPS_MW_CONF="${SCRIPT_DIR}/middleware.conf"   # consumed by _mw_load_conf (MW2)
+    export _OPS_FILELIST_CONF="${SCRIPT_DIR}/filelist.conf"
 
     python3 - << 'PYEOF'
 import os, sys, json, subprocess, socket, platform, re, datetime
@@ -831,12 +832,201 @@ def collect_middleware():
         return {'_probe': _mw_read_file(probe, conf['mask_patterns'], conf['max_file_kb'])}
     return _mw_assemble(conf)
 
+# ─────────────── filelist collector ───────────────
+def _load_filelist_conf():
+    conf = {'targets': [], 'max_entries_per_target': 100000}
+    path = os.environ.get('_OPS_FILELIST_CONF', '')
+    if not path or not os.path.isfile(path):
+        return conf
+    section = ''
+    current = None
+    targets = []
+    try:
+        with open(path, 'r', encoding='utf-8', errors='replace') as f:
+            for raw in f:
+                t = raw.strip()
+                if not t or t.startswith('#'):
+                    continue
+                m = re.match(r'^\[(.+)\]$', t)
+                if m:
+                    if current is not None:
+                        targets.append(current)
+                        current = None
+                    header = m.group(1).strip()
+                    tm = re.match(r'^target:(.+)$', header)
+                    if tm:
+                        current = {
+                            'key': tm.group(1).strip(),
+                            'path': '', 'os': 'both', 'depth': 'unlimited',
+                            'exclude': [], 'hash': False,
+                        }
+                        section = 'target'
+                    else:
+                        section = header.lower()
+                    continue
+                if '=' not in t:
+                    continue
+                k, v = t.split('=', 1)
+                k = k.strip().lower()
+                v = v.strip()
+                if section == 'target' and current is not None:
+                    if k == 'path':
+                        current['path'] = v
+                    elif k == 'os' and v.lower() in ('windows', 'linux', 'both'):
+                        current['os'] = v.lower()
+                    elif k == 'depth':
+                        if v.lower() == 'unlimited':
+                            current['depth'] = 'unlimited'
+                        else:
+                            try:
+                                n = int(v)
+                                current['depth'] = n if n >= 0 else 'unlimited'
+                            except ValueError:
+                                current['depth'] = 'unlimited'
+                    elif k == 'exclude':
+                        current['exclude'] = [g.strip() for g in v.split(',') if g.strip()]
+                    elif k == 'hash':
+                        current['hash'] = (v.lower() == 'true')
+                elif section == 'limits' and k == 'max_entries_per_target':
+                    try:
+                        n = int(v)
+                        if n > 0:
+                            conf['max_entries_per_target'] = n
+                    except ValueError:
+                        pass
+    except Exception:
+        return conf
+    if current is not None:
+        targets.append(current)
+    conf['targets'] = targets
+    return conf
+
+def _filelist_matches_exclude(rel_path, globs):
+    if not globs:
+        return False
+    forward = rel_path.replace('\\', '/')
+    import fnmatch as _fn
+    for g in globs:
+        if _fn.fnmatch(forward, g):
+            return True
+        if '/' not in g and _fn.fnmatch(os.path.basename(forward), g):
+            return True
+    return False
+
+def _filelist_entry_meta(full_path, rel_path, compute_hash):
+    import stat as _st
+    st = os.lstat(full_path)
+    is_link = _st.S_ISLNK(st.st_mode)
+    is_dir = _st.S_ISDIR(st.st_mode) and not is_link
+    entry_type = 'symlink' if is_link else ('dir' if is_dir else 'file')
+
+    entry = {
+        'rel_path': rel_path, 'type': entry_type,
+        'size': None, 'mtime': None,
+        'mode': None, 'uid': None, 'gid': None,
+        'owner': None, 'group': None, 'acl': None,
+        'sha256': None, 'link_target': None,
+    }
+    entry['mtime'] = datetime.datetime.utcfromtimestamp(st.st_mtime).strftime('%Y-%m-%dT%H:%M:%SZ')
+    entry['mode'] = format(st.st_mode & 0o7777, '04o')
+    entry['uid'] = int(st.st_uid)
+    entry['gid'] = int(st.st_gid)
+    try:
+        import pwd
+        entry['owner'] = pwd.getpwuid(st.st_uid).pw_name
+    except Exception:
+        entry['owner'] = str(st.st_uid)
+    try:
+        import grp
+        entry['group'] = grp.getgrgid(st.st_gid).gr_name
+    except Exception:
+        entry['group'] = str(st.st_gid)
+    if entry_type == 'file':
+        entry['size'] = int(st.st_size)
+        if compute_hash:
+            try:
+                import hashlib
+                h = hashlib.sha256()
+                with open(full_path, 'rb') as f:
+                    for chunk in iter(lambda: f.read(65536), b''):
+                        h.update(chunk)
+                entry['sha256'] = h.hexdigest()
+            except Exception:
+                pass
+    if entry_type == 'symlink':
+        try:
+            entry['link_target'] = os.readlink(full_path)
+        except OSError:
+            pass
+    return entry
+
+def _filelist_scan_target(target, max_entries):
+    result = {
+        'key': target['key'], 'path': target['path'],
+        'os_matched': True, 'exists': False,
+        'depth': target['depth'], 'hash_enabled': bool(target['hash']),
+        'excluded': list(target.get('exclude') or []),
+        'entries': [], 'entry_count': 0, 'truncated': False, 'errors': [],
+    }
+    if target['os'] == 'windows':
+        result['os_matched'] = False
+        return result
+    if not target['path'] or not os.path.exists(target['path']):
+        return result
+    result['exists'] = True
+    root = os.path.abspath(target['path'])
+    root_len = len(root)
+    limit = float('inf') if target['depth'] == 'unlimited' else int(target['depth'])
+    stack = [(root, 0)]
+    entries = []
+    truncated = False
+    import stat as _st
+    while stack and not truncated:
+        cur_dir, cur_depth = stack.pop()
+        try:
+            names = sorted(os.listdir(cur_dir))
+        except OSError:
+            rel = cur_dir[root_len:].lstrip(os.sep)
+            result['errors'].append({'rel_path': rel, 'reason': 'permission_denied'})
+            continue
+        for name in names:
+            if truncated:
+                break
+            full = os.path.join(cur_dir, name)
+            rel = full[root_len:].lstrip(os.sep)
+            if _filelist_matches_exclude(rel, target.get('exclude') or []):
+                continue
+            try:
+                entry = _filelist_entry_meta(full, rel, result['hash_enabled'])
+            except OSError:
+                result['errors'].append({'rel_path': rel, 'reason': 'permission_denied'})
+                continue
+            entries.append(entry)
+            if len(entries) >= max_entries:
+                truncated = True
+                break
+            try:
+                st = os.lstat(full)
+                if _st.S_ISDIR(st.st_mode) and not _st.S_ISLNK(st.st_mode) and (cur_depth + 1) <= limit:
+                    stack.append((full, cur_depth + 1))
+            except OSError:
+                pass
+    entries.sort(key=lambda e: e['rel_path'])
+    result['entries'] = entries
+    result['entry_count'] = len(entries)
+    result['truncated'] = truncated
+    return result
+
+def collect_filelist():
+    conf = _load_filelist_conf()
+    return [_filelist_scan_target(t, conf['max_entries_per_target']) for t in conf['targets']]
+
 CAT_MAP = {
     'os': collect_os, 'network': collect_network, 'services': collect_services,
     'packages': collect_packages, 'users': collect_users, 'filesystem': collect_filesystem,
     'environment': collect_environment, 'security': collect_security,
     'patches': collect_patches, 'tuning': collect_tuning, 'scheduled': collect_scheduled,
-    'middleware': collect_middleware,
+    'middleware': collect_middleware, 'filelist': collect_filelist,
 }
 
 hostname = socket.gethostname()
