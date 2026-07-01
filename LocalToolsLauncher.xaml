@@ -92,7 +92,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <TextBlock Text="スナップショット統合ツール" FontWeight="SemiBold" FontSize="15" />
+                <TextBlock Text="スナップショット一括実行" FontWeight="SemiBold" FontSize="15" />
 
                 <Grid Grid.Row="1" Margin="0,10,0,0">
                     <Grid.ColumnDefinitions>
@@ -142,7 +142,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <TextBlock Text="ツール" FontWeight="SemiBold" FontSize="15" Margin="0,0,0,8" />
+                    <TextBlock Text="ツール個別実行" FontWeight="SemiBold" FontSize="15" Margin="0,0,0,8" />
                     <ListBox x:Name="ToolListBox" Grid.Row="1" Background="#0F1419" Foreground="{StaticResource MainTextBrush}" BorderBrush="{StaticResource BorderBrushSoft}" />
                 </Grid>
             </Border>
