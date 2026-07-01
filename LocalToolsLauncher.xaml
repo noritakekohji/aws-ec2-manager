@@ -2,9 +2,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="ツールランチャー"
         Width="1180"
-        Height="780"
+        Height="860"
         MinWidth="980"
-        MinHeight="640"
+        MinHeight="700"
         WindowStartupLocation="CenterScreen"
         Background="#101418">
     <Window.Resources>
@@ -54,7 +54,8 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
+            <RowDefinition Height="*" MinHeight="300" />
+            <RowDefinition Height="170" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
@@ -181,11 +182,23 @@
                         <StackPanel x:Name="ParametersItems" />
                     </StackPanel>
 
-                    <TextBox x:Name="LogTextBox" Grid.Row="7" IsReadOnly="True" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12" />
+                    <!-- Row 7 (*) is an empty spacer keeping content top-aligned. -->
                 </Grid>
             </Border>
         </Grid>
 
-        <TextBlock x:Name="StatusText" Grid.Row="3" Foreground="{StaticResource MutedTextBrush}" Margin="2,10,0,0" />
+        <!-- Shared log pane (common to all tools) -->
+        <Border Grid.Row="3" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,10,0,0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock Text="ログ出力" FontWeight="SemiBold" Margin="0,0,0,6" />
+                <TextBox x:Name="LogTextBox" Grid.Row="1" IsReadOnly="True" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12" Background="#0F1419" />
+            </Grid>
+        </Border>
+
+        <TextBlock x:Name="StatusText" Grid.Row="4" Foreground="{StaticResource MutedTextBrush}" Margin="2,8,0,0" />
     </Grid>
 </Window>
