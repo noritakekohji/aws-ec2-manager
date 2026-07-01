@@ -1,26 +1,26 @@
 ﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
-    Collect-snapshot の ZIP を解凍し、HTML レポートを一括生成するツール。
+    Collect-snapshot の ZIP または server-snapshot JSON から HTML レポートを生成するツール。
 
 .DESCRIPTION
     Phase 1: Parameter parsing / defaults
-    Phase 2: ZIP extraction to temp directory
+    Phase 2: ZIP extraction to temp directory, or direct JSON input handling
     Phase 3: JSON discovery (server-snapshot / port-inventory / aws-instance-audit)
     Phase 4: Report generation (single snapshot summary or two-snapshot comparison)
     Phase 5: Cleanup temp directory, output report path
 
-    Single mode:  1 つの ZIP からサマリ HTML を生成
-    Compare mode: 2 つの ZIP を解凍し compare_server_info.py で差分レポートを生成
+    Single mode:  1 つの ZIP/JSON からサマリ HTML を生成
+    Compare mode: 2 つの ZIP/JSON を compare_server_info.py で差分レポート生成
 
 .PARAMETER ZipPath
-    対象の ZIP ファイルパス（必須）。
+    対象の ZIP または server-snapshot JSON ファイルパス（必須）。
 
 .PARAMETER CompareWith
-    比較対象の ZIP ファイルパス。指定すると差分レポートモードになる。
+    比較対象の ZIP または server-snapshot JSON ファイルパス。指定すると差分レポートモードになる。
 
 .PARAMETER OutputDir
-    レポート出力先ディレクトリ。既定は ZIP と同じディレクトリ。
+    レポート出力先ディレクトリ。既定は入力ファイルと同じディレクトリ。
 
 .PARAMETER DiffOnly
     Compare モードで差分のみ表示する。
@@ -31,13 +31,14 @@
 .EXAMPLE
     .\ReportSnapshot.ps1 -ZipPath .\snapshots\host_label_20260617.zip
     .\ReportSnapshot.ps1 -ZipPath before.zip -CompareWith after.zip
-    .\ReportSnapshot.ps1 -ZipPath .\snapshots\*.zip -OutputDir .\reports
+    .\ReportSnapshot.ps1 -ZipPath .\snapshots\server-snapshot.json
+    .\ReportSnapshot.ps1 -ZipPath before.json -CompareWith after.json -DiffOnly
 
 .NOTES
     Exit codes:
       0  Success
-      1  Bad arguments / ZIP not found
-      2  JSON not found in ZIP
+      1  Bad arguments / input not found
+      2  JSON not found or invalid input
      10  Prerequisite missing (python3 for compare mode)
 #>
 [CmdletBinding()]
@@ -61,11 +62,11 @@ $ToolsDir  = Split-Path -Parent $ScriptDir
 # Helpers
 # ============================================================
 
-function Resolve-ZipPath {
+function Resolve-InputPath {
     param([string]$Path)
     $resolved = Resolve-Path -LiteralPath $Path -ErrorAction SilentlyContinue
     if (-not $resolved) {
-        Write-Error "[report-snapshot] ZIP not found: $Path"
+        Write-Error "[report-snapshot] Input not found: $Path"
         return $null
     }
     return $resolved.Path
@@ -90,6 +91,47 @@ function Find-JsonInDir {
         Select-Object -First 1
     if (-not $json) { return $null }
     return $json.FullName
+}
+
+function Resolve-SnapshotInput {
+    param(
+        [string]$Path,
+        [string]$TempBase,
+        [string]$Slot
+    )
+
+    $ext = [System.IO.Path]::GetExtension($Path).ToLowerInvariant()
+    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($Path)
+    $result = New-Object PSObject -Property @{
+        Path       = $Path
+        Kind       = $ext.TrimStart('.')
+        BaseName   = $baseName
+        ExtractDir = ''
+        ServerJson = $null
+        PortJson   = $null
+        AwsJson    = $null
+    }
+
+    if ($ext -eq '.zip') {
+        Write-Host "[report-snapshot] Extracting: $(Split-Path -Leaf $Path) ..."
+        $extractDir = Join-Path $TempBase $Slot
+        [void](Expand-SnapshotZip -ZipFile $Path -DestDir $extractDir)
+        $result.ExtractDir = $extractDir
+        $result.ServerJson = Find-JsonInDir $extractDir 'server-snapshot'
+        $result.PortJson   = Find-JsonInDir $extractDir 'port-inventory'
+        $result.AwsJson    = Find-JsonInDir $extractDir 'aws-instance-audit'
+        return $result
+    }
+
+    if ($ext -eq '.json') {
+        Write-Host "[report-snapshot] Using JSON: $(Split-Path -Leaf $Path) ..."
+        $result.Kind = 'json'
+        $result.ServerJson = $Path
+        return $result
+    }
+
+    Write-Error "[report-snapshot] Unsupported input type: $Path (use .zip or .json)"
+    return $null
 }
 
 function Read-JsonFile {
@@ -187,6 +229,94 @@ function Build-DictSection {
   <tbody>$rows</tbody></table>
 </section>
 "@
+}
+
+function Build-FilelistSections {
+    param($FilelistData)
+    if (-not $FilelistData) { return '' }
+
+    $sections = ''
+    foreach ($target in @($FilelistData)) {
+        if (-not $target) { continue }
+        $key = Get-SafeProp $target 'key'
+        if (-not $key) { $key = '(unnamed)' }
+
+        $entries = @()
+        $entryData = Get-SafeProp $target 'entries'
+        if ($entryData) { $entries = @($entryData) }
+
+        $errors = @()
+        $errorData = Get-SafeProp $target 'errors'
+        if ($errorData) { $errors = @($errorData) }
+
+        $summaryRows = ''
+        foreach ($pair in @(
+            @('key', $key),
+            @('path', (Get-SafeProp $target 'path')),
+            @('os_matched', (Get-SafeProp $target 'os_matched')),
+            @('exists', (Get-SafeProp $target 'exists')),
+            @('depth', (Get-SafeProp $target 'depth')),
+            @('hash_enabled', (Get-SafeProp $target 'hash_enabled')),
+            @('entry_count', (Get-SafeProp $target 'entry_count')),
+            @('truncated', (Get-SafeProp $target 'truncated')),
+            @('excluded', ((@(Get-SafeProp $target 'excluded') | ForEach-Object { "$_" }) -join ', ')),
+            @('errors', $errors.Count)
+        )) {
+            $summaryRows += "<tr><td class='key'>$(HtmlEncode $pair[0])</td><td>$(HtmlEncode "$($pair[1])")</td></tr>`n"
+        }
+
+        $entryRows = ''
+        foreach ($entry in $entries) {
+            $acl = Get-SafeProp $entry 'acl'
+            $aclCount = if ($acl) { @($acl).Count } else { 0 }
+            $entryRows += '<tr>'
+            foreach ($value in @(
+                (Get-SafeProp $entry 'rel_path'),
+                (Get-SafeProp $entry 'type'),
+                (Get-SafeProp $entry 'size'),
+                (Get-SafeProp $entry 'mtime'),
+                (Get-SafeProp $entry 'owner'),
+                (Get-SafeProp $entry 'group'),
+                $aclCount,
+                (Get-SafeProp $entry 'sha256'),
+                (Get-SafeProp $entry 'link_target')
+            )) {
+                $entryRows += "<td>$(HtmlEncode "$value")</td>"
+            }
+            $entryRows += "</tr>`n"
+        }
+
+        $errorRows = ''
+        foreach ($err in $errors) {
+            $errorRows += '<tr>'
+            foreach ($value in @((Get-SafeProp $err 'rel_path'), (Get-SafeProp $err 'reason'))) {
+                $errorRows += "<td>$(HtmlEncode "$value")</td>"
+            }
+            $errorRows += "</tr>`n"
+        }
+        $errorBlock = ''
+        if ($errorRows) {
+            $errorBlock = @"
+  <h3>Errors</h3>
+  <table><thead><tr><th>Path</th><th>Reason</th></tr></thead>
+  <tbody>$errorRows</tbody></table>
+"@
+        }
+
+        $sections += @"
+<section class="cat">
+  <h2>Filelist - $(HtmlEncode "$key") <span class="badge bok">$($entries.Count)</span></h2>
+  <table><thead><tr><th>Property</th><th>Value</th></tr></thead>
+  <tbody>$summaryRows</tbody></table>
+  <h3>Entries</h3>
+  <table><thead><tr><th>Path</th><th>Type</th><th>Size</th><th>Modified UTC</th><th>Owner</th><th>Group</th><th>ACLs</th><th>SHA256</th><th>Link Target</th></tr></thead>
+  <tbody>$entryRows</tbody></table>
+$errorBlock
+</section>
+"@
+    }
+
+    return $sections
 }
 
 function Build-SnapshotHtml {
@@ -401,6 +531,12 @@ function Build-SnapshotHtml {
         }
     }
 
+    # Filelist
+    $filelistData = Get-SafeProp $ServerJson 'filelist'
+    if ($filelistData) {
+        $sections += Build-FilelistSections $filelistData
+    }
+
     # Port Inventory
     if ($PortJson) {
         $ports = @($PortJson)
@@ -429,6 +565,7 @@ function Build-SnapshotHtml {
     if (Get-SafeProp $ServerJson 'filesystem')   { $catNames += 'Filesystem' }
     if (Get-SafeProp $ServerJson 'environment')  { $catNames += 'Environment' }
     if (Get-SafeProp $ServerJson 'security')     { $catNames += 'Security' }
+    if (Get-SafeProp $ServerJson 'filelist')     { $catNames += 'Filelist' }
     if ($PortJson)                               { $catNames += 'Port Inventory' }
 
     $nav = ($catNames | ForEach-Object { $_ }) -join ' | '
@@ -544,20 +681,20 @@ function Invoke-CompareReport {
 
 # Validate inputs
 $ZipPath = $ZipPath.Trim('"').Trim("'")
-$resolvedZip = Resolve-ZipPath $ZipPath
-if (-not $resolvedZip) { exit 1 }
+$resolvedInput = Resolve-InputPath $ZipPath
+if (-not $resolvedInput) { exit 1 }
 
 $isCompare = $false
 $resolvedCompare = $null
 if ($CompareWith) {
     $CompareWith = $CompareWith.Trim('"').Trim("'")
-    $resolvedCompare = Resolve-ZipPath $CompareWith
+    $resolvedCompare = Resolve-InputPath $CompareWith
     if (-not $resolvedCompare) { exit 1 }
     $isCompare = $true
 }
 
 if (-not $OutputDir) {
-    $OutputDir = Split-Path -Parent $resolvedZip
+    $OutputDir = Split-Path -Parent $resolvedInput
 }
 if (-not (Test-Path $OutputDir)) {
     [void](New-Item -ItemType Directory -Path $OutputDir -Force)
@@ -567,40 +704,37 @@ $tempBase = Join-Path ([System.IO.Path]::GetTempPath()) "report-snapshot-$(Get-D
 [void](New-Item -ItemType Directory -Path $tempBase -Force)
 
 try {
-    # Extract ZIP(s)
-    Write-Host "[report-snapshot] Extracting: $(Split-Path -Leaf $resolvedZip) ..."
-    $extractDir1 = Join-Path $tempBase 'zip1'
-    Expand-SnapshotZip -ZipFile $resolvedZip -DestDir $extractDir1
+    # Prepare input(s)
+    $input1 = Resolve-SnapshotInput -Path $resolvedInput -TempBase $tempBase -Slot 'input1'
+    if (-not $input1) { exit 1 }
 
     if ($isCompare) {
-        Write-Host "[report-snapshot] Extracting: $(Split-Path -Leaf $resolvedCompare) ..."
-        $extractDir2 = Join-Path $tempBase 'zip2'
-        Expand-SnapshotZip -ZipFile $resolvedCompare -DestDir $extractDir2
+        $input2 = Resolve-SnapshotInput -Path $resolvedCompare -TempBase $tempBase -Slot 'input2'
+        if (-not $input2) { exit 1 }
     }
 
-    # Discover JSONs
-    $serverJson1 = Find-JsonInDir $extractDir1 'server-snapshot'
-    $portJson1   = Find-JsonInDir $extractDir1 'port-inventory'
-    $awsJson1    = Find-JsonInDir $extractDir1 'aws-instance-audit'
+    $serverJson1 = $input1.ServerJson
+    $portJson1   = $input1.PortJson
+    $awsJson1    = $input1.AwsJson
 
     if (-not $serverJson1 -and -not $portJson1) {
-        Write-Error "[report-snapshot] No JSON files found in ZIP"
+        Write-Error "[report-snapshot] No supported JSON files found in input"
         exit 2
     }
 
-    $zipBaseName = [System.IO.Path]::GetFileNameWithoutExtension($resolvedZip)
+    $inputBaseName = $input1.BaseName
     $generated   = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
 
     if ($isCompare) {
         # Compare mode
-        $serverJson2 = Find-JsonInDir $extractDir2 'server-snapshot'
+        $serverJson2 = $input2.ServerJson
         if (-not $serverJson1 -or -not $serverJson2) {
-            Write-Error "[report-snapshot] server-snapshot JSON required in both ZIPs for compare mode"
+            Write-Error "[report-snapshot] server-snapshot JSON required in both inputs for compare mode"
             exit 2
         }
 
-        $zipBaseName2 = [System.IO.Path]::GetFileNameWithoutExtension($resolvedCompare)
-        $htmlName = "compare_${zipBaseName}_vs_${zipBaseName2}.html"
+        $inputBaseName2 = $input2.BaseName
+        $htmlName = "compare_${inputBaseName}_vs_${inputBaseName2}.html"
         $htmlPath = Join-Path $OutputDir $htmlName
 
         $ec = Invoke-CompareReport -BeforeJson $serverJson1 -AfterJson $serverJson2 `
@@ -615,12 +749,12 @@ try {
         $portData   = Read-JsonFile $portJson1
         $awsData    = Read-JsonFile $awsJson1
 
-        $htmlName = "report_${zipBaseName}.html"
+        $htmlName = "report_${inputBaseName}.html"
         $htmlPath = Join-Path $OutputDir $htmlName
 
         Write-Host "[report-snapshot] Generating snapshot report ..."
         $html = Build-SnapshotHtml -ServerJson $serverData -PortJson $portData `
-                                   -AwsJson $awsData -ZipName (Split-Path -Leaf $resolvedZip) `
+                                   -AwsJson $awsData -ZipName (Split-Path -Leaf $resolvedInput) `
                                    -Generated $generated
 
         [System.IO.File]::WriteAllText(
@@ -633,16 +767,19 @@ try {
 
     # Copy extracted files if requested
     if ($KeepExtracted) {
-        $keepDir = Join-Path $OutputDir $zipBaseName
-        if (Test-Path $keepDir) { Remove-Item -LiteralPath $keepDir -Recurse -Force }
-        Copy-Item -LiteralPath $extractDir1 -Destination $keepDir -Recurse -Force
-        # Rename 'zip1' inner folder structure
-        Write-Host "[report-snapshot] Extracted files kept: $keepDir"
+        if ($input1.ExtractDir) {
+            $keepDir = Join-Path $OutputDir $inputBaseName
+            if (Test-Path $keepDir) { Remove-Item -LiteralPath $keepDir -Recurse -Force }
+            Copy-Item -LiteralPath $input1.ExtractDir -Destination $keepDir -Recurse -Force
+            Write-Host "[report-snapshot] Extracted files kept: $keepDir"
+        }
         if ($isCompare) {
-            $keepDir2 = Join-Path $OutputDir $zipBaseName2
-            if (Test-Path $keepDir2) { Remove-Item -LiteralPath $keepDir2 -Recurse -Force }
-            Copy-Item -LiteralPath $extractDir2 -Destination $keepDir2 -Recurse -Force
-            Write-Host "[report-snapshot] Extracted files kept: $keepDir2"
+            if ($input2.ExtractDir) {
+                $keepDir2 = Join-Path $OutputDir $inputBaseName2
+                if (Test-Path $keepDir2) { Remove-Item -LiteralPath $keepDir2 -Recurse -Force }
+                Copy-Item -LiteralPath $input2.ExtractDir -Destination $keepDir2 -Recurse -Force
+                Write-Host "[report-snapshot] Extracted files kept: $keepDir2"
+            }
         }
     }
 

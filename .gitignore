@@ -15,3 +15,6 @@ publish/
 # ========== Local Tools Launcher ==========
 # ランチャー実行ログ
 reports/local-tools/
+
+# ローカルエージェント設定
+.claude/

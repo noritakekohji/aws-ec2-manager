@@ -100,6 +100,26 @@ hash = TRUE
         Remove-Item -LiteralPath $f -Force
     }
 
+    It 'ignores inline comments in key values' {
+        $f = [System.IO.Path]::GetTempFileName()
+        Set-Content -LiteralPath $f -Value @'
+[target:win]
+path    = D:\        # required
+os      = windows   # windows | linux | both
+depth   = 3         # integer or unlimited
+exclude = *.tmp     # comma-separated globs
+hash    = true      # compute sha256
+'@
+        $env:_OPS_FILELIST_CONF = $f
+        $conf = Read-FilelistConf
+        $conf.targets[0].path     | Should -Be 'D:\'
+        $conf.targets[0].os       | Should -Be 'windows'
+        $conf.targets[0].depth    | Should -Be 3
+        $conf.targets[0].exclude  | Should -Be @('*.tmp')
+        $conf.targets[0].hash     | Should -Be $true
+        Remove-Item -LiteralPath $f -Force
+    }
+
     It 'parses [limits] max_entries_per_target' {
         $f = [System.IO.Path]::GetTempFileName()
         Set-Content -LiteralPath $f -Value @'

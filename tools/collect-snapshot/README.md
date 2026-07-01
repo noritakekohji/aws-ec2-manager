@@ -95,13 +95,16 @@ ZIP ファイル名: `<hostname>_<label>_<timestamp>.zip`（ラベルなし時: 
 
 ## レポート生成（ReportSnapshot）
 
-収集済み ZIP を解凍し、JSON から HTML レポートを一括生成します（Windows のみ）。
+収集済み ZIP、または `server-snapshot` の JSON から HTML レポートを生成します（Windows のみ）。
 
 ### 単一スナップショットレポート
 
 ```powershell
 # ZIP からサマリ HTML を生成
 .\ReportSnapshot.ps1 -ZipPath .\snapshots\host_label_20260617.zip
+
+# server-snapshot JSON からサマリ HTML を生成
+.\ReportSnapshot.ps1 -ZipPath .\snapshots\server-snapshot.json
 
 # 出力先を指定
 .\ReportSnapshot.ps1 -ZipPath .\snapshots\host_label_20260617.zip -OutputDir .\reports
@@ -112,11 +115,14 @@ ZIP ファイル名: `<hostname>_<label>_<timestamp>.zip`（ラベルなし時: 
 
 ### 2 つのスナップショットを比較
 
-2 つの ZIP を指定すると `server-snapshot/compare_server_info.py` を使って差分レポートを生成します。
+2 つの ZIP または `server-snapshot` JSON を指定すると `server-snapshot/compare_server_info.py` を使って差分レポートを生成します。
 
 ```powershell
 # before / after の差分レポート
 .\ReportSnapshot.ps1 -ZipPath before.zip -CompareWith after.zip
+
+# JSON 同士の差分レポート
+.\ReportSnapshot.ps1 -ZipPath before.json -CompareWith after.json
 
 # 差分のみ表示
 .\ReportSnapshot.ps1 -ZipPath before.zip -CompareWith after.zip -DiffOnly
@@ -126,9 +132,9 @@ ZIP ファイル名: `<hostname>_<label>_<timestamp>.zip`（ラベルなし時: 
 
 | パラメータ | 説明 |
 |---|---|
-| `-ZipPath` | 対象 ZIP ファイルパス（必須） |
-| `-CompareWith` | 比較対象の ZIP。指定すると差分レポートモード |
-| `-OutputDir` | レポート出力先。既定は ZIP と同じディレクトリ |
+| `-ZipPath` | 対象 ZIP または `server-snapshot` JSON ファイルパス（必須） |
+| `-CompareWith` | 比較対象の ZIP または JSON。指定すると差分レポートモード |
+| `-OutputDir` | レポート出力先。既定は入力ファイルと同じディレクトリ |
 | `-DiffOnly` | Compare モードで差分のみ表示 |
 | `-KeepExtracted` | 解凍ファイルを削除せず残す |
 
@@ -153,8 +159,8 @@ snapshots/
 | Code | 意味 |
 |---|---|
 | 0 | 成功 |
-| 1 | 引数不正 / ZIP 未検出 |
-| 2 | ZIP 内に JSON が見つからない |
+| 1 | 引数不正 / 入力ファイル未検出 |
+| 2 | JSON が見つからない、または未対応の入力形式 |
 | 10 | 前提コマンド不足（compare モードで python3 なし） |
 
 ## テスト

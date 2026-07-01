@@ -1169,7 +1169,7 @@ function Get-CollectSnapshotArguments {
 function Get-SnapshotReportArguments {
     param([string]$RunDir)
     $zipPath = $SnapshotZipTextBox.Text.Trim()
-    if (-not $zipPath) { throw '「出力対象ZIP」にレポート対象の ZIP を指定してください（収集実行で作成された ZIP のパス）。' }
+    if (-not $zipPath) { throw '「出力対象」にレポート対象の ZIP または server-snapshot JSON を指定してください。' }
     $argList = New-Object System.Collections.Generic.List[string]
     $artifacts = Get-ArtifactsDir -RunDir $RunDir
     Add-ArgumentValue -Arguments $argList -Name '-ZipPath' -Value $zipPath
@@ -1358,11 +1358,11 @@ $StopButton.Add_Click({ Invoke-StopExecution })
 $RunCollectSnapshotButton.Add_Click({ Invoke-CollectSnapshot })
 $RunSnapshotReportButton.Add_Click({ Invoke-SnapshotReport })
 $BrowseSnapshotZipButton.Add_Click({
-    $sel = Select-FileDialog -InitialPath $SnapshotZipTextBox.Text -Filter 'ZIP files|*.zip|All files|*.*' -Title 'ZIP を選択'
+    $sel = Select-FileDialog -InitialPath $SnapshotZipTextBox.Text -Filter 'Snapshot inputs|*.zip;*.json|ZIP files|*.zip|JSON files|*.json|All files|*.*' -Title 'ZIP / JSON を選択'
     if ($sel) { $SnapshotZipTextBox.Text = $sel }
 })
 $BrowseSnapshotCompareZipButton.Add_Click({
-    $sel = Select-FileDialog -InitialPath $SnapshotCompareZipTextBox.Text -Filter 'ZIP files|*.zip|All files|*.*' -Title '比較 ZIP を選択'
+    $sel = Select-FileDialog -InitialPath $SnapshotCompareZipTextBox.Text -Filter 'Snapshot inputs|*.zip;*.json|ZIP files|*.zip|JSON files|*.json|All files|*.*' -Title '比較 ZIP / JSON を選択'
     if ($sel) { $SnapshotCompareZipTextBox.Text = $sel }
 })
 $OpenSettingsButton.Add_Click({ Show-SettingsDialog })

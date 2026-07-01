@@ -868,7 +868,7 @@ def _load_filelist_conf():
                     continue
                 k, v = t.split('=', 1)
                 k = k.strip().lower()
-                v = v.strip()
+                v = re.sub(r'\s+#.*$', '', v).strip()
                 if section == 'target' and current is not None:
                     if k == 'path':
                         current['path'] = v

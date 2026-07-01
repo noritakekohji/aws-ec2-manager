@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-07-02
+
+### Added
+- スナップショット一括実行のレポート生成で、収集 ZIP に加えて
+  `server-snapshot` JSON を直接指定できるようにした。比較対象も ZIP / JSON
+  のどちらでも指定可能。
+- 単体スナップショット HTML レポートに `filelist` セクションを追加。
+  ターゲット概要、エントリ一覧、ACL 件数、SHA256、エラー一覧を表示する。
+
+### Changed
+- ツールランチャーのスナップショット入力欄を「ZIP / JSON」対応の文言と
+  ファイル選択フィルターに更新。
+- Linux 版ローカルツールランチャーを、カタログ駆動の対話メニュー、設定ファイル
+  override、実行結果アーカイブに対応する形へ拡張。
+- `launch-tools.bat` を `launch.bat` と同じ非同期・非表示起動に揃え、
+  起動後にコンソールウィンドウが残らないようにした。
+
+### Fixed
+- `server-snapshot` / Linux 版 `server_snapshot.sh` の `filelist.conf` パーサーで、
+  `path = D:\ # comment` のようなインラインコメントを値として扱ってしまい、
+  指定ディレクトリが収集されない問題を修正。
+- `compare_server_info.py` が UTF-8 BOM 付き JSON を読めず、ZIP 比較レポート生成が
+  `Unexpected UTF-8 BOM` で失敗する問題を修正。
+
 ## [1.4.0] - 2026-07-02
 
 ### Changed

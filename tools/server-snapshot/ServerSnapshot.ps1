@@ -646,7 +646,7 @@ function Read-FilelistConf {
         $kv = $t -split '=', 2
         if ($kv.Count -lt 2) { continue }
         $key = $kv[0].Trim().ToLower()
-        $val = $kv[1].Trim()
+        $val = ($kv[1] -replace '\s+#.*$', '').Trim()
 
         if ($section -eq 'target' -and $null -ne $current) {
             switch ($key) {

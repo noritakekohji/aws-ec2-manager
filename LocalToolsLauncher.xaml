@@ -131,14 +131,14 @@
                         <ColumnDefinition Width="92" />
                         <ColumnDefinition Width="120" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="出力対象ZIP" Style="{StaticResource FieldLabel}" ToolTip="レポート生成の入力となる ZIP のフルパス。収集実行が成功すると自動で入る" />
-                    <TextBox x:Name="SnapshotZipTextBox" Grid.Column="1" Margin="0,0,4,0" ToolTip="レポート生成の入力となる ZIP のフルパス。収集実行が成功すると自動で入る" />
-                    <Button x:Name="BrowseSnapshotZipButton" Grid.Column="2" Content="..." Style="{StaticResource SmallBrowseButton}" Margin="0,0,12,0" ToolTip="出力対象 ZIP をエクスプローラから選択" />
-                    <TextBlock Grid.Column="3" Text="比較 ZIP" Style="{StaticResource FieldLabel}" ToolTip="(任意) 差分比較に使う、もう一方の ZIP" />
-                    <TextBox x:Name="SnapshotCompareZipTextBox" Grid.Column="4" Margin="0,0,4,0" ToolTip="(任意) 差分比較に使う、もう一方の ZIP" />
-                    <Button x:Name="BrowseSnapshotCompareZipButton" Grid.Column="5" Content="..." Style="{StaticResource SmallBrowseButton}" Margin="0,0,12,0" ToolTip="比較対象 ZIP をエクスプローラから選択" />
-                    <CheckBox x:Name="SnapshotDiffOnlyCheckBox" Grid.Column="6" Content="差分のみ" ToolTip="比較 ZIP との差分のみをレポートに含める" />
-                    <Button x:Name="RunSnapshotReportButton" Grid.Column="7" Content="レポート生成" ToolTip="「出力対象ZIP」を入力に HTML レポートを生成する" />
+                    <TextBlock Text="出力対象" Style="{StaticResource FieldLabel}" ToolTip="レポート生成の入力となる ZIP または server-snapshot JSON のフルパス。収集実行が成功すると ZIP が自動で入る" />
+                    <TextBox x:Name="SnapshotZipTextBox" Grid.Column="1" Margin="0,0,4,0" ToolTip="レポート生成の入力となる ZIP または server-snapshot JSON のフルパス。収集実行が成功すると ZIP が自動で入る" />
+                    <Button x:Name="BrowseSnapshotZipButton" Grid.Column="2" Content="..." Style="{StaticResource SmallBrowseButton}" Margin="0,0,12,0" ToolTip="出力対象 ZIP / JSON をエクスプローラから選択" />
+                    <TextBlock Grid.Column="3" Text="比較対象" Style="{StaticResource FieldLabel}" ToolTip="(任意) 差分比較に使う、もう一方の ZIP または server-snapshot JSON" />
+                    <TextBox x:Name="SnapshotCompareZipTextBox" Grid.Column="4" Margin="0,0,4,0" ToolTip="(任意) 差分比較に使う、もう一方の ZIP または server-snapshot JSON" />
+                    <Button x:Name="BrowseSnapshotCompareZipButton" Grid.Column="5" Content="..." Style="{StaticResource SmallBrowseButton}" Margin="0,0,12,0" ToolTip="比較対象 ZIP / JSON をエクスプローラから選択" />
+                    <CheckBox x:Name="SnapshotDiffOnlyCheckBox" Grid.Column="6" Content="差分のみ" ToolTip="比較対象との差分のみをレポートに含める" />
+                    <Button x:Name="RunSnapshotReportButton" Grid.Column="7" Content="レポート生成" ToolTip="「出力対象」を入力に HTML レポートを生成する" />
                 </Grid>
             </Grid>
         </Border>
