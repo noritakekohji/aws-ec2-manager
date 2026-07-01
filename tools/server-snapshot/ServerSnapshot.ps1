@@ -680,6 +680,172 @@ function Read-FilelistConf {
     return $conf
 }
 
+function Get-FilelistEntryMeta {
+    # Build a single entry hashtable from a FileSystemInfo. Owner/ACL come from Get-Acl
+    # (best-effort — throws to caller if Get-Acl fails, so caller records the error).
+    param(
+        [Parameter(Mandatory)][System.IO.FileSystemInfo]$Item,
+        [Parameter(Mandatory)][string]$RelPath,
+        [Parameter(Mandatory)][bool]$ComputeHash
+    )
+    $isSymlink = ($Item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0
+    $isDir     = $Item -is [System.IO.DirectoryInfo]
+    $type      = if ($isSymlink) { 'symlink' } elseif ($isDir) { 'dir' } else { 'file' }
+
+    $entry = [ordered]@{
+        rel_path    = $RelPath
+        type        = $type
+        size        = $null
+        mtime       = $null
+        mode        = $null   # POSIX-only; always null on Windows
+        uid         = $null
+        gid         = $null
+        owner       = $null
+        group       = $null
+        acl         = $null
+        sha256      = $null
+        link_target = $null
+    }
+    try { $entry.mtime = $Item.LastWriteTimeUtc.ToString("yyyy-MM-ddTHH:mm:ssZ") } catch {}
+    if ($type -eq 'file') {
+        try { $entry.size = [int64]$Item.Length } catch {}
+    }
+    if ($isSymlink) {
+        try { $entry.link_target = $Item.Target } catch {}
+    }
+
+    # Owner + ACL via Get-Acl. On failure, throw so caller (Get-FilelistTarget) records
+    # the entry as permission_denied. This mirrors middleware's readable=false pattern.
+    $acl = Get-Acl -LiteralPath $Item.FullName -ErrorAction Stop
+    $entry.owner = "$($acl.Owner)"
+    $aceList = @()
+    foreach ($ace in $acl.Access) {
+        $aceList += [ordered]@{
+            principal = "$($ace.IdentityReference)"
+            rights    = "$($ace.FileSystemRights)"
+            type      = "$($ace.AccessControlType)"
+        }
+    }
+    $entry.acl = $aceList
+
+    if ($ComputeHash -and $type -eq 'file') {
+        try {
+            $h = Get-FileHash -LiteralPath $Item.FullName -Algorithm SHA256 -ErrorAction Stop
+            $entry.sha256 = $h.Hash.ToLower()
+        } catch { }
+    }
+    return $entry
+}
+
+function Test-FilelistExclude {
+    # Match a rel-path against any glob in $Globs; returns $true if excluded.
+    # Uses forward-slash normalized paths so config globs work cross-OS-style.
+    param([string]$RelPath, [string[]]$Globs)
+    if (-not $Globs -or $Globs.Count -eq 0) { return $false }
+    $forward = $RelPath -replace '\\','/'
+    foreach ($g in $Globs) {
+        if ($forward -like $g) { return $true }
+        # Basename fallback so `*.tmp` matches `sub/foo.tmp` too
+        if ($g -notmatch '/' -and (Split-Path $forward -Leaf) -like $g) { return $true }
+    }
+    return $false
+}
+
+function Get-FilelistTarget {
+    # Scan a single [target:*] and return the target result hashtable per spec §4.
+    param(
+        [Parameter(Mandatory)][hashtable]$Target,
+        [Parameter(Mandatory)][int]$MaxEntries
+    )
+    $result = [ordered]@{
+        key          = $Target.key
+        path         = $Target.path
+        os_matched   = $true
+        exists       = $false
+        depth        = $Target.depth
+        hash_enabled = [bool]$Target.hash
+        excluded     = @($Target.exclude)
+        entries      = @()
+        entry_count  = 0
+        truncated    = $false
+        errors       = @()
+    }
+
+    if ($Target.os -eq 'linux') {
+        $result.os_matched = $false
+        return $result
+    }
+    if (-not $Target.path -or -not (Test-Path -LiteralPath $Target.path)) {
+        return $result
+    }
+    $result.exists = $true
+
+    $rootFull = (Get-Item -LiteralPath $Target.path).FullName
+    $rootLen  = $rootFull.Length
+    $limit    = if ($Target.depth -eq 'unlimited') { [int]::MaxValue } else { [int]$Target.depth }
+
+    # Iterative traversal: stack of @{ dir; depth }. Enforces depth + exclude + max_entries.
+    $stack = New-Object System.Collections.Generic.Stack[object]
+    $stack.Push(@{ dir = $rootFull; depth = 0 })
+    $entries = New-Object System.Collections.Generic.List[object]
+
+    while ($stack.Count -gt 0 -and -not $result.truncated) {
+        $frame = $stack.Pop()
+        $curDir = $frame.dir
+        $curDepth = $frame.depth
+
+        $children = $null
+        try {
+            $children = Get-ChildItem -LiteralPath $curDir -Force -ErrorAction Stop
+        } catch {
+            $rel = if ($curDir.Length -gt $rootLen) { $curDir.Substring($rootLen).TrimStart('\','/') } else { '' }
+            $result.errors += @{ rel_path = $rel; reason = 'permission_denied' }
+            continue
+        }
+
+        foreach ($child in $children) {
+            if ($result.truncated) { break }
+            $full = $child.FullName
+            $rel  = $full.Substring($rootLen).TrimStart('\','/')
+            if (Test-FilelistExclude -RelPath $rel -Globs $Target.exclude) { continue }
+
+            $isSymlink = ($child.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0
+            $isDir     = $child -is [System.IO.DirectoryInfo]
+
+            try {
+                $entry = Get-FilelistEntryMeta -Item $child -RelPath $rel -ComputeHash $result.hash_enabled
+                $entries.Add($entry) | Out-Null
+                if ($entries.Count -ge $MaxEntries) {
+                    $result.truncated = $true
+                    break
+                }
+            } catch {
+                $result.errors += @{ rel_path = $rel; reason = 'permission_denied' }
+                continue
+            }
+
+            # Recurse only into non-symlink directories, and only within depth limit.
+            if ($isDir -and -not $isSymlink -and ($curDepth + 1) -lt $limit) {
+                $stack.Push(@{ dir = $full; depth = $curDepth + 1 })
+            }
+        }
+    }
+
+    $result.entries     = @($entries | Sort-Object -Property { $_.rel_path })
+    $result.entry_count = $result.entries.Count
+    return $result
+}
+
+function Get-FilelistInfo {
+    Write-Host '  Collecting: filelist ...'
+    $conf = Read-FilelistConf
+    $results = @()
+    foreach ($t in $conf.targets) {
+        $results += ,(Get-FilelistTarget -Target $t -MaxEntries $conf.max_entries_per_target)
+    }
+    return @($results)
+}
+
 function Mask-MwSecrets {
     param([string]$Text, [string[]]$Patterns)
     if (-not $Text -or -not $Patterns -or $Patterns.Count -eq 0) { return @{ Text = "$Text"; Masked = $false } }
