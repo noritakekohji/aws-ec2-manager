@@ -122,6 +122,7 @@ tools/server-snapshot/
 | `tuning`      | 性能チューニング設定 (sysctl / CPU ガバナー / THP / ページファイル / 電源プラン) |
 | `scheduled`   | スケジュールタスク / スタートアップ / cron / systemd timers |
 | `middleware`  | ミドルウェア（HANA / SAP / SQL Server / Tomcat）のバージョン・状態・Listen ポート・設定ファイル全文 |
+| `filelist`    | 指定ディレクトリ配下のファイル・ディレクトリ一覧（権限・オーナー付き） |
 
 既定値は `all`（全カテゴリ収集）。カンマ区切りで複数指定可能。
 
@@ -200,6 +201,65 @@ bash server_snapshot.sh collect --category middleware
 > このため、同じ論理ファイルでも絶対パスが異なる場合（インストール先ディレクトリが違う、
 > あるいは Windows と Linux のスナップショット間の比較など）は、`CHANGED` ではなく
 > `REMOVED` + `ADDED` として表示されます。**同一ホストの before/after 比較では影響ありません。**
+
+---
+
+## `filelist` カテゴリ
+
+指定ディレクトリ配下のファイル・ディレクトリ一覧を、権限とオーナー情報付きで収集します。
+設定ファイル `filelist.conf` で対象ディレクトリを列挙します。
+
+### `filelist.conf` — 対象と収集オプション
+
+| キー | 既定 | 説明 |
+|---|---|---|
+| `path` | 必須 | 対象ディレクトリの絶対パス |
+| `os` | `both` | `windows` / `linux` / `both`。現OSに合わない場合、対象ごとスキップ |
+| `depth` | `unlimited` | 整数（0 は対象ルート直下のみ、1 は 1 階層下まで再帰）または `unlimited` |
+| `exclude` | 空 | カンマ区切りの glob。対象ルートからの相対パスにマッチ。ディレクトリにマッチした場合は配下ごとスキップ |
+| `hash` | `false` | `true` でファイル sha256 を計算 |
+| `[limits] max_entries_per_target` | `100000` | 対象ごとのエントリ上限。到達時に `truncated=true` |
+
+例:
+
+```ini
+[target:etc-nginx]
+path    = /etc/nginx
+os      = linux
+depth   = unlimited
+exclude = *.bak,cache/*
+
+[target:appdata]
+path    = C:\ProgramData\MyApp
+os      = windows
+depth   = 2
+hash    = true
+```
+
+> `filelist.conf` は Windows/Linux 共通。対象ごとに `os` を書けば、そのホストの OS に合う対象だけがスキャンされます。
+
+### 収集内容
+
+各エントリは以下のメタデータを持ちます:
+
+- 共通: `rel_path` / `type`（file/dir/symlink）/ `size` / `mtime`
+- Linux: `mode`（8進）/ `uid` / `gid` / `owner` / `group`
+- Windows: `owner`（NTFS Owner）/ `acl`（主要 ACE の配列 `{principal, rights, type}`）
+- `hash=true` のとき: `sha256`
+- `type=symlink`: `link_target`
+
+**シンボリックリンクは追跡しません**（リンク自体のメタデータのみ記録）。
+**ファイル内容は保存しません**（sha256 のみ、有効時）。
+
+### 比較の挙動
+
+before/after 比較では、`target.key` + `rel_path` をキーに突き合わせ、以下いずれかが変化したエントリを `CHANGED` とします:
+
+- `type` / `size` / `mtime` / `mode` / `uid` / `gid` / `owner` / `group` / `acl`
+- `sha256`（双方で `hash_enabled = true` のときのみ）
+
+対象キー自体の追加・削除は `ADDED` / `REMOVED` セクションとして表示され、
+`truncated=true` の対象はレポートに警告付きで表示されます。
 
 ---
 

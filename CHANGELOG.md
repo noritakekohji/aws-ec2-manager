@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- server-snapshot に `filelist` カテゴリを追加。設定ファイル `filelist.conf` で
+  指定したディレクトリ配下のファイル・ディレクトリ一覧を権限・オーナー情報付きで
+  収集し、before/after 比較で差分を検出できる。
+  - Windows: NTFS Owner / ACL、Linux: POSIX mode / uid / gid / owner / group
+  - `hash = true` でファイル sha256 を計算し、内容変化も検出
+  - `exclude` パターン、`depth` 制限、`max_entries_per_target` セーフガード対応
+
 ## [1.2.2] - 2026-07-01
 
 ### Changed
