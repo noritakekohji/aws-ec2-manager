@@ -1366,19 +1366,20 @@ $BrowseSnapshotCompareZipButton.Add_Click({
     if ($sel) { $SnapshotCompareZipTextBox.Text = $sel }
 })
 $OpenSettingsButton.Add_Click({ Show-SettingsDialog })
+# ツール保存先: tools ルート (ToolsRoot) をエクスプローラで開く
 $OpenOutputButton.Add_Click({
+    $path = $script:ToolsRoot
+    if (-not (Test-Path -LiteralPath $path)) {
+        [System.Windows.MessageBox]::Show("ツール保存先が存在しません:`n$path", 'ツールランチャー') | Out-Null
+        return
+    }
+    Start-Process explorer.exe -ArgumentList $path
+})
+# 出力先: 出力ルート (OutputRoot) をエクスプローラで開く
+$OpenLogButton.Add_Click({
     $path = $script:OutputRoot
     if (-not (Test-Path -LiteralPath $path)) { New-Item -ItemType Directory -Path $path -Force | Out-Null }
     Start-Process explorer.exe -ArgumentList $path
-})
-$OpenLogButton.Add_Click({
-    if ($script:LastRunDir -and (Test-Path -LiteralPath $script:LastRunDir)) {
-        Start-Process explorer.exe -ArgumentList $script:LastRunDir
-        return
-    }
-    if (Test-Path -LiteralPath $script:OutputRoot) {
-        Start-Process explorer.exe -ArgumentList $script:OutputRoot
-    }
 })
 $window.Add_Closing({
     if (Test-Running) {

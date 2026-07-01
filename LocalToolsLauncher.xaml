@@ -77,9 +77,24 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="3" Orientation="Horizontal">
-                    <Button x:Name="OpenOutputButton" Content="保存先" Margin="0,0,8,0" />
-                    <Button x:Name="OpenLogButton" Content="ログ" Margin="0,0,8,0" />
-                    <Button x:Name="OpenSettingsButton" Content="設定" />
+                    <Button x:Name="OpenOutputButton" Margin="0,0,8,0" ToolTip="ツールの保存場所 (tools) をエクスプローラで開く">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center" />
+                            <TextBlock Text="ツール保存先" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="OpenLogButton" Margin="0,0,8,0" ToolTip="出力先 (reports) をエクスプローラで開く">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE838;" FontFamily="Segoe MDL2 Assets" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center" />
+                            <TextBlock Text="出力先" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="OpenSettingsButton" ToolTip="設定">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="14" Margin="0,0,6,0" VerticalAlignment="Center" />
+                            <TextBlock Text="設定" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </Grid>
         </Border>
