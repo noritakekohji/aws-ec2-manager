@@ -1,7 +1,7 @@
 tools:
   - id: aws-instance-audit
     name: AWS Instance Audit
-    description: Collect AWS context from the current EC2 instance.
+    description: EC2 の IAM / SG / VPC 構成を収集
     menu: true
     windowsPath: aws-instance-audit/Get-AwsInstanceAudit.ps1
     linuxPath: aws-instance-audit/aws_instance_audit.sh
@@ -31,7 +31,7 @@ tools:
 
   - id: cert-check
     name: Certificate Check
-    description: Check TLS certificate expiry for target hosts.
+    description: TLS 証明書の有効期限をチェック
     menu: true
     windowsPath: cert-check/CertCheck.ps1
     linuxPath: cert-check/cert_check.sh
@@ -65,7 +65,7 @@ tools:
 
   - id: collect-snapshot
     name: Collect Snapshot
-    description: Collect local server evidence and package a ZIP snapshot.
+    description: サーバー断面情報を収集し ZIP 化
     menu: false
     windowsPath: collect-snapshot/CollectSnapshot.ps1
     linuxPath: collect-snapshot/collect_snapshot.sh
@@ -84,7 +84,7 @@ tools:
 
   - id: collect-snapshot-report
     name: Snapshot Report
-    description: Generate an HTML report from collect-snapshot ZIP files.
+    description: 断面 ZIP から HTML レポートを生成
     menu: false
     windowsPath: collect-snapshot/ReportSnapshot.ps1
     linuxPath: ""
@@ -114,7 +114,7 @@ tools:
 
   - id: log-collector
     name: Log Collector
-    description: Collect incident response logs by preset.
+    description: プリセット別に障害対応ログを収集
     menu: true
     windowsPath: log-collector/LogCollector.ps1
     linuxPath: log-collector/log_collector.sh
@@ -147,7 +147,7 @@ tools:
 
   - id: network-check
     name: Network Check
-    description: Check DNS, ping, and TCP reachability from a target list.
+    description: DNS / Ping / TCP 到達性を確認
     menu: true
     windowsPath: network-check/Check-NetworkConnectivity.ps1
     linuxPath: network-check/check_network_connectivity.sh
@@ -186,7 +186,7 @@ tools:
 
   - id: perf-monitor
     name: Performance Monitor
-    description: Collect or inspect performance monitor sessions.
+    description: パフォーマンスカウンタを収集・確認
     menu: true
     windowsPath: perf-monitor/PerfMonitor.ps1
     linuxPath: perf-monitor/perf_monitor.sh
@@ -219,7 +219,7 @@ tools:
 
   - id: port-inventory
     name: Port Inventory
-    description: Inventory listening ports and compare with an expected list.
+    description: 待受ポートを棚卸し、期待値と照合
     menu: true
     windowsPath: port-inventory/PortInventory.ps1
     linuxPath: port-inventory/port_inventory.sh
@@ -248,7 +248,7 @@ tools:
 
   - id: server-snapshot
     name: Server Snapshot
-    description: Collect or compare server configuration snapshots.
+    description: サーバー構成スナップショットの収集・比較
     menu: true
     windowsPath: server-snapshot/ServerSnapshot.ps1
     linuxPath: server-snapshot/server_snapshot.sh

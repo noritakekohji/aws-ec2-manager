@@ -160,7 +160,7 @@
                     </Grid.RowDefinitions>
 
                     <TextBlock x:Name="ToolTitleText" Grid.Row="0" FontSize="18" FontWeight="SemiBold" />
-                    <TextBlock x:Name="ToolDescriptionText" Grid.Row="1" Foreground="{StaticResource MutedTextBrush}" Margin="0,4,0,12" TextWrapping="Wrap" />
+                    <TextBlock x:Name="ToolDescriptionText" Grid.Row="1" Foreground="{StaticResource MutedTextBrush}" Margin="0,2,0,6" FontSize="12" TextWrapping="Wrap" />
 
                     <StackPanel x:Name="ConfigFilesPanel" Grid.Row="2" Margin="0,0,0,12" Visibility="Collapsed">
                         <TextBlock Text="設定ファイル" FontWeight="SemiBold" Margin="0,0,0,6" />
