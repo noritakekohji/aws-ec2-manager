@@ -128,7 +128,7 @@ collect_snapshot() {
     fi
 
     # Resolve categories
-    local all_cats="os network services packages users filesystem environment security patches tuning scheduled middleware"
+    local all_cats="os network services packages users filesystem environment security patches tuning scheduled middleware filelist"
     local resolved
     if [[ "$snap_cats" == "all" ]]; then
         resolved="$all_cats"

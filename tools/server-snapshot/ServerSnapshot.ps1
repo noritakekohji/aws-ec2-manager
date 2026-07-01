@@ -36,7 +36,7 @@ Set-StrictMode -Version Latest
 
 # Normalize -Category: accept comma-separated values (e.g. "os,network" from the
 # .bat wrapper) the same way the Bash tool does, then validate against the known set.
-$validCategories = @('all','os','network','services','packages','users','filesystem','environment','security','patches','tuning','scheduled','middleware')
+$validCategories = @('all','os','network','services','packages','users','filesystem','environment','security','patches','tuning','scheduled','middleware','filelist')
 $Category = @($Category | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ } | Select-Object -Unique)
 if (-not $Category) { $Category = @('all') }
 foreach ($c in $Category) {
