@@ -36,6 +36,9 @@ tools:
     windowsPath: cert-check/CertCheck.ps1
     linuxPath: cert-check/cert_check.sh
     defaultArgs: -TargetList "{ToolDir}/cert_targets.lst" -HtmlReport "{ArtifactsDir}/cert-check.html"
+    configFiles:
+      - label: cert_targets.lst
+        path: cert-check/cert_targets.lst
     parameters:
       - key: targetList
         label: ターゲットリスト
@@ -147,6 +150,9 @@ tools:
     windowsPath: network-check/Check-NetworkConnectivity.ps1
     linuxPath: network-check/check_network_connectivity.sh
     defaultArgs: -TargetList "{ToolDir}/targets.lst" -HtmlReport "{ArtifactsDir}/network-check.html"
+    configFiles:
+      - label: targets.lst
+        path: network-check/targets.lst
     parameters:
       - key: targetList
         label: ターゲットリスト
@@ -214,6 +220,9 @@ tools:
     windowsPath: port-inventory/PortInventory.ps1
     linuxPath: port-inventory/port_inventory.sh
     defaultArgs: -ExpectedList "{ToolDir}/expected_ports.lst" -HtmlReport "{ArtifactsDir}/port-inventory.html"
+    configFiles:
+      - label: expected_ports.lst
+        path: port-inventory/expected_ports.lst
     parameters:
       - key: expectedList
         label: 期待ポートリスト
