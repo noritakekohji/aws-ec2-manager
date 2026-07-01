@@ -129,4 +129,101 @@ path = $target
         $link.link_target | Should -BeOfType [string]
         $link.link_target | Should -Not -BeNullOrEmpty
     }
+
+    It 'respects depth=0 (root children only, no recursion)' {
+        $target = Join-Path $Script:TmpRoot 'depth0'
+        New-Item -ItemType Directory -Path (Join-Path $target 'sub') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $target 'top.txt')        -Value 'x'
+        Set-Content -LiteralPath (Join-Path $target 'sub\nested.txt') -Value 'y'
+
+        $confPath = Join-Path $Script:TmpRoot 'flist.conf'
+        Set-Content -LiteralPath $confPath -Value @"
+[target:t]
+path  = $target
+depth = 0
+"@
+        $env:_OPS_FILELIST_CONF = $confPath
+        $result = @(Get-FilelistInfo)
+        $rels = @($result[0].entries | ForEach-Object { $_.rel_path })
+        $rels | Should -Contain 'top.txt'
+        $rels | Should -Contain 'sub'
+        $rels | Should -Not -Contain 'sub\nested.txt'
+    }
+
+    It 'respects depth=1 (one level of recursion)' {
+        $target = Join-Path $Script:TmpRoot 'depth1'
+        New-Item -ItemType Directory -Path (Join-Path $target 'sub\deep') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $target 'sub\nested.txt')      -Value 'y'
+        Set-Content -LiteralPath (Join-Path $target 'sub\deep\deeper.txt') -Value 'z'
+
+        $confPath = Join-Path $Script:TmpRoot 'flist.conf'
+        Set-Content -LiteralPath $confPath -Value @"
+[target:t]
+path  = $target
+depth = 1
+"@
+        $env:_OPS_FILELIST_CONF = $confPath
+        $result = @(Get-FilelistInfo)
+        $rels = @($result[0].entries | ForEach-Object { $_.rel_path })
+        $rels | Should -Contain 'sub\nested.txt'
+        $rels | Should -Not -Contain 'sub\deep\deeper.txt'
+    }
+
+    It 'respects exclude glob on filenames' {
+        $target = Join-Path $Script:TmpRoot 'excl-file'
+        New-Item -ItemType Directory -Path $target -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $target 'keep.txt') -Value 'k'
+        Set-Content -LiteralPath (Join-Path $target 'drop.tmp') -Value 'd'
+
+        $confPath = Join-Path $Script:TmpRoot 'flist.conf'
+        Set-Content -LiteralPath $confPath -Value @"
+[target:t]
+path    = $target
+exclude = *.tmp
+"@
+        $env:_OPS_FILELIST_CONF = $confPath
+        $result = @(Get-FilelistInfo)
+        $rels = @($result[0].entries | ForEach-Object { $_.rel_path })
+        $rels | Should -Contain 'keep.txt'
+        $rels | Should -Not -Contain 'drop.tmp'
+    }
+
+    It 'respects exclude glob on directory subtree' {
+        $target = Join-Path $Script:TmpRoot 'excl-dir'
+        New-Item -ItemType Directory -Path (Join-Path $target 'cache') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $target 'keep.txt')       -Value 'k'
+        Set-Content -LiteralPath (Join-Path $target 'cache\file.dat') -Value 'c'
+
+        $confPath = Join-Path $Script:TmpRoot 'flist.conf'
+        Set-Content -LiteralPath $confPath -Value @"
+[target:t]
+path    = $target
+exclude = cache,cache/*
+"@
+        $env:_OPS_FILELIST_CONF = $confPath
+        $result = @(Get-FilelistInfo)
+        $rels = @($result[0].entries | ForEach-Object { $_.rel_path })
+        $rels | Should -Contain 'keep.txt'
+        $rels | Should -Not -Contain 'cache'
+        $rels | Should -Not -Contain 'cache\file.dat'
+    }
+
+    It 'sets truncated=true when max_entries_per_target reached' {
+        $target = Join-Path $Script:TmpRoot 'trunc'
+        New-Item -ItemType Directory -Path $target -Force | Out-Null
+        1..10 | ForEach-Object { Set-Content -LiteralPath (Join-Path $target ("f{0}.txt" -f $_)) -Value 'x' }
+
+        $confPath = Join-Path $Script:TmpRoot 'flist.conf'
+        Set-Content -LiteralPath $confPath -Value @"
+[target:t]
+path = $target
+
+[limits]
+max_entries_per_target = 3
+"@
+        $env:_OPS_FILELIST_CONF = $confPath
+        $result = @(Get-FilelistInfo)
+        $result[0].truncated   | Should -Be $true
+        $result[0].entry_count | Should -Be 3
+    }
 }

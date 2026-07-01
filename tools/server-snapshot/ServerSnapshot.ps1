@@ -835,7 +835,7 @@ function Get-FilelistTarget {
             }
 
             # Recurse only into non-symlink directories, and only within depth limit.
-            if ($isDir -and -not $isSymlink -and ($curDepth + 1) -lt $limit) {
+            if ($isDir -and -not $isSymlink -and ($curDepth + 1) -le $limit) {
                 $stack.Push(@{ dir = $full; depth = $curDepth + 1 })
             }
         }
