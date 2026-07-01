@@ -1328,22 +1328,41 @@ function Compare-Filelist($b, $a) {
         $fields = @('type','size','mtime','mode','owner','group')
         if ($bothHash) { $fields += 'sha256' }
 
-        $bEntries = if ($bt) { (Obj-To-Dict $bt)['entries'] } else { @() }
-        $aEntries = if ($at) { (Obj-To-Dict $at)['entries'] } else { @() }
+        $bEntries = if ($bt) { $bt['entries'] } else { @() }
+        $aEntries = if ($at) { $at['entries'] } else { @() }
 
-        # Project entries to comparable rows keyed by rel_path
+        # Project entries to comparable rows keyed by rel_path.
+        # Use Get-Prop rather than Obj-To-Dict on individual entries — Obj-To-Dict
+        # turns null values into empty hashtables, which string-coerce to
+        # "System.Collections.Hashtable" and mask the true (null) value in diffs.
         $bRows = @()
         foreach ($e in (As-Array $bEntries)) {
-            $d = Obj-To-Dict $e
-            $h = @{ name = "$($d['rel_path'])" }
-            foreach ($f in $fields) { $h[$f] = "$($d[$f])" }
+            $h = @{ name = "$(Get-Prop $e 'rel_path')" }
+            foreach ($f in $fields) {
+                $v = Get-Prop $e $f
+                # Obj-To-Dict (applied earlier at target level) turns null values into
+                # empty hashtables; treat those as null so the compared string is ''.
+                if ($null -eq $v -or ($v -is [System.Collections.IDictionary] -and $v.Count -eq 0)) {
+                    $h[$f] = ''
+                } else {
+                    $h[$f] = "$v"
+                }
+            }
             $bRows += ,$h
         }
         $aRows = @()
         foreach ($e in (As-Array $aEntries)) {
-            $d = Obj-To-Dict $e
-            $h = @{ name = "$($d['rel_path'])" }
-            foreach ($f in $fields) { $h[$f] = "$($d[$f])" }
+            $h = @{ name = "$(Get-Prop $e 'rel_path')" }
+            foreach ($f in $fields) {
+                $v = Get-Prop $e $f
+                # Obj-To-Dict (applied earlier at target level) turns null values into
+                # empty hashtables; treat those as null so the compared string is ''.
+                if ($null -eq $v -or ($v -is [System.Collections.IDictionary] -and $v.Count -eq 0)) {
+                    $h[$f] = ''
+                } else {
+                    $h[$f] = "$v"
+                }
+            }
             $aRows += ,$h
         }
 
