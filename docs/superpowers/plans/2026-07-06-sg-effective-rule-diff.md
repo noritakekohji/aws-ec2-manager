@@ -130,7 +130,7 @@ function Get-SgNetRuleList {
         $byKey[$key] = $entry
         $list.Add($entry)
     }
-    return , ($list.ToArray())
+    return $list.ToArray()
 }
 
 function Get-SgRuleDiff {
