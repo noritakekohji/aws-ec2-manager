@@ -1227,6 +1227,20 @@ function Format-SgRuleLine {
     return ("{0,-8} {1,-7} {2,-9} {3,-22} # {4}" -f $Rule.Direction, $Rule.Protocol, $Rule.Port, $Rule.Target, $Rule.Description)
 }
 
+function Format-SgNetRuleLine {
+    param(
+        [Parameter(Mandatory = $true)]$Rule
+    )
+    $src = ''
+    $labels = @($Rule.SourceSgs)
+    if ($labels.Count -gt 0) {
+        $first = [string]$labels[0]
+        if ($labels.Count -gt 1) { $src = " (from $first +$($labels.Count - 1))" }
+        else { $src = " (from $first)" }
+    }
+    return ("{0,-8} {1,-7} {2,-9} {3}{4}" -f $Rule.Direction, $Rule.Protocol, $Rule.Port, $Rule.Target, $src)
+}
+
 function Format-SgContentSection {
     param(
         [Parameter(Mandatory = $true)][string]$Mark,
