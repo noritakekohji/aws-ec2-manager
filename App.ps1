@@ -1201,6 +1201,12 @@ function Get-SgDiffData {
         if ($currentIds -notcontains [string]$item.GroupId) { $removedSgs += $item }
     }
 
+    $beforeRules = @(Get-SgRuleRowsForItems -Items $originalItems)
+    $afterRules = @(Get-SgRuleRowsForItems -Items $currentItems)
+    $ruleDiff = Get-SgRuleDiff -BeforeRules $beforeRules -AfterRules $afterRules
+    $addedRules = @($ruleDiff.Added)
+    $removedRules = @($ruleDiff.Removed)
+
     [PSCustomObject]@{
         BeforeIds    = $originalIds
         AfterIds     = $currentIds
@@ -1209,6 +1215,8 @@ function Get-SgDiffData {
         ExistingSgs  = $existingSgs
         ChangedSgs   = @($addedSgs + $removedSgs)
         Changed      = (($addedSgs.Count -gt 0) -or ($removedSgs.Count -gt 0))
+        AddedRules   = $addedRules
+        RemovedRules = $removedRules
     }
 }
 
