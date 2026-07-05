@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- セキュリティグループ適用プレビューに「実効ルール差分」を追加。付け外しする SG のルールを集約し、instance として実際に増減するルール（Direction/Protocol/Port/Target、メモ欄は対象外）だけをネット差分として表示。画面・テキスト・HTML 出力に対応。
+
 ## [1.5.0] - 2026-07-02
 
 ### Added
