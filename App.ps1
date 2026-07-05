@@ -1297,6 +1297,17 @@ function Format-SgDiffText {
     $lines += "適用前SG: $($Diff.BeforeIds -join ', ')"
     $lines += "適用後SG: $($Diff.AfterIds -join ', ')"
     $lines += ''
+    $lines += '[実効ルール差分（メモ欄は対象外）]'
+    $netAddedRules = @($Diff.AddedRules)
+    $netRemovedRules = @($Diff.RemovedRules)
+    if ($netAddedRules.Count -gt 0 -or $netRemovedRules.Count -gt 0) {
+        foreach ($rule in $netAddedRules) { $lines += ('  [+] ' + (Format-SgNetRuleLine -Rule $rule)) }
+        foreach ($rule in $netRemovedRules) { $lines += ('  [-] ' + (Format-SgNetRuleLine -Rule $rule)) }
+    }
+    else {
+        $lines += '  実効ルール差分なし'
+    }
+    $lines += ''
     if (-not $Diff.Changed) {
         $lines += 'SG差分はありません。'
         return ($lines -join "`r`n")
