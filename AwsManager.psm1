@@ -671,4 +671,60 @@ function Invoke-SsmTask {
     }
 }
 
-Export-ModuleMember -Function Get-Ec2Instances, Get-SsmInstanceInformation, Start-Ec2Instance, Stop-Ec2Instance, Restart-Ec2Instance, Get-VpcSecurityGroups, Set-InstanceSecurityGroups, Invoke-SsmTask, ConvertFrom-MinimalYaml
+function Get-SgRuleContentKey {
+    param($Rule)
+    return (('{0}|{1}|{2}|{3}' -f [string]$Rule.Direction, [string]$Rule.Protocol, [string]$Rule.Port, [string]$Rule.Target)).ToLowerInvariant()
+}
+
+function Get-SgNetRuleList {
+    param(
+        [object[]]$SourceRules,
+        [hashtable]$ExcludeKeys
+    )
+    $list = New-Object System.Collections.Generic.List[PSCustomObject]
+    $byKey = @{}
+    foreach ($r in @($SourceRules)) {
+        if ($null -eq $r) { continue }
+        $key = Get-SgRuleContentKey -Rule $r
+        if ($ExcludeKeys.ContainsKey($key)) { continue }
+        $label = [string]$r.SecurityGroup
+        if ($byKey.ContainsKey($key)) {
+            $entry = $byKey[$key]
+            if (-not [string]::IsNullOrWhiteSpace($label) -and -not $entry.SourceSgs.Contains($label)) { $entry.SourceSgs.Add($label) }
+            continue
+        }
+        $sources = New-Object System.Collections.Generic.List[string]
+        if (-not [string]::IsNullOrWhiteSpace($label)) { $sources.Add($label) }
+        $entry = [PSCustomObject]@{
+            Direction = [string]$r.Direction
+            Protocol  = [string]$r.Protocol
+            Port      = [string]$r.Port
+            Target    = [string]$r.Target
+            SourceSgs = $sources
+        }
+        $byKey[$key] = $entry
+        $list.Add($entry)
+    }
+    return $list.ToArray()
+}
+
+function Get-SgRuleDiff {
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param(
+        [object[]]$BeforeRules,
+        [object[]]$AfterRules
+    )
+
+    $beforeKeys = @{}
+    foreach ($r in @($BeforeRules)) { if ($null -ne $r) { $beforeKeys[(Get-SgRuleContentKey -Rule $r)] = $true } }
+    $afterKeys = @{}
+    foreach ($r in @($AfterRules)) { if ($null -ne $r) { $afterKeys[(Get-SgRuleContentKey -Rule $r)] = $true } }
+
+    return [PSCustomObject]@{
+        Added   = @(Get-SgNetRuleList -SourceRules $AfterRules -ExcludeKeys $beforeKeys)
+        Removed = @(Get-SgNetRuleList -SourceRules $BeforeRules -ExcludeKeys $afterKeys)
+    }
+}
+
+Export-ModuleMember -Function Get-Ec2Instances, Get-SsmInstanceInformation, Start-Ec2Instance, Stop-Ec2Instance, Restart-Ec2Instance, Get-VpcSecurityGroups, Set-InstanceSecurityGroups, Invoke-SsmTask, ConvertFrom-MinimalYaml, Get-SgRuleDiff

@@ -10,6 +10,54 @@ Describe 'AwsManager' {
         Remove-Module AwsManager -ErrorAction SilentlyContinue
     }
 
+    Context 'Get-SgRuleDiff' {
+        It 'reports rules present only in the after set as Added' {
+            $before = @(
+                [PSCustomObject]@{ Direction = 'Inbound'; Protocol = 'tcp'; Port = '22'; Target = '10.0.0.0/8'; Description = 'ssh'; SecurityGroup = 'base (sg-1)' }
+            )
+            $after = @(
+                [PSCustomObject]@{ Direction = 'Inbound'; Protocol = 'tcp'; Port = '22'; Target = '10.0.0.0/8'; Description = 'ssh'; SecurityGroup = 'base (sg-1)' },
+                [PSCustomObject]@{ Direction = 'Inbound'; Protocol = 'tcp'; Port = '443'; Target = '0.0.0.0/0'; Description = 'https'; SecurityGroup = 'web (sg-2)' }
+            )
+            $diff = Get-SgRuleDiff -BeforeRules $before -AfterRules $after
+            @($diff.Added).Count | Should -Be 1
+            $diff.Added[0].Port | Should -Be '443'
+            @($diff.Removed).Count | Should -Be 0
+        }
+
+        It 'reports rules present only in the before set as Removed' {
+            $before = @(
+                [PSCustomObject]@{ Direction = 'Inbound'; Protocol = 'tcp'; Port = '3389'; Target = '10.0.0.0/8'; Description = 'rdp'; SecurityGroup = 'old (sg-1)' }
+            )
+            $after = @()
+            $diff = Get-SgRuleDiff -BeforeRules $before -AfterRules $after
+            @($diff.Removed).Count | Should -Be 1
+            $diff.Removed[0].Port | Should -Be '3389'
+            @($diff.Added).Count | Should -Be 0
+        }
+
+        It 'treats identical rule content from different SGs (and different memo) as unchanged' {
+            $before = @([PSCustomObject]@{ Direction = 'Inbound'; Protocol = 'tcp'; Port = '443'; Target = '0.0.0.0/0'; Description = 'old memo'; SecurityGroup = 'old-sg (sg-1)' })
+            $after = @([PSCustomObject]@{ Direction = 'Inbound'; Protocol = 'tcp'; Port = '443'; Target = '0.0.0.0/0'; Description = 'new memo'; SecurityGroup = 'new-sg (sg-2)' })
+            $diff = Get-SgRuleDiff -BeforeRules $before -AfterRules $after
+            @($diff.Added).Count | Should -Be 0
+            @($diff.Removed).Count | Should -Be 0
+        }
+
+        It 'aggregates source SGs for a duplicated added rule' {
+            $before = @()
+            $after = @(
+                [PSCustomObject]@{ Direction = 'Inbound'; Protocol = 'tcp'; Port = '443'; Target = '0.0.0.0/0'; Description = ''; SecurityGroup = 'web-a (sg-1)' },
+                [PSCustomObject]@{ Direction = 'Inbound'; Protocol = 'tcp'; Port = '443'; Target = '0.0.0.0/0'; Description = ''; SecurityGroup = 'web-b (sg-2)' }
+            )
+            $diff = Get-SgRuleDiff -BeforeRules $before -AfterRules $after
+            @($diff.Added).Count | Should -Be 1
+            @($diff.Added[0].SourceSgs).Count | Should -Be 2
+            $diff.Added[0].SourceSgs | Should -Contain 'web-a (sg-1)'
+            $diff.Added[0].SourceSgs | Should -Contain 'web-b (sg-2)'
+        }
+    }
+
     Context 'AWS CLI stderr parsing' {
         It 'uses the message from RemoteException records' {
             InModuleScope AwsManager {
