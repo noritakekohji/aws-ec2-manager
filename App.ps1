@@ -1042,6 +1042,22 @@ function Render-SgDiffPanel {
     Add-SgDiffText -Text "適用前SG: $($Diff.BeforeIds -join ', ')" -Color '#94A3B8' -Bottom 2 | Out-Null
     Add-SgDiffText -Text "適用後SG: $($Diff.AfterIds -join ', ')" -Color '#94A3B8' -Bottom 10 | Out-Null
 
+    Add-SgDiffText -Text '実効ルール差分（メモ欄は対象外）' -Color '#BAE6FD' -Bold $true -FontSize 14 | Out-Null
+    $netAdded = @($Diff.AddedRules)
+    $netRemoved = @($Diff.RemovedRules)
+    if ($netAdded.Count -gt 0 -or $netRemoved.Count -gt 0) {
+        foreach ($rule in $netAdded) {
+            Add-SgDiffText -Text ('[+] ' + (Format-SgNetRuleLine -Rule $rule)) -Color '#38BDF8' | Out-Null
+        }
+        foreach ($rule in $netRemoved) {
+            Add-SgDiffText -Text ('[-] ' + (Format-SgNetRuleLine -Rule $rule)) -Color '#F97373' | Out-Null
+        }
+    }
+    else {
+        Add-SgDiffText -Text '実効ルール差分なし（SGの組合せは変わっても開放ルールは同じです）' -Color '#94A3B8' | Out-Null
+    }
+    Add-SgDiffText -Text '' -Color '#94A3B8' -Bottom 6 | Out-Null
+
     Add-SgDiffText -Text 'Security Group 差分' -Color '#BAE6FD' -Bold $true -FontSize 14 | Out-Null
     if ($Diff.Changed) {
         foreach ($sg in @($Diff.AddedSgs)) {
