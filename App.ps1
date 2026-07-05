@@ -1408,6 +1408,17 @@ function New-SgReportHtml {
     $afterRows = ''
     foreach ($id in @($diff.AfterIds)) { $afterRows += "<li>$(ConvertTo-HtmlText $id)</li>`r`n" }
 
+    $netRuleRows = ''
+    foreach ($rule in @($diff.AddedRules)) {
+        $netRuleRows += "<tr><td class='added'>[+]</td><td>$(ConvertTo-HtmlText $rule.Direction)</td><td>$(ConvertTo-HtmlText $rule.Protocol)</td><td>$(ConvertTo-HtmlText $rule.Port)</td><td>$(ConvertTo-HtmlText $rule.Target)</td><td>$(ConvertTo-HtmlText ((@($rule.SourceSgs)) -join ', '))</td></tr>`r`n"
+    }
+    foreach ($rule in @($diff.RemovedRules)) {
+        $netRuleRows += "<tr><td class='removed'>[-]</td><td>$(ConvertTo-HtmlText $rule.Direction)</td><td>$(ConvertTo-HtmlText $rule.Protocol)</td><td>$(ConvertTo-HtmlText $rule.Port)</td><td>$(ConvertTo-HtmlText $rule.Target)</td><td>$(ConvertTo-HtmlText ((@($rule.SourceSgs)) -join ', '))</td></tr>`r`n"
+    }
+    if ([string]::IsNullOrWhiteSpace($netRuleRows)) {
+        $netRuleRows = "<tr><td colspan='6'>実効ルール差分なし</td></tr>`r`n"
+    }
+
     $html = @"
 <!doctype html>
 <html lang="ja">
@@ -1436,6 +1447,15 @@ ul { margin-top: 8px; }
 <body>
 <h1>Security Group Change Report</h1>
 <div class="meta">Instance: $(ConvertTo-HtmlText $tab2State.CurrentInstanceId) / VPC: $(ConvertTo-HtmlText $tab2State.CurrentVpcId) / Status: $(ConvertTo-HtmlText $Status) / Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')</div>
+<div class="panel">
+<h2>実効ルール差分（メモ欄は対象外）</h2>
+<table>
+<thead><tr><th>差分</th><th>方向</th><th>Protocol</th><th>Port</th><th>Source / Destination</th><th>由来SG</th></tr></thead>
+<tbody>
+$netRuleRows
+</tbody>
+</table>
+</div>
 <div class="panel">
 <h2>Security Group 差分</h2>
 <table>
