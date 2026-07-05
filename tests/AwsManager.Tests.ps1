@@ -56,6 +56,24 @@ Describe 'AwsManager' {
             $diff.Added[0].SourceSgs | Should -Contain 'web-a (sg-1)'
             $diff.Added[0].SourceSgs | Should -Contain 'web-b (sg-2)'
         }
+
+        It 'reports a changed rule as both Removed (old) and Added (new)' {
+            $before = @([PSCustomObject]@{ Direction = 'Inbound'; Protocol = 'tcp'; Port = '443'; Target = '0.0.0.0/0'; Description = ''; SecurityGroup = 'w (sg-1)' })
+            $after = @([PSCustomObject]@{ Direction = 'Inbound'; Protocol = 'tcp'; Port = '8443'; Target = '0.0.0.0/0'; Description = ''; SecurityGroup = 'w (sg-1)' })
+            $diff = Get-SgRuleDiff -BeforeRules $before -AfterRules $after
+            @($diff.Added).Count | Should -Be 1
+            $diff.Added[0].Port | Should -Be '8443'
+            @($diff.Removed).Count | Should -Be 1
+            $diff.Removed[0].Port | Should -Be '443'
+        }
+
+        It 'matches rule content case-insensitively' {
+            $before = @([PSCustomObject]@{ Direction = 'Inbound'; Protocol = 'TCP'; Port = '443'; Target = '0.0.0.0/0'; Description = ''; SecurityGroup = 'w (sg-1)' })
+            $after = @([PSCustomObject]@{ Direction = 'Inbound'; Protocol = 'tcp'; Port = '443'; Target = '0.0.0.0/0'; Description = ''; SecurityGroup = 'w (sg-1)' })
+            $diff = Get-SgRuleDiff -BeforeRules $before -AfterRules $after
+            @($diff.Added).Count | Should -Be 0
+            @($diff.Removed).Count | Should -Be 0
+        }
     }
 
     Context 'AWS CLI stderr parsing' {
