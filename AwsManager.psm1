@@ -450,6 +450,197 @@ function Set-InstanceSecurityGroups {
     return $r.Success
 }
 
+function Get-IamInstanceProfiles {
+    [CmdletBinding()]
+    [OutputType([PSCustomObject[]])]
+    param(
+        [Parameter(Mandatory = $true)][string]$Profile
+    )
+
+    $r = Invoke-AwsCli -Arguments @('iam', 'list-instance-profiles', '--profile', $Profile, '--output', 'json')
+    if (-not $r.Success) {
+        $errDetail = if ([string]::IsNullOrWhiteSpace($r.Stderr)) { $r.Output } else { $r.Stderr }
+        Write-Error "aws iam list-instance-profiles failed: $errDetail"
+        return , @()
+    }
+
+    $list = New-Object System.Collections.Generic.List[PSCustomObject]
+    if ([string]::IsNullOrWhiteSpace($r.Output)) { return , ($list.ToArray()) }
+
+    $parsed = $r.Output | ConvertFrom-Json
+    if ($null -eq $parsed -or -not ($parsed.PSObject.Properties.Name -contains 'InstanceProfiles')) {
+        return , ($list.ToArray())
+    }
+
+    foreach ($profileItem in @($parsed.InstanceProfiles)) {
+        if ($null -eq $profileItem) { continue }
+        $roleNames = New-Object System.Collections.Generic.List[string]
+        if ($profileItem.PSObject.Properties.Name -contains 'Roles' -and $null -ne $profileItem.Roles) {
+            foreach ($role in @($profileItem.Roles)) {
+                if ($null -ne $role -and ($role.PSObject.Properties.Name -contains 'RoleName')) {
+                    $roleNames.Add([string]$role.RoleName)
+                }
+            }
+        }
+        $list.Add([PSCustomObject]@{
+                InstanceProfileName = [string]$profileItem.InstanceProfileName
+                Arn                 = [string]$profileItem.Arn
+                Path                = [string]$profileItem.Path
+                RoleNames           = [string[]]$roleNames.ToArray()
+            })
+    }
+    return , ($list.ToArray())
+}
+
+function Get-InstanceProfileAssociation {
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param(
+        [Parameter(Mandatory = $true)][string]$Profile,
+        [Parameter(Mandatory = $true)][string]$InstanceId
+    )
+
+    $r = Invoke-AwsCli -Arguments @(
+        'ec2', 'describe-iam-instance-profile-associations',
+        '--profile', $Profile,
+        '--filters', "Name=instance-id,Values=$InstanceId",
+        '--output', 'json'
+    )
+    if (-not $r.Success) {
+        $errDetail = if ([string]::IsNullOrWhiteSpace($r.Stderr)) { $r.Output } else { $r.Stderr }
+        Write-Error "aws ec2 describe-iam-instance-profile-associations failed: $errDetail"
+        return $null
+    }
+    if ([string]::IsNullOrWhiteSpace($r.Output)) { return $null }
+
+    $parsed = $r.Output | ConvertFrom-Json
+    if ($null -eq $parsed -or -not ($parsed.PSObject.Properties.Name -contains 'IamInstanceProfileAssociations')) {
+        return $null
+    }
+
+    $associations = @($parsed.IamInstanceProfileAssociations)
+    $associatedItems = @($associations | Where-Object {
+            $null -ne $_ -and
+            ($_.PSObject.Properties.Name -contains 'State') -and
+            [string]$_.State -eq 'associated'
+        })
+    foreach ($assoc in $associatedItems) {
+        if ($null -eq $assoc) { continue }
+        $state = if ($assoc.PSObject.Properties.Name -contains 'State') { [string]$assoc.State } else { '' }
+        if ($state -eq 'disassociated') { continue }
+        $iamArn = ''
+        if ($assoc.PSObject.Properties.Name -contains 'IamInstanceProfile' -and $null -ne $assoc.IamInstanceProfile) {
+            if ($assoc.IamInstanceProfile.PSObject.Properties.Name -contains 'Arn') {
+                $iamArn = [string]$assoc.IamInstanceProfile.Arn
+            }
+        }
+        $iamName = ''
+        if (-not [string]::IsNullOrWhiteSpace($iamArn)) { $iamName = ($iamArn -split '/')[-1] }
+        return [PSCustomObject]@{
+            AssociationId      = if ($assoc.PSObject.Properties.Name -contains 'AssociationId') { [string]$assoc.AssociationId } else { '' }
+            InstanceId         = if ($assoc.PSObject.Properties.Name -contains 'InstanceId') { [string]$assoc.InstanceId } else { $InstanceId }
+            State              = $state
+            InstanceProfileArn = $iamArn
+            InstanceProfileName = $iamName
+        }
+    }
+    foreach ($assoc in @($associations)) {
+        if ($null -eq $assoc) { continue }
+        $state = if ($assoc.PSObject.Properties.Name -contains 'State') { [string]$assoc.State } else { '' }
+        if ($state -eq 'disassociated') { continue }
+        $iamArn = ''
+        if ($assoc.PSObject.Properties.Name -contains 'IamInstanceProfile' -and $null -ne $assoc.IamInstanceProfile) {
+            if ($assoc.IamInstanceProfile.PSObject.Properties.Name -contains 'Arn') {
+                $iamArn = [string]$assoc.IamInstanceProfile.Arn
+            }
+        }
+        $iamName = ''
+        if (-not [string]::IsNullOrWhiteSpace($iamArn)) { $iamName = ($iamArn -split '/')[-1] }
+        return [PSCustomObject]@{
+            AssociationId      = if ($assoc.PSObject.Properties.Name -contains 'AssociationId') { [string]$assoc.AssociationId } else { '' }
+            InstanceId         = if ($assoc.PSObject.Properties.Name -contains 'InstanceId') { [string]$assoc.InstanceId } else { $InstanceId }
+            State              = $state
+            InstanceProfileArn = $iamArn
+            InstanceProfileName = $iamName
+        }
+    }
+    return $null
+}
+
+function Assert-AwsCliSuccess {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Result,
+        [Parameter(Mandatory = $true)][string]$Operation
+    )
+
+    if ($Result.Success) { return }
+    $parts = New-Object System.Collections.Generic.List[string]
+    if ($Result.PSObject.Properties.Name -contains 'Stderr' -and -not [string]::IsNullOrWhiteSpace([string]$Result.Stderr)) {
+        $parts.Add([string]$Result.Stderr)
+    }
+    if ($Result.PSObject.Properties.Name -contains 'Output' -and -not [string]::IsNullOrWhiteSpace([string]$Result.Output)) {
+        $parts.Add([string]$Result.Output)
+    }
+    if ($Result.PSObject.Properties.Name -contains 'ExitCode') {
+        $parts.Add("ExitCode: $($Result.ExitCode)")
+    }
+    $detail = ($parts.ToArray() -join ' / ')
+    if ([string]::IsNullOrWhiteSpace($detail)) { $detail = '詳細なし' }
+    throw "$Operation failed: $detail"
+}
+
+function Set-InstanceProfileAssociation {
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory = $true)][string]$Profile,
+        [Parameter(Mandatory = $true)][string]$InstanceId,
+        [Parameter(Mandatory = $true)][ValidateSet('Attach', 'Detach', 'Replace')][string]$Action,
+        [string]$InstanceProfileName,
+        [string]$AssociationId
+    )
+
+    if ($Action -eq 'Attach') {
+        if ([string]::IsNullOrWhiteSpace($InstanceProfileName)) { throw 'Attach には InstanceProfileName が必要です。' }
+        if (-not $PSCmdlet.ShouldProcess($InstanceId, "Attach IAM instance profile: $InstanceProfileName")) { return $false }
+        $r = Invoke-AwsCli -Arguments @(
+            'ec2', 'associate-iam-instance-profile',
+            '--profile', $Profile,
+            '--instance-id', $InstanceId,
+            '--iam-instance-profile', "Name=$InstanceProfileName",
+            '--output', 'json'
+        )
+        Assert-AwsCliSuccess -Result $r -Operation 'aws ec2 associate-iam-instance-profile'
+        return $r.Success
+    }
+
+    if ([string]::IsNullOrWhiteSpace($AssociationId)) { throw "$Action には AssociationId が必要です。" }
+    if ($Action -eq 'Detach') {
+        if (-not $PSCmdlet.ShouldProcess($InstanceId, "Detach IAM instance profile association: $AssociationId")) { return $false }
+        $r = Invoke-AwsCli -Arguments @(
+            'ec2', 'disassociate-iam-instance-profile',
+            '--profile', $Profile,
+            '--association-id', $AssociationId,
+            '--output', 'json'
+        )
+        Assert-AwsCliSuccess -Result $r -Operation 'aws ec2 disassociate-iam-instance-profile'
+        return $r.Success
+    }
+
+    if ([string]::IsNullOrWhiteSpace($InstanceProfileName)) { throw 'Replace には InstanceProfileName が必要です。' }
+    if (-not $PSCmdlet.ShouldProcess($InstanceId, "Replace IAM instance profile: $InstanceProfileName")) { return $false }
+    $r = Invoke-AwsCli -Arguments @(
+        'ec2', 'replace-iam-instance-profile-association',
+        '--profile', $Profile,
+        '--association-id', $AssociationId,
+        '--iam-instance-profile', "Name=$InstanceProfileName",
+        '--output', 'json'
+    )
+    Assert-AwsCliSuccess -Result $r -Operation 'aws ec2 replace-iam-instance-profile-association'
+    return $r.Success
+}
+
 function ConvertFrom-MinimalYaml {
     [CmdletBinding()]
     [OutputType([hashtable])]
@@ -727,4 +918,4 @@ function Get-SgRuleDiff {
     }
 }
 
-Export-ModuleMember -Function Get-Ec2Instances, Get-SsmInstanceInformation, Start-Ec2Instance, Stop-Ec2Instance, Restart-Ec2Instance, Get-VpcSecurityGroups, Set-InstanceSecurityGroups, Invoke-SsmTask, ConvertFrom-MinimalYaml, Get-SgRuleDiff
+Export-ModuleMember -Function Get-Ec2Instances, Get-SsmInstanceInformation, Start-Ec2Instance, Stop-Ec2Instance, Restart-Ec2Instance, Get-VpcSecurityGroups, Set-InstanceSecurityGroups, Get-IamInstanceProfiles, Get-InstanceProfileAssociation, Set-InstanceProfileAssociation, Invoke-SsmTask, ConvertFrom-MinimalYaml, Get-SgRuleDiff

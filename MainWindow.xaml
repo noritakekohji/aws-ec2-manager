@@ -517,7 +517,7 @@
                                 <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE72C;" Margin="0,0,7,0" /><TextBlock Text="更新" /></StackPanel>
                             </Button>
                             <TextBlock Grid.Column="3" Text="Security Groups" Foreground="{StaticResource MutedText}" VerticalAlignment="Center" />
-                            <Button x:Name="ExportSgReportButton" Grid.Column="4" Margin="0,0,8,0" ToolTip="現在の差分を一時HTMLでブラウザ表示">
+                            <Button x:Name="ExportSgReportButton" Grid.Column="4" Margin="0,0,8,0" ToolTip="現在の差分をHTML出力してブラウザで開く">
                                 <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE9F9;" Margin="0,0,7,0" /><TextBlock Text="HTML出力" /></StackPanel>
                             </Button>
                             <Button x:Name="ApplySgButton" Grid.Column="5" Style="{StaticResource SuccessButton}">
@@ -563,6 +563,88 @@
                                                   BorderBrush="{StaticResource LineBrush}"
                                                   BorderThickness="1">
                                         <StackPanel x:Name="SgDiffPanel" Margin="10" />
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+                        </Grid>
+                    </Grid>
+                </Border>
+            </TabItem>
+
+            <TabItem Header="インスタンスロール">
+                <Border Style="{StaticResource PanelBorder}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0" Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="380" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="インスタンス" Style="{StaticResource MutedLabel}" Margin="0,0,8,0" />
+                            <ComboBox x:Name="RoleInstanceComboBox"
+                                      Grid.Column="1"
+                                      VerticalAlignment="Center"
+                                      Margin="0,0,8,0"
+                                      MaxDropDownHeight="360">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DisplayLabel}" Foreground="{StaticResource MainText}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <Button x:Name="LoadRoleButton" Grid.Column="2" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0">
+                                <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE72C;" Margin="0,0,7,0" /><TextBlock Text="更新" /></StackPanel>
+                            </Button>
+                            <TextBlock Grid.Column="3" Text="IAM Instance Profile" Foreground="{StaticResource MutedText}" VerticalAlignment="Center" />
+                            <Button x:Name="ApplyRoleButton" Grid.Column="4" Style="{StaticResource SuccessButton}">
+                                <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE73E;" Margin="0,0,7,0" /><TextBlock Text="適用" /></StackPanel>
+                            </Button>
+                        </Grid>
+                        <Grid Grid.Row="1">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="2*" />
+                                <RowDefinition Height="3*" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <DockPanel Grid.Row="0" Grid.Column="0" Margin="0,0,10,10">
+                                <TextBlock DockPanel.Dock="Top" Text="適用予定 Instance Profile" FontWeight="SemiBold" Margin="0,0,0,8" Foreground="#BAE6FD" />
+                                <ListBox x:Name="AppliedRoleList"
+                                         DisplayMemberPath="DisplayLabel"
+                                         SelectionMode="Single" />
+                            </DockPanel>
+                            <StackPanel Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" Margin="4,0,4,10">
+                                <Button x:Name="MoveRoleToAppliedButton" Content="&lt;" Width="44" Height="34" Margin="0,0,0,10" Padding="0" ToolTip="候補 Instance Profile を適用予定に移動" />
+                                <Button x:Name="MoveRoleToAvailableButton" Content="&gt;" Width="44" Height="34" Padding="0" ToolTip="適用予定 Instance Profile を外す" />
+                            </StackPanel>
+                            <DockPanel Grid.Row="0" Grid.Column="2" Margin="10,0,0,10">
+                                <TextBlock DockPanel.Dock="Top" Text="候補 Instance Profile（含まれる Role を表示）" FontWeight="SemiBold" Margin="0,0,0,8" Foreground="#BAE6FD" />
+                                <ListBox x:Name="AvailableRoleList"
+                                         DisplayMemberPath="DisplayLabel"
+                                         SelectionMode="Single" />
+                            </DockPanel>
+                            <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
+                                    Background="{StaticResource PanelAltBg}"
+                                    BorderBrush="{StaticResource LineBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="7"
+                                    Padding="10">
+                                <DockPanel>
+                                    <TextBlock DockPanel.Dock="Top" Text="操作差分" FontWeight="SemiBold" Margin="0,0,0,8" Foreground="#BAE6FD" />
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                  Background="{StaticResource FieldBg}"
+                                                  BorderBrush="{StaticResource LineBrush}"
+                                                  BorderThickness="1">
+                                        <StackPanel x:Name="RoleDiffPanel" Margin="10" />
                                     </ScrollViewer>
                                 </DockPanel>
                             </Border>

@@ -317,6 +317,95 @@ Describe 'AwsManager' {
         }
     }
 
+    Context 'IAM instance profiles' {
+        It 'parses list-instance-profiles output' {
+            $fake = @'
+{
+  "InstanceProfiles": [
+    {
+      "Path": "/",
+      "InstanceProfileName": "app-profile",
+      "Arn": "arn:aws:iam::123456789012:instance-profile/app-profile",
+      "Roles": [
+        { "RoleName": "app-role" }
+      ]
+    }
+  ]
+}
+'@
+            Mock -ModuleName AwsManager Invoke-AwsCli {
+                [PSCustomObject]@{ ExitCode = 0; Output = $fake; Success = $true }
+            }
+
+            $profiles = Get-IamInstanceProfiles -Profile 'dev'
+            $profiles.Count | Should -Be 1
+            $profiles[0].InstanceProfileName | Should -Be 'app-profile'
+            $profiles[0].RoleNames[0] | Should -Be 'app-role'
+        }
+
+        It 'parses current EC2 instance profile association' {
+            $fake = @'
+{
+  "IamInstanceProfileAssociations": [
+    {
+      "AssociationId": "iip-assoc-123",
+      "InstanceId": "i-1",
+      "State": "associated",
+      "IamInstanceProfile": {
+        "Arn": "arn:aws:iam::123456789012:instance-profile/app-profile",
+        "Id": "AIP123"
+      }
+    }
+  ]
+}
+'@
+            Mock -ModuleName AwsManager Invoke-AwsCli {
+                [PSCustomObject]@{ ExitCode = 0; Output = $fake; Success = $true }
+            }
+
+            $assoc = Get-InstanceProfileAssociation -Profile 'dev' -InstanceId 'i-1'
+            $assoc.AssociationId | Should -Be 'iip-assoc-123'
+            $assoc.InstanceProfileName | Should -Be 'app-profile'
+            $assoc.State | Should -Be 'associated'
+        }
+
+        It 'uses associate-iam-instance-profile for Attach' {
+            $script:capturedArgs = $null
+            Mock -ModuleName AwsManager Invoke-AwsCli {
+                $script:capturedArgs = $Arguments
+                [PSCustomObject]@{ ExitCode = 0; Output = '{}'; Success = $true }
+            }
+
+            Set-InstanceProfileAssociation -Profile 'dev' -InstanceId 'i-1' -Action Attach -InstanceProfileName 'app-profile' | Should -BeTrue
+            $script:capturedArgs | Should -Contain 'associate-iam-instance-profile'
+            $script:capturedArgs | Should -Contain 'Name=app-profile'
+        }
+
+        It 'uses disassociate-iam-instance-profile for Detach' {
+            $script:capturedArgs = $null
+            Mock -ModuleName AwsManager Invoke-AwsCli {
+                $script:capturedArgs = $Arguments
+                [PSCustomObject]@{ ExitCode = 0; Output = '{}'; Success = $true }
+            }
+
+            Set-InstanceProfileAssociation -Profile 'dev' -InstanceId 'i-1' -Action Detach -AssociationId 'iip-assoc-123' | Should -BeTrue
+            $script:capturedArgs | Should -Contain 'disassociate-iam-instance-profile'
+            $script:capturedArgs | Should -Contain 'iip-assoc-123'
+        }
+
+        It 'uses replace-iam-instance-profile-association for Replace' {
+            $script:capturedArgs = $null
+            Mock -ModuleName AwsManager Invoke-AwsCli {
+                $script:capturedArgs = $Arguments
+                [PSCustomObject]@{ ExitCode = 0; Output = '{}'; Success = $true }
+            }
+
+            Set-InstanceProfileAssociation -Profile 'dev' -InstanceId 'i-1' -Action Replace -AssociationId 'iip-assoc-123' -InstanceProfileName 'next-profile' | Should -BeTrue
+            $script:capturedArgs | Should -Contain 'replace-iam-instance-profile-association'
+            $script:capturedArgs | Should -Contain 'Name=next-profile'
+        }
+    }
+
     Context 'ConvertFrom-MinimalYaml' {
         It 'parses basic key/value and script: | block' {
             $yaml = "name: foo`noutput: text`nscript: |`n  echo hello"

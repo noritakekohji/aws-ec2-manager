@@ -48,6 +48,16 @@ $logButton = Find-Control -Name 'LogButton'
 $settingsButton = Find-Control -Name 'SettingsButton'
 $statusBarText = Find-Control -Name 'StatusBarText'
 
+$window.Dispatcher.add_UnhandledException({
+        param($sender, $eventArgs)
+        $message = [string]$eventArgs.Exception.Message
+        if ([string]::IsNullOrWhiteSpace($message)) { $message = [string]$eventArgs.Exception }
+        if ([string]::IsNullOrWhiteSpace($message)) { $message = '詳細のない UI エラーが発生しました。' }
+        $statusBarText.Text = "UI エラー: $message"
+        Write-AppLog -Level 'ERROR' -Message "未処理 UI エラー: $message"
+        $eventArgs.Handled = $true
+    })
+
 function Update-ProfileComboBox {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper.')]
     [CmdletBinding()]
@@ -231,6 +241,7 @@ $profileComboBox.Add_SelectionChanged({
                     $instanceScanState.Items = @()
                     $instanceScanState.SelectedInstanceId = $null
                     $instanceScanState.LastUpdated = $null
+                    $instanceScanState.HasLoaded = $false
                     Update-DependentInstanceCombos -Items @() -PreferredInstanceId $null
                 }
                 return
@@ -240,6 +251,7 @@ $profileComboBox.Add_SelectionChanged({
                 $instanceScanState.Items = @()
                 $instanceScanState.SelectedInstanceId = $null
                 $instanceScanState.LastUpdated = $null
+                $instanceScanState.HasLoaded = $false
                 Update-DependentInstanceCombos -Items @() -PreferredInstanceId $null
             }
             $detail = Get-AwsProfileDetail -Name $selected
@@ -352,6 +364,12 @@ $instanceScanState = [PSCustomObject]@{
     Items              = @()
     SelectedInstanceId = $null
     LastUpdated        = $null
+    HasLoaded          = $false
+}
+
+$comboRefreshState = [PSCustomObject]@{
+    SuppressSgSelection   = $false
+    SuppressRoleSelection = $false
 }
 
 $lockState = [PSCustomObject]@{
@@ -439,6 +457,13 @@ function Update-LockDependentControls {
         Add-InstanceLockMetadata -Instance $sgSel -DisplayLabel ([string]$sgSel.DisplayLabel).Replace('[ロック] ', '') | Out-Null
         $applySgButton.IsEnabled = -not (Test-InstanceLocked -InstanceId ([string]$sgSel.InstanceId))
         $sgInstanceComboBox.Items.Refresh()
+    }
+
+    $roleSel = $roleInstanceComboBox.SelectedItem
+    if ($null -ne $roleSel) {
+        Add-InstanceLockMetadata -Instance $roleSel -DisplayLabel ([string]$roleSel.DisplayLabel).Replace('[ロック] ', '') | Out-Null
+        Update-RoleActionButtons
+        $roleInstanceComboBox.Items.Refresh()
     }
 
     $ssmSel = $ssmInstanceComboBox.SelectedItem
@@ -535,6 +560,16 @@ function Update-DependentInstanceCombos {
         }
         catch {
             Write-AppLog -Level 'WARN' -Message "SSM インスタンス反映エラー: $($_.Exception.Message)"
+        }
+    }
+    if ($null -ne (Get-Command -Name Update-RoleInstanceComboBoxFromItems -ErrorAction SilentlyContinue) -and
+        $null -ne (Get-Variable -Name roleInstanceComboBox -ErrorAction SilentlyContinue) -and
+        $null -ne $roleInstanceComboBox) {
+        try {
+            Update-RoleInstanceComboBoxFromItems -Items $Items -PreferredInstanceId $PreferredInstanceId | Out-Null
+        }
+        catch {
+            Write-AppLog -Level 'WARN' -Message "インスタンスロール反映エラー: $($_.Exception.Message)"
         }
     }
 }
@@ -731,13 +766,57 @@ function Update-InstancesGridFromItems {
     Update-InstanceLockButtons
 }
 
+function Update-CachedInstanceSecurityGroups {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Updates local UI cache after a confirmed AWS change.')]
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$InstanceId,
+        [Parameter(Mandatory = $true)][string[]]$GroupIds
+    )
+
+    $items = New-Object System.Collections.Generic.List[object]
+    foreach ($it in @(ConvertTo-InstanceItemArray -Items $instanceScanState.Items)) {
+        if ([string]$it.InstanceId -eq $InstanceId) {
+            $it | Add-Member -NotePropertyName SecurityGroupIds -NotePropertyValue @($GroupIds) -Force
+            $it | Add-Member -NotePropertyName SecurityGroupNames -NotePropertyValue @() -Force
+        }
+        $items.Add($it)
+    }
+    $instanceScanState.Items = $items.ToArray()
+}
+
+function Update-CachedInstanceRole {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Updates local UI cache after a confirmed AWS change.')]
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$InstanceId,
+        [AllowNull()][string]$InstanceProfileName
+    )
+
+    $items = New-Object System.Collections.Generic.List[object]
+    foreach ($it in @(ConvertTo-InstanceItemArray -Items $instanceScanState.Items)) {
+        if ([string]$it.InstanceId -eq $InstanceId) {
+            $it | Add-Member -NotePropertyName IamInstanceProfile -NotePropertyValue ([string]$InstanceProfileName) -Force
+            $it | Add-Member -NotePropertyName IamInstanceProfileArn -NotePropertyValue '' -Force
+        }
+        $items.Add($it)
+    }
+    $instanceScanState.Items = $items.ToArray()
+}
+
 function Update-InstanceViews {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI refresh helper.')]
     [CmdletBinding()]
-    param()
+    param([switch]$Force)
     try {
         $name = Get-SelectedProfile
         if ($null -eq $name) { return }
+        if ((-not $Force) -and $instanceScanState.HasLoaded -and $instanceScanState.Profile -eq $name) {
+            [object[]]$cachedItems = @(Get-SharedInstanceItems -Profile $name)
+            Update-InstancesGridFromItems -Items $cachedItems
+            $statusBarText.Text = "キャッシュ済みインスタンス $($cachedItems.Count) 件を表示しました（再取得は更新ボタン）"
+            return
+        }
         $statusBarText.Text = 'インスタンス更新中…'
         & $pumpUi
         # @() で包むと unary-comma 返り値が「1 要素 = 配列まるごと」に化けるので使わない
@@ -745,6 +824,7 @@ function Update-InstanceViews {
         if ($null -eq $items) { $items = @() }
         $instanceScanState.Profile = $name
         $instanceScanState.LastUpdated = Get-Date
+        $instanceScanState.HasLoaded = $true
         Update-InstancesGridFromItems -Items $items
         $statusBarText.Text = "インスタンス $($items.Count) 件を更新しました"
         Write-AppLog -Level 'INFO' -Message "インスタンス一括更新: $($items.Count) 件 (Profile=$name)"
@@ -756,7 +836,7 @@ function Update-InstanceViews {
 }
 
 $refreshInstancesButton.Add_Click({
-        Update-InstanceViews
+        Update-InstanceViews -Force
     })
 
 function Invoke-InstanceAction {
@@ -950,7 +1030,9 @@ function Add-SgDiffText {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper, not a system-state change.')]
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)][string]$Text,
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$Text,
         [string]$Color = '#E5E7EB',
         [bool]$Bold = $false,
         [double]$FontSize = 13,
@@ -1093,7 +1175,7 @@ function Update-SgDiffPreview {
     param()
     $diff = Get-SgDiffData
     Render-SgDiffPanel -Diff $diff
-    $exportSgReportButton.IsEnabled = -not [string]::IsNullOrEmpty($tab2State.CurrentInstanceId)
+    $exportSgReportButton.IsEnabled = $true
 }
 
 function ConvertTo-SgRuleRows {
@@ -1177,8 +1259,8 @@ function Get-SgRuleRowsForItems {
     foreach ($sg in @($Items)) {
         if ($null -eq $sg) { continue }
         $sgLabel = Get-SgLabel -Item $sg
-        $inRows = ConvertTo-SgRuleRows -Permissions $sg.IpPermissions -Direction 'Inbound'
-        $outRows = ConvertTo-SgRuleRows -Permissions $sg.IpPermissionsEgress -Direction 'Outbound'
+        $inRows = @(ConvertTo-SgRuleRows -Permissions $sg.IpPermissions -Direction 'Inbound')
+        $outRows = @(ConvertTo-SgRuleRows -Permissions $sg.IpPermissionsEgress -Direction 'Outbound')
         foreach ($row in @($inRows + $outRows)) {
             if ([string]$row.Protocol -eq '(ルールなし)') { continue }
             $row | Add-Member -NotePropertyName SecurityGroupId -NotePropertyValue ([string]$sg.GroupId) -Force
@@ -1434,6 +1516,7 @@ details.sg-detail { border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px
 summary { cursor: pointer; font-weight: 700; }
 .meta { color: #475569; margin-bottom: 18px; }
 .panel { background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+.note { color: #475569; background: #f1f5f9; border-left: 4px solid #94a3b8; padding: 10px 12px; margin: 10px 0 12px; line-height: 1.6; }
 table { border-collapse: collapse; width: 100%; background: #ffffff; margin-top: 8px; }
 th, td { border: 1px solid #cbd5e1; padding: 8px 10px; text-align: left; vertical-align: top; word-break: break-word; }
 th { background: #e2e8f0; }
@@ -1449,8 +1532,13 @@ ul { margin-top: 8px; }
 <div class="meta">Instance: $(ConvertTo-HtmlText $tab2State.CurrentInstanceId) / VPC: $(ConvertTo-HtmlText $tab2State.CurrentVpcId) / Status: $(ConvertTo-HtmlText $Status) / Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')</div>
 <div class="panel">
 <h2>実効ルール差分（メモ欄は対象外）</h2>
+<div class="note">
+<strong>留意事項:</strong>
+この差分は Security Group のルール内容（方向、Protocol、Port、Source / Destination）を比較したものです。
+ルールの Description、Security Group 参照先に内包される SG やその先のルール、NACL、OS ファイアウォール、アプリケーション側の許可設定は考慮しません。
+</div>
 <table>
-<thead><tr><th>差分</th><th>方向</th><th>Protocol</th><th>Port</th><th>Source / Destination</th><th>由来SG</th></tr></thead>
+<thead><tr><th>差分</th><th>方向</th><th>Protocol</th><th>Port</th><th>Source / Destination</th><th>対象SG</th></tr></thead>
 <tbody>
 $netRuleRows
 </tbody>
@@ -1487,13 +1575,67 @@ $existingBlocks
 
 function Open-HtmlFile {
     [CmdletBinding()]
-    param([Parameter(Mandatory = $true)][string]$Path)
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $true)][string]$Path
+    )
+
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    if (-not (Test-Path -LiteralPath $fullPath)) {
+        throw "HTML ファイルが見つかりません: $fullPath"
+    }
+
+    $uri = (New-Object System.Uri($fullPath)).AbsoluteUri
+    $errors = New-Object System.Collections.Generic.List[string]
+
     try {
-        Start-Process -FilePath 'msedge.exe' -ArgumentList $Path -ErrorAction Stop
+        Start-Process -FilePath 'msedge.exe' -ArgumentList @($uri) -ErrorAction Stop | Out-Null
+        return 'msedge.exe'
     }
     catch {
-        Start-Process -FilePath $Path | Out-Null
+        $errors.Add("msedge.exe: $($_.Exception.Message)")
     }
+
+    try {
+        Start-Process -FilePath 'rundll32.exe' -ArgumentList @('url.dll,FileProtocolHandler', $uri) -ErrorAction Stop | Out-Null
+        return 'default browser'
+    }
+    catch {
+        $errors.Add("default browser: $($_.Exception.Message)")
+    }
+
+    throw "HTML をブラウザで開けません: $fullPath / $($errors.ToArray() -join ' / ')"
+}
+
+function Invoke-SgReportHtmlExport {
+    [CmdletBinding()]
+    param()
+
+    if ([string]::IsNullOrEmpty($tab2State.CurrentInstanceId)) {
+        $statusBarText.Text = 'インスタンス未選択のためHTML出力できません'
+        return
+    }
+
+    $reportDir = Get-SgReportDirectory
+    $statusBarText.Text = 'SG差分HTMLを出力中...'
+    & $pumpUi
+    $path = New-SgReportHtml -Status 'Preview' -Directory $reportDir
+    if ($null -eq $path) { return }
+
+    Write-AppLog -Level 'INFO' -Message "SG差分HTML出力: $path"
+    $browser = Open-HtmlFile -Path $path
+    $statusBarText.Text = "SG差分HTMLを出力してブラウザで開きました: $path"
+    Write-AppLog -Level 'INFO' -Message "SG差分HTMLブラウザ起動: $path ($browser)"
+}
+
+function Open-TaskHtmlResult {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][string]$HtmlPath
+    )
+
+    $browser = Open-HtmlFile -Path $HtmlPath
+    return $browser
 }
 
 function Show-SgDetailWindow {
@@ -1570,22 +1712,10 @@ function Update-SgInstanceComboBox {
     try {
         $name = Get-SelectedProfile
         if ($null -eq $name) { return }
+        Update-InstanceViews
         [object[]]$cachedItems = @(Get-SharedInstanceItems -Profile $name)
-        if ((-not $Refresh) -and @($cachedItems).Count -gt 0) {
-            $count = Update-SgInstanceComboBoxFromItems -Items $cachedItems -PreferredInstanceId $instanceScanState.SelectedInstanceId
-            $statusBarText.Text = "スキャン済みインスタンス $count 件を SG に反映しました"
-            return
-        }
-        $statusBarText.Text = 'インスタンス取得中…'
-        & $pumpUi
-        [object[]]$items = Get-Ec2Instances -Profile $name
-        if ($null -eq $items) { $items = @() }
-        $instanceScanState.Profile = $name
-        $instanceScanState.Items = @($items)
-        $instanceScanState.LastUpdated = Get-Date
-        Update-InstancesGridFromItems -Items $items
-        $count = $items.Count
-        $statusBarText.Text = "インスタンス $count 件"
+        $count = Update-SgInstanceComboBoxFromItems -Items $cachedItems -PreferredInstanceId $instanceScanState.SelectedInstanceId -LoadDetails
+        $statusBarText.Text = "スキャン済みインスタンス $count 件を SG に反映しました"
     }
     catch {
         $statusBarText.Text = "エラー: $($_.Exception.Message)"
@@ -1599,7 +1729,8 @@ function Update-SgInstanceComboBoxFromItems {
         [AllowNull()]
         [object[]]$Items,
         [AllowNull()]
-        [string]$PreferredInstanceId
+        [string]$PreferredInstanceId,
+        [switch]$LoadDetails
     )
     [object[]]$Items = @(ConvertTo-InstanceItemArray -Items $Items)
     $prevId = $null
@@ -1625,21 +1756,30 @@ function Update-SgInstanceComboBoxFromItems {
         Add-InstanceLockMetadata -Instance $item -DisplayLabel $label | Out-Null
         $display.Add($item)
     }
-    $sgInstanceComboBox.ItemsSource = $display.ToArray()
-    if ($display.Count -gt 0) {
-        $match = $null
-        if (-not [string]::IsNullOrEmpty($prevId)) {
-            $match = $sgInstanceComboBox.ItemsSource | Where-Object { [string]$_.InstanceId -eq $prevId } | Select-Object -First 1
-        }
-        if ($null -ne $match) {
-            $sgInstanceComboBox.SelectedItem = $match
+    $comboRefreshState.SuppressSgSelection = $true
+    try {
+        $sgInstanceComboBox.ItemsSource = $display.ToArray()
+        if ($display.Count -gt 0) {
+            $match = $null
+            if (-not [string]::IsNullOrEmpty($prevId)) {
+                $match = $sgInstanceComboBox.ItemsSource | Where-Object { [string]$_.InstanceId -eq $prevId } | Select-Object -First 1
+            }
+            if ($null -ne $match) {
+                $sgInstanceComboBox.SelectedItem = $match
+            }
+            else {
+                $sgInstanceComboBox.SelectedIndex = 0
+            }
         }
         else {
-            $sgInstanceComboBox.SelectedIndex = 0
+            $sgInstanceComboBox.SelectedIndex = -1
         }
     }
-    else {
-        $sgInstanceComboBox.SelectedIndex = -1
+    finally {
+        $comboRefreshState.SuppressSgSelection = $false
+    }
+    if ($LoadDetails -and $null -ne $sgInstanceComboBox.SelectedItem) {
+        Update-SgListsForInstance -Instance $sgInstanceComboBox.SelectedItem
     }
     return $display.Count
 }
@@ -1732,32 +1872,48 @@ function Move-SgItem {
         [Parameter(Mandatory = $true)]$To
     )
     if ($null -eq $From.SelectedItems -or $From.SelectedItems.Count -eq 0) { return }
-    $selected = @($From.SelectedItems)
+
+    $selectedIds = @()
+    foreach ($item in @($From.SelectedItems)) {
+        $groupId = [string](Get-ObjectPropertyValue -Object $item -Name 'GroupId')
+        if (-not [string]::IsNullOrWhiteSpace($groupId)) { $selectedIds += $groupId }
+    }
+    if ($selectedIds.Count -eq 0) { return }
+
     $fromList = New-Object System.Collections.Generic.List[PSCustomObject]
     if ($null -ne $From.ItemsSource) {
-        foreach ($x in $From.ItemsSource) { $fromList.Add($x) }
+        foreach ($x in $From.ItemsSource) {
+            if ($selectedIds -notcontains [string](Get-ObjectPropertyValue -Object $x -Name 'GroupId')) {
+                $fromList.Add($x)
+            }
+        }
     }
     $toList = New-Object System.Collections.Generic.List[PSCustomObject]
     if ($null -ne $To.ItemsSource) {
         foreach ($x in $To.ItemsSource) { $toList.Add($x) }
     }
-    foreach ($s in $selected) {
-        $null = $fromList.Remove($s)
-        $toList.Add($s)
+    foreach ($x in @($From.ItemsSource)) {
+        if ($selectedIds -contains [string](Get-ObjectPropertyValue -Object $x -Name 'GroupId')) {
+            $toList.Add($x)
+        }
     }
+
+    $From.SelectedIndex = -1
+    $To.SelectedIndex = -1
     $From.ItemsSource = $fromList.ToArray()
     $To.ItemsSource = $toList.ToArray()
     Update-SgDiffPreview
 }
 
-$exportSgReportButton.IsEnabled = $false
+$exportSgReportButton.IsEnabled = $true
 
 $loadSgButton.Add_Click({
-        Update-InstanceViews
+        Update-SgInstanceComboBox
     })
 
 $sgInstanceComboBox.Add_SelectionChanged({
         try {
+            if ($comboRefreshState.SuppressSgSelection) { return }
             $sel = $sgInstanceComboBox.SelectedItem
             if ($null -eq $sel) { return }
             Update-SgListsForInstance -Instance $sel
@@ -1768,11 +1924,23 @@ $sgInstanceComboBox.Add_SelectionChanged({
     })
 
 $moveToAppliedButton.Add_Click({
-        Move-SgItem -From $availableSgList -To $appliedSgList
+        try {
+            Move-SgItem -From $availableSgList -To $appliedSgList
+        }
+        catch {
+            $statusBarText.Text = "SG 移動エラー: $($_.Exception.Message)"
+            Write-AppLog -Level 'ERROR' -Message "SG 移動エラー(未適用 -> 適用済み): $($_.Exception.Message)"
+        }
     })
 
 $moveToAvailableButton.Add_Click({
-        Move-SgItem -From $appliedSgList -To $availableSgList
+        try {
+            Move-SgItem -From $appliedSgList -To $availableSgList
+        }
+        catch {
+            $statusBarText.Text = "SG 移動エラー: $($_.Exception.Message)"
+            Write-AppLog -Level 'ERROR' -Message "SG 移動エラー(適用済み -> 未適用): $($_.Exception.Message)"
+        }
     })
 
 $appliedSgList.Add_MouseDoubleClick({
@@ -1785,16 +1953,11 @@ $availableSgList.Add_MouseDoubleClick({
 
 $exportSgReportButton.Add_Click({
         try {
-            $tmpDir = Join-Path ([System.IO.Path]::GetTempPath()) 'aws-ec2-manager-preview'
-            $path = New-SgReportHtml -Status 'Preview' -Directory $tmpDir
-            if ($null -ne $path) {
-                Open-HtmlFile -Path $path
-                $statusBarText.Text = "SG差分HTMLをブラウザで表示しました"
-                Write-AppLog -Level 'INFO' -Message "SG差分HTMLプレビュー: $path"
-            }
+            Invoke-SgReportHtmlExport
         }
         catch {
             $statusBarText.Text = "HTML出力エラー: $($_.Exception.Message)"
+            Write-AppLog -Level 'ERROR' -Message "SG差分HTML出力エラー: $($_.Exception.Message)"
         }
     })
 
@@ -1857,16 +2020,10 @@ $applySgButton.Add_Click({
                     $statusBarText.Text = "$instanceId に SG を適用しました"
                 }
                 Write-AppLog -Level 'INFO' -Message "SG 適用完了: $instanceId"
-                # Reload the current instance state by re-fetching describe-instances.
                 $instanceScanState.SelectedInstanceId = $instanceId
-                Update-SgInstanceComboBox -Refresh
-                $match = $null
-                if ($null -ne $sgInstanceComboBox.ItemsSource) {
-                    $match = $sgInstanceComboBox.ItemsSource | Where-Object { $_.InstanceId -eq $instanceId } | Select-Object -First 1
-                }
-                if ($null -ne $match) {
-                    $sgInstanceComboBox.SelectedItem = $match
-                }
+                Update-CachedInstanceSecurityGroups -InstanceId $instanceId -GroupIds $newIds
+                Update-InstancesGridFromItems -Items $instanceScanState.Items
+                Update-SgInstanceComboBoxFromItems -Items $instanceScanState.Items -PreferredInstanceId $instanceId -LoadDetails | Out-Null
             }
             else {
                 $statusBarText.Text = "$instanceId への SG 適用に失敗しました"
@@ -1879,7 +2036,478 @@ $applySgButton.Add_Click({
     })
 
 #----------------------------------------------------------------------
-# Tab3: SSM Run Command
+# Tab3: IAM Instance Profile / Role
+#----------------------------------------------------------------------
+
+$roleInstanceComboBox = Find-Control -Name 'RoleInstanceComboBox'
+$loadRoleButton = Find-Control -Name 'LoadRoleButton'
+$applyRoleButton = Find-Control -Name 'ApplyRoleButton'
+$appliedRoleList = Find-Control -Name 'AppliedRoleList'
+$availableRoleList = Find-Control -Name 'AvailableRoleList'
+$moveRoleToAppliedButton = Find-Control -Name 'MoveRoleToAppliedButton'
+$moveRoleToAvailableButton = Find-Control -Name 'MoveRoleToAvailableButton'
+$roleDiffPanel = Find-Control -Name 'RoleDiffPanel'
+
+$roleState = [PSCustomObject]@{
+    CurrentInstanceId = $null
+    OriginalProfileName = ''
+    OriginalAssociationId = ''
+    OriginalAssociationState = ''
+}
+
+function Get-RoleProfileLabel {
+    param($Item)
+    if ($null -eq $Item) { return '' }
+    $name = [string](Get-ObjectPropertyValue -Object $Item -Name 'InstanceProfileName')
+    $roles = @((Get-ObjectPropertyValue -Object $Item -Name 'RoleNames'))
+    $roleText = ($roles | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }) -join ', '
+    if ([string]::IsNullOrWhiteSpace($roleText)) { return $name }
+    return "$name / Role: $roleText"
+}
+
+function Add-RoleDiffText {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper, not a system-state change.')]
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$Text,
+        [string]$Color = '#E5E7EB',
+        [bool]$Bold = $false,
+        [double]$FontSize = 13,
+        [int]$Bottom = 4
+    )
+
+    $tb = New-Object System.Windows.Controls.TextBlock
+    $tb.Text = $Text
+    $tb.Foreground = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString($Color))
+    $tb.FontSize = $FontSize
+    $tb.TextWrapping = [System.Windows.TextWrapping]::Wrap
+    $tb.Margin = New-Object System.Windows.Thickness 0,0,0,$Bottom
+    if ($Bold) { $tb.FontWeight = [System.Windows.FontWeights]::SemiBold }
+    $roleDiffPanel.Children.Add($tb) | Out-Null
+}
+
+function Get-RoleItemsFromList {
+    param($ListBox)
+    $items = @()
+    if ($null -ne $ListBox.ItemsSource) {
+        foreach ($x in $ListBox.ItemsSource) { $items += $x }
+    }
+    return $items
+}
+
+function Get-PlannedRoleItem {
+    $items = @(Get-RoleItemsFromList -ListBox $appliedRoleList)
+    if ($items.Count -eq 0) { return $null }
+    return $items[0]
+}
+
+function Get-PlannedRoleName {
+    $item = Get-PlannedRoleItem
+    if ($null -eq $item) { return '' }
+    return [string]$item.InstanceProfileName
+}
+
+function Get-RoleActionForPlan {
+    $originalName = [string]$roleState.OriginalProfileName
+    $plannedName = Get-PlannedRoleName
+    if ([string]::IsNullOrWhiteSpace($originalName) -and [string]::IsNullOrWhiteSpace($plannedName)) { return 'None' }
+    if ([string]::IsNullOrWhiteSpace($originalName) -and -not [string]::IsNullOrWhiteSpace($plannedName)) { return 'Attach' }
+    if (-not [string]::IsNullOrWhiteSpace($originalName) -and [string]::IsNullOrWhiteSpace($plannedName)) { return 'Detach' }
+    if ($originalName -ne $plannedName) { return 'Replace' }
+    return 'None'
+}
+
+function Update-RoleActionButtons {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper.')]
+    [CmdletBinding()]
+    param()
+
+    $selectedInstance = $roleInstanceComboBox.SelectedItem
+    $isReady = ($null -ne $selectedInstance)
+    $isLocked = $false
+    if ($isReady) { $isLocked = Test-InstanceLocked -InstanceId ([string]$selectedInstance.InstanceId) }
+    $action = Get-RoleActionForPlan
+
+    $moveRoleToAppliedButton.IsEnabled = ($isReady -and (-not $isLocked) -and $null -ne $availableRoleList.SelectedItem)
+    $moveRoleToAvailableButton.IsEnabled = ($isReady -and (-not $isLocked) -and $null -ne (Get-PlannedRoleItem))
+    $applyRoleButton.IsEnabled = ($isReady -and (-not $isLocked) -and $action -ne 'None')
+}
+
+function Render-RoleDiffPanel {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper.')]
+    [CmdletBinding()]
+    param()
+
+    $roleDiffPanel.Children.Clear()
+    if ([string]::IsNullOrWhiteSpace([string]$roleState.CurrentInstanceId)) {
+        Add-RoleDiffText -Text 'インスタンスを選択してください。' -Color '#94A3B8'
+        Update-RoleActionButtons
+        return
+    }
+
+    $current = if ([string]::IsNullOrWhiteSpace([string]$roleState.OriginalProfileName)) { '(なし)' } else { [string]$roleState.OriginalProfileName }
+    $plannedName = Get-PlannedRoleName
+    $planned = if ([string]::IsNullOrWhiteSpace($plannedName)) { '(なし)' } else { $plannedName }
+    $action = Get-RoleActionForPlan
+    Add-RoleDiffText -Text "Instance: $($roleState.CurrentInstanceId)" -Bold $true
+    Add-RoleDiffText -Text "現在: $current" -Color '#94A3B8'
+    Add-RoleDiffText -Text "適用後: $planned" -Color '#94A3B8'
+    if (-not [string]::IsNullOrWhiteSpace([string]$roleState.OriginalAssociationState)) {
+        Add-RoleDiffText -Text "Association: $($roleState.OriginalAssociationId) / State: $($roleState.OriginalAssociationState)" -Color '#94A3B8'
+    }
+
+    if ($action -eq 'None') {
+        Add-RoleDiffText -Text 'インスタンスロール差分はありません。' -Color '#94A3B8'
+        Update-RoleActionButtons
+        return
+    }
+
+    if ($action -eq 'Attach') {
+        Add-RoleDiffText -Text "[+] アタッチ: $plannedName" -Color '#38BDF8' -Bold $true
+    }
+    elseif ($action -eq 'Detach') {
+        Add-RoleDiffText -Text "[-] デタッチ: $($roleState.OriginalProfileName)" -Color '#F97373' -Bold $true
+    }
+    else {
+        Add-RoleDiffText -Text "[-] デタッチ: $($roleState.OriginalProfileName)" -Color '#F97373' -Bold $true
+        Add-RoleDiffText -Text "[+] アタッチ: $plannedName" -Color '#38BDF8' -Bold $true
+        Add-RoleDiffText -Text 'AWS API は replace-iam-instance-profile-association を使います。' -Color '#94A3B8'
+    }
+    Update-RoleActionButtons
+}
+
+function Update-RoleInstanceComboBox {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper.')]
+    [CmdletBinding()]
+    param([switch]$Refresh)
+
+    try {
+        $name = Get-SelectedProfile
+        if ($null -eq $name) { return }
+        Update-InstanceViews
+        [object[]]$cachedItems = @(Get-SharedInstanceItems -Profile $name)
+        $count = Update-RoleInstanceComboBoxFromItems -Items $cachedItems -PreferredInstanceId $instanceScanState.SelectedInstanceId -LoadDetails
+        $statusBarText.Text = "スキャン済みインスタンス $count 件をインスタンスロールに反映しました"
+    }
+    catch {
+        $statusBarText.Text = "インスタンスロール更新エラー: $($_.Exception.Message)"
+        Write-AppLog -Level 'ERROR' -Message "インスタンスロール更新エラー: $($_.Exception.Message)"
+    }
+}
+
+function Update-RoleInstanceComboBoxFromItems {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper.')]
+    [CmdletBinding()]
+    param(
+        [AllowNull()][object[]]$Items,
+        [AllowNull()][string]$PreferredInstanceId,
+        [switch]$LoadDetails
+    )
+
+    [object[]]$Items = @(ConvertTo-InstanceItemArray -Items $Items)
+    $prevId = $null
+    if (-not [string]::IsNullOrWhiteSpace($PreferredInstanceId)) {
+        $prevId = $PreferredInstanceId
+    }
+    elseif ($null -ne $roleInstanceComboBox.SelectedItem) {
+        $prevId = [string]$roleInstanceComboBox.SelectedItem.InstanceId
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace([string]$instanceScanState.SelectedInstanceId)) {
+        $prevId = [string]$instanceScanState.SelectedInstanceId
+    }
+
+    $display = New-Object System.Collections.Generic.List[PSCustomObject]
+    foreach ($it in $Items) {
+        $label = if ([string]::IsNullOrEmpty($it.Name)) { $it.InstanceId } else { "$($it.InstanceId) ($($it.Name))" }
+        $item = [PSCustomObject]@{
+            InstanceId             = $it.InstanceId
+            Name                   = $it.Name
+            IamInstanceProfile     = $it.IamInstanceProfile
+            IamInstanceProfileArn  = $it.IamInstanceProfileArn
+            DisplayLabel           = $label
+        }
+        Add-InstanceLockMetadata -Instance $item -DisplayLabel $label | Out-Null
+        $display.Add($item)
+    }
+
+    $comboRefreshState.SuppressRoleSelection = $true
+    try {
+        $roleInstanceComboBox.ItemsSource = $display.ToArray()
+        if ($display.Count -gt 0) {
+            $match = $null
+            if (-not [string]::IsNullOrEmpty($prevId)) {
+                $match = $roleInstanceComboBox.ItemsSource | Where-Object { [string]$_.InstanceId -eq $prevId } | Select-Object -First 1
+            }
+            if ($null -ne $match) {
+                $roleInstanceComboBox.SelectedItem = $match
+            }
+            else {
+                $roleInstanceComboBox.SelectedIndex = 0
+            }
+        }
+        else {
+            $roleInstanceComboBox.SelectedIndex = -1
+            $appliedRoleList.ItemsSource = $null
+            $availableRoleList.ItemsSource = $null
+            $roleDiffPanel.Children.Clear()
+            Add-RoleDiffText -Text 'インスタンスを選択してください。' -Color '#94A3B8'
+        }
+    }
+    finally {
+        $comboRefreshState.SuppressRoleSelection = $false
+    }
+    if ($LoadDetails -and $null -ne $roleInstanceComboBox.SelectedItem) {
+        Update-RoleProfilesForInstance -Instance $roleInstanceComboBox.SelectedItem
+    }
+    return $display.Count
+}
+
+function Update-RoleProfilesForInstance {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper.')]
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)]$Instance)
+
+    try {
+        $name = Get-SelectedProfile
+        if ($null -eq $name) { return }
+
+        $roleState.CurrentInstanceId = [string]$Instance.InstanceId
+        $roleState.OriginalProfileName = ''
+        $roleState.OriginalAssociationId = ''
+        $roleState.OriginalAssociationState = ''
+        $appliedRoleList.ItemsSource = $null
+        $availableRoleList.ItemsSource = $null
+        $roleDiffPanel.Children.Clear()
+        Add-RoleDiffText -Text 'Instance Profile 情報を取得中...' -Color '#94A3B8'
+        & $pumpUi
+
+        $assoc = Get-InstanceProfileAssociation -Profile $name -InstanceId ([string]$Instance.InstanceId)
+        if ($null -ne $assoc) {
+            $roleState.OriginalProfileName = [string]$assoc.InstanceProfileName
+            $roleState.OriginalAssociationId = [string]$assoc.AssociationId
+            $roleState.OriginalAssociationState = [string]$assoc.State
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace([string]$Instance.IamInstanceProfile)) {
+            $roleState.OriginalProfileName = [string]$Instance.IamInstanceProfile
+        }
+
+        [object[]]$profiles = Get-IamInstanceProfiles -Profile $name
+        if ($null -eq $profiles) { $profiles = @() }
+
+        $applied = New-Object System.Collections.Generic.List[PSCustomObject]
+        $items = New-Object System.Collections.Generic.List[PSCustomObject]
+        foreach ($profileItem in $profiles) {
+            $displayLabel = Get-RoleProfileLabel -Item $profileItem
+            $profileItem | Add-Member -NotePropertyName DisplayLabel -NotePropertyValue $displayLabel -Force
+            if (-not [string]::IsNullOrWhiteSpace([string]$roleState.OriginalProfileName) -and
+                [string]$profileItem.InstanceProfileName -eq [string]$roleState.OriginalProfileName) {
+                $applied.Add($profileItem)
+            }
+            else {
+                $items.Add($profileItem)
+            }
+        }
+        if ($applied.Count -eq 0 -and -not [string]::IsNullOrWhiteSpace([string]$roleState.OriginalProfileName)) {
+            $fallback = [PSCustomObject]@{
+                InstanceProfileName = [string]$roleState.OriginalProfileName
+                Arn                 = ''
+                Path                = ''
+                RoleNames           = @()
+                DisplayLabel        = [string]$roleState.OriginalProfileName
+            }
+            $applied.Add($fallback)
+        }
+        $appliedRoleList.ItemsSource = $applied.ToArray()
+        $availableRoleList.ItemsSource = $items.ToArray()
+        if ($applied.Count -gt 0) {
+            $appliedRoleList.SelectedIndex = 0
+        }
+
+        $isLocked = Test-InstanceLocked -InstanceId ([string]$Instance.InstanceId)
+        if ($isLocked) {
+            $statusBarText.Text = "$($Instance.InstanceId) はロック中です。インスタンスロール操作はできません"
+        }
+        else {
+            $statusBarText.Text = "$($Instance.InstanceId): Instance Profile 候補 $($items.Count) 件"
+        }
+        Render-RoleDiffPanel
+    }
+    catch {
+        $statusBarText.Text = "インスタンスロール取得エラー: $($_.Exception.Message)"
+        Write-AppLog -Level 'ERROR' -Message "インスタンスロール取得エラー: $($_.Exception.Message)"
+    }
+}
+
+function Move-RoleToApplied {
+    [CmdletBinding()]
+    param()
+
+    $selected = $availableRoleList.SelectedItem
+    if ($null -eq $selected) { return }
+
+    $available = New-Object System.Collections.Generic.List[PSCustomObject]
+    foreach ($x in @(Get-RoleItemsFromList -ListBox $availableRoleList)) {
+        if ([string]$x.InstanceProfileName -ne [string]$selected.InstanceProfileName) {
+            $available.Add($x)
+        }
+    }
+    foreach ($x in @(Get-RoleItemsFromList -ListBox $appliedRoleList)) {
+        if ([string]$x.InstanceProfileName -ne [string]$selected.InstanceProfileName) {
+            $available.Add($x)
+        }
+    }
+
+    $appliedRoleList.ItemsSource = @($selected)
+    $appliedRoleList.SelectedIndex = 0
+    $availableRoleList.ItemsSource = $available.ToArray()
+    Render-RoleDiffPanel
+}
+
+function Move-RoleToAvailable {
+    [CmdletBinding()]
+    param()
+
+    $planned = Get-PlannedRoleItem
+    if ($null -eq $planned) { return }
+    $available = New-Object System.Collections.Generic.List[PSCustomObject]
+    foreach ($x in @(Get-RoleItemsFromList -ListBox $availableRoleList)) {
+        if ([string]$x.InstanceProfileName -ne [string]$planned.InstanceProfileName) {
+            $available.Add($x)
+        }
+    }
+    $available.Add($planned)
+    $appliedRoleList.ItemsSource = @()
+    $availableRoleList.ItemsSource = $available.ToArray()
+    Render-RoleDiffPanel
+}
+
+function Invoke-InstanceProfileApply {
+    [CmdletBinding()]
+    param()
+
+    $name = Get-SelectedProfile
+    if ($null -eq $name) { return }
+    $inst = $roleInstanceComboBox.SelectedItem
+    if ($null -eq $inst) {
+        $statusBarText.Text = 'インスタンス未選択'
+        return
+    }
+    $instanceId = [string]$inst.InstanceId
+    if (-not (Test-InstanceOperationAllowed -InstanceId $instanceId -OperationLabel 'インスタンスロール適用')) { return }
+
+    $Action = Get-RoleActionForPlan
+    if ($Action -eq 'None') {
+        $statusBarText.Text = '変更はありません'
+        return
+    }
+    $plannedName = Get-PlannedRoleName
+    if (($Action -eq 'Detach' -or $Action -eq 'Replace') -and [string]::IsNullOrWhiteSpace([string]$roleState.OriginalAssociationId)) {
+        $statusBarText.Text = '現在の AssociationId が取得できていません。更新してください'
+        return
+    }
+    $actionLabel = if ($Action -eq 'Attach') { 'アタッチ' } elseif ($Action -eq 'Detach') { 'デタッチ' } else { '入れ替え' }
+    $msg = "$instanceId にインスタンスロール変更を適用しますか？"
+    if ($Action -eq 'Attach') { $msg += "`n追加: $plannedName" }
+    elseif ($Action -eq 'Detach') { $msg += "`n削除: $($roleState.OriginalProfileName)" }
+    else { $msg += "`n削除: $($roleState.OriginalProfileName)`n追加: $plannedName" }
+
+    $answer = [System.Windows.MessageBox]::Show(
+        $msg,
+        'aws-ec2-manager',
+        [System.Windows.MessageBoxButton]::YesNo,
+        [System.Windows.MessageBoxImage]::Question
+    )
+    if ($answer -ne [System.Windows.MessageBoxResult]::Yes) {
+        $statusBarText.Text = 'インスタンスロール適用をキャンセルしました'
+        return
+    }
+
+    $statusBarText.Text = "$instanceId にインスタンスロール適用中..."
+    Write-AppLog -Level 'INFO' -Message "インスタンスロール適用開始: $instanceId action=$Action current=$($roleState.OriginalProfileName) planned=$plannedName association=$($roleState.OriginalAssociationId)"
+    & $pumpUi
+
+    $actionParams = @{
+        Profile       = $name
+        InstanceId    = $instanceId
+        Action        = $Action
+        AssociationId = [string]$roleState.OriginalAssociationId
+    }
+    if ($Action -eq 'Attach' -or $Action -eq 'Replace') {
+        $actionParams['InstanceProfileName'] = $plannedName
+    }
+    $ok = Set-InstanceProfileAssociation @actionParams
+    if ($ok) {
+        $statusBarText.Text = "$instanceId にインスタンスロール変更を適用しました"
+        Write-AppLog -Level 'INFO' -Message "インスタンスロール適用完了: $instanceId action=$Action"
+        $instanceScanState.SelectedInstanceId = $instanceId
+        $cacheRoleName = if ($Action -eq 'Detach') { '' } else { $plannedName }
+        Update-CachedInstanceRole -InstanceId $instanceId -InstanceProfileName $cacheRoleName
+        Update-InstancesGridFromItems -Items $instanceScanState.Items
+        Update-RoleInstanceComboBoxFromItems -Items $instanceScanState.Items -PreferredInstanceId $instanceId -LoadDetails | Out-Null
+    }
+    else {
+        $statusBarText.Text = "$instanceId へのインスタンスロール適用に失敗しました"
+        Write-AppLog -Level 'ERROR' -Message "インスタンスロール適用失敗: $instanceId action=$Action"
+    }
+}
+
+$applyRoleButton.IsEnabled = $false
+$moveRoleToAppliedButton.IsEnabled = $false
+$moveRoleToAvailableButton.IsEnabled = $false
+
+$loadRoleButton.Add_Click({
+        Update-RoleInstanceComboBox
+    })
+
+$roleInstanceComboBox.Add_SelectionChanged({
+        try {
+            if ($comboRefreshState.SuppressRoleSelection) { return }
+            $sel = $roleInstanceComboBox.SelectedItem
+            if ($null -eq $sel) { return }
+            Update-RoleProfilesForInstance -Instance $sel
+        }
+        catch {
+            $statusBarText.Text = "インスタンスロール選択エラー: $($_.Exception.Message)"
+            Write-AppLog -Level 'ERROR' -Message "インスタンスロール選択エラー: $($_.Exception.Message)"
+        }
+    })
+
+$appliedRoleList.Add_SelectionChanged({
+        Render-RoleDiffPanel
+    })
+
+$availableRoleList.Add_SelectionChanged({
+        Render-RoleDiffPanel
+    })
+
+$moveRoleToAppliedButton.Add_Click({
+        try { Move-RoleToApplied }
+        catch {
+            $statusBarText.Text = "インスタンスロール移動エラー: $($_.Exception.Message)"
+            Write-AppLog -Level 'ERROR' -Message "インスタンスロール移動エラー(候補 -> 適用予定): $($_.Exception.Message)"
+        }
+    })
+
+$moveRoleToAvailableButton.Add_Click({
+        try { Move-RoleToAvailable }
+        catch {
+            $statusBarText.Text = "インスタンスロール移動エラー: $($_.Exception.Message)"
+            Write-AppLog -Level 'ERROR' -Message "インスタンスロール移動エラー(適用予定 -> 候補): $($_.Exception.Message)"
+        }
+    })
+
+$applyRoleButton.Add_Click({
+        try { Invoke-InstanceProfileApply }
+        catch {
+            $statusBarText.Text = "インスタンスロール適用エラー: $($_.Exception.Message)"
+            Write-AppLog -Level 'ERROR' -Message "インスタンスロール適用エラー: $($_.Exception.Message)"
+        }
+    })
+
+#----------------------------------------------------------------------
+# Tab4: SSM Run Command
 #----------------------------------------------------------------------
 
 $ssmInstanceComboBox = Find-Control -Name 'SsmInstanceComboBox'
@@ -2231,14 +2859,10 @@ function Update-SsmInstanceComboBox {
         $name = Get-SelectedProfile
         if ($null -eq $name) { return }
 
-        [object[]]$cachedItems = @(Get-SharedInstanceItems -Profile $name)
-        if (@($cachedItems).Count -gt 0) {
-            $count = Update-SsmInstanceComboBoxFromItems -Items $cachedItems -PreferredInstanceId $instanceScanState.SelectedInstanceId
-            $statusBarText.Text = "スキャン済みインスタンス $count 件を SSM に反映しました"
-            return
-        }
-
         Update-InstanceViews
+        [object[]]$cachedItems = @(Get-SharedInstanceItems -Profile $name)
+        $count = Update-SsmInstanceComboBoxFromItems -Items $cachedItems -PreferredInstanceId $instanceScanState.SelectedInstanceId
+        $statusBarText.Text = "スキャン済みインスタンス $count 件を SSM に反映しました"
     }
     catch {
         $statusBarText.Text = "SSM インスタンス更新エラー: $($_.Exception.Message)"
@@ -2499,13 +3123,8 @@ $runSsmButton.Add_Click({
                 $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
                 $htmlPath = Join-Path $tmpDir "$safe-$stamp.html"
                 Set-Content -LiteralPath $htmlPath -Value $result.Output -Encoding UTF8
-                try {
-                    Start-Process -FilePath 'msedge.exe' -ArgumentList $htmlPath -ErrorAction Stop
-                }
-                catch {
-                    Start-Process -FilePath $htmlPath
-                }
-                $ssmOutputText.Text = "HTML 結果を Edge で開きました: $htmlPath"
+                $browser = Open-TaskHtmlResult -HtmlPath $htmlPath
+                $ssmOutputText.Text = "HTML 結果をブラウザで開きました: $htmlPath ($browser)"
             }
             else {
                 if ($result.Status -eq 'Success') {
@@ -2532,6 +3151,18 @@ $runSsmButton.Add_Click({
             }
             $statusBarText.Text = "エラー: $errText"
             $ssmOutputText.Text = "エラー:`n$errText"
+        }
+    })
+
+$window.Add_ContentRendered({
+        try {
+            if (-not $instanceScanState.HasLoaded) {
+                Update-InstanceViews
+            }
+        }
+        catch {
+            $statusBarText.Text = "初回インスタンス取得エラー: $($_.Exception.Message)"
+            Write-AppLog -Level 'ERROR' -Message "初回インスタンス取得エラー: $($_.Exception.Message)"
         }
     })
 
