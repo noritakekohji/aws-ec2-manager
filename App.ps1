@@ -864,18 +864,25 @@ function Invoke-InstanceAction {
         $statusBarText.Text = "$instanceId を $ActionLabel 中…"
         Write-AppLog -Level 'INFO' -Message "インスタンス操作開始: $ActionLabel $instanceId"
         & $pumpUi
-        $ok = & $Action $name $instanceId
-        if ($ok) {
-            $statusBarText.Text = "$instanceId の $ActionLabel 要求を送信しました（更新ボタンで反映）"
-            Write-AppLog -Level 'INFO' -Message "インスタンス操作完了: $ActionLabel $instanceId"
+        Set-UiBusy -Busy $true
+        try {
+            $ok = & $Action $name $instanceId
+            if ($ok) {
+                $statusBarText.Text = "$instanceId の $ActionLabel 要求を送信しました（更新ボタンで反映）"
+                Write-AppLog -Level 'INFO' -Message "インスタンス操作完了: $ActionLabel $instanceId"
+            }
+            else {
+                $statusBarText.Text = "$instanceId の $ActionLabel に失敗しました"
+                Write-AppLog -Level 'ERROR' -Message "インスタンス操作失敗: $ActionLabel $instanceId"
+            }
         }
-        else {
-            $statusBarText.Text = "$instanceId の $ActionLabel に失敗しました"
-            Write-AppLog -Level 'ERROR' -Message "インスタンス操作失敗: $ActionLabel $instanceId"
+        finally {
+            Set-UiBusy -Busy $false
         }
     }
     catch {
         $statusBarText.Text = "エラー: $($_.Exception.Message)"
+        Write-AppLog -Level 'ERROR' -Message "インスタンス操作エラー: $ActionLabel - $($_.Exception.Message)"
         return
     }
 }
@@ -2009,29 +2016,36 @@ $applySgButton.Add_Click({
             $statusBarText.Text = "$instanceId に SG 適用中…"
             Write-AppLog -Level 'INFO' -Message "SG 適用開始: $instanceId 追加=$addText 削除=$delText"
             & $pumpUi
-            $ok = Set-InstanceSecurityGroups -Profile $name -InstanceId $instanceId -GroupIds $newIds
-            if ($ok) {
-                $reportPath = New-SgReportHtml -Status 'Applied' -Directory (Get-SgReportDirectory)
-                if ($null -ne $reportPath) {
-                    $statusBarText.Text = "$instanceId に SG を適用しました。HTML: $reportPath"
-                    Write-AppLog -Level 'INFO' -Message "SG適用HTML出力: $reportPath"
+            Set-UiBusy -Busy $true
+            try {
+                $ok = Set-InstanceSecurityGroups -Profile $name -InstanceId $instanceId -GroupIds $newIds
+                if ($ok) {
+                    $reportPath = New-SgReportHtml -Status 'Applied' -Directory (Get-SgReportDirectory)
+                    if ($null -ne $reportPath) {
+                        $statusBarText.Text = "$instanceId に SG を適用しました。HTML: $reportPath"
+                        Write-AppLog -Level 'INFO' -Message "SG適用HTML出力: $reportPath"
+                    }
+                    else {
+                        $statusBarText.Text = "$instanceId に SG を適用しました"
+                    }
+                    Write-AppLog -Level 'INFO' -Message "SG 適用完了: $instanceId"
+                    $instanceScanState.SelectedInstanceId = $instanceId
+                    Update-CachedInstanceSecurityGroups -InstanceId $instanceId -GroupIds $newIds
+                    Update-InstancesGridFromItems -Items $instanceScanState.Items
+                    Update-SgInstanceComboBoxFromItems -Items $instanceScanState.Items -PreferredInstanceId $instanceId -LoadDetails | Out-Null
                 }
                 else {
-                    $statusBarText.Text = "$instanceId に SG を適用しました"
+                    $statusBarText.Text = "$instanceId への SG 適用に失敗しました"
+                    Write-AppLog -Level 'ERROR' -Message "SG 適用失敗: $instanceId"
                 }
-                Write-AppLog -Level 'INFO' -Message "SG 適用完了: $instanceId"
-                $instanceScanState.SelectedInstanceId = $instanceId
-                Update-CachedInstanceSecurityGroups -InstanceId $instanceId -GroupIds $newIds
-                Update-InstancesGridFromItems -Items $instanceScanState.Items
-                Update-SgInstanceComboBoxFromItems -Items $instanceScanState.Items -PreferredInstanceId $instanceId -LoadDetails | Out-Null
             }
-            else {
-                $statusBarText.Text = "$instanceId への SG 適用に失敗しました"
-                Write-AppLog -Level 'ERROR' -Message "SG 適用失敗: $instanceId"
+            finally {
+                Set-UiBusy -Busy $false
             }
         }
         catch {
             $statusBarText.Text = "エラー: $($_.Exception.Message)"
+            Write-AppLog -Level 'ERROR' -Message "SG 適用エラー: $($_.Exception.Message)"
         }
     })
 
@@ -2427,29 +2441,34 @@ function Invoke-InstanceProfileApply {
     $statusBarText.Text = "$instanceId にインスタンスロール適用中..."
     Write-AppLog -Level 'INFO' -Message "インスタンスロール適用開始: $instanceId action=$Action current=$($roleState.OriginalProfileName) planned=$plannedName association=$($roleState.OriginalAssociationId)"
     & $pumpUi
-
-    $actionParams = @{
-        Profile       = $name
-        InstanceId    = $instanceId
-        Action        = $Action
-        AssociationId = [string]$roleState.OriginalAssociationId
+    Set-UiBusy -Busy $true
+    try {
+        $actionParams = @{
+            Profile       = $name
+            InstanceId    = $instanceId
+            Action        = $Action
+            AssociationId = [string]$roleState.OriginalAssociationId
+        }
+        if ($Action -eq 'Attach' -or $Action -eq 'Replace') {
+            $actionParams['InstanceProfileName'] = $plannedName
+        }
+        $ok = Set-InstanceProfileAssociation @actionParams
+        if ($ok) {
+            $statusBarText.Text = "$instanceId にインスタンスロール変更を適用しました"
+            Write-AppLog -Level 'INFO' -Message "インスタンスロール適用完了: $instanceId action=$Action"
+            $instanceScanState.SelectedInstanceId = $instanceId
+            $cacheRoleName = if ($Action -eq 'Detach') { '' } else { $plannedName }
+            Update-CachedInstanceRole -InstanceId $instanceId -InstanceProfileName $cacheRoleName
+            Update-InstancesGridFromItems -Items $instanceScanState.Items
+            Update-RoleInstanceComboBoxFromItems -Items $instanceScanState.Items -PreferredInstanceId $instanceId -LoadDetails | Out-Null
+        }
+        else {
+            $statusBarText.Text = "$instanceId へのインスタンスロール適用に失敗しました"
+            Write-AppLog -Level 'ERROR' -Message "インスタンスロール適用失敗: $instanceId action=$Action"
+        }
     }
-    if ($Action -eq 'Attach' -or $Action -eq 'Replace') {
-        $actionParams['InstanceProfileName'] = $plannedName
-    }
-    $ok = Set-InstanceProfileAssociation @actionParams
-    if ($ok) {
-        $statusBarText.Text = "$instanceId にインスタンスロール変更を適用しました"
-        Write-AppLog -Level 'INFO' -Message "インスタンスロール適用完了: $instanceId action=$Action"
-        $instanceScanState.SelectedInstanceId = $instanceId
-        $cacheRoleName = if ($Action -eq 'Detach') { '' } else { $plannedName }
-        Update-CachedInstanceRole -InstanceId $instanceId -InstanceProfileName $cacheRoleName
-        Update-InstancesGridFromItems -Items $instanceScanState.Items
-        Update-RoleInstanceComboBoxFromItems -Items $instanceScanState.Items -PreferredInstanceId $instanceId -LoadDetails | Out-Null
-    }
-    else {
-        $statusBarText.Text = "$instanceId へのインスタンスロール適用に失敗しました"
-        Write-AppLog -Level 'ERROR' -Message "インスタンスロール適用失敗: $instanceId action=$Action"
+    finally {
+        Set-UiBusy -Busy $false
     }
 }
 
@@ -2522,6 +2541,29 @@ $saveYamlButton = Find-Control -Name 'SaveYamlButton'
 $runSsmButton = Find-Control -Name 'RunSsmButton'
 $ssmProgressBar = Find-Control -Name 'SsmProgressBar'
 $ssmOutputText = Find-Control -Name 'SsmOutputText'
+
+$uiBusyState = [PSCustomObject]@{ IsBusy = $false }
+
+function Set-UiBusy {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper, not a system-state change.')]
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][bool]$Busy
+    )
+    # $pumpUi（DoEvents 相当）で長時間の AWS 操作中も UI が応答してしまうため、
+    # 操作系ボタンを一括で無効化し、実行中に同じ/別の操作を再クリックして
+    # ハンドラが再入するのを防ぐ。
+    $uiBusyState.IsBusy = $Busy
+    $buttons = @(
+        $refreshInstancesButton, $startInstanceButton, $stopInstanceButton, $restartInstanceButton,
+        $loadSgButton, $applySgButton, $moveToAppliedButton, $moveToAvailableButton,
+        $loadRoleButton, $applyRoleButton, $moveRoleToAppliedButton, $moveRoleToAvailableButton,
+        $loadSsmButton, $rescanYamlButton, $runSsmButton
+    )
+    foreach ($b in $buttons) {
+        if ($null -ne $b) { $b.IsEnabled = -not $Busy }
+    }
+}
 
 $tab3State = [PSCustomObject]@{
     LinuxYamls   = @()
@@ -3095,50 +3137,55 @@ $runSsmButton.Add_Click({
             $statusBarText.Text = "$($yaml.Name) 実行中... (GUI は完了まで応答しません)"
             Write-AppLog -Level 'INFO' -Message "SSM 実行開始: $($yaml.Name) on $($inst.InstanceId)"
             & $pumpUi
+            Set-UiBusy -Busy $true
+            try {
+                $ssmStatusCallback = {
+                    param([string]$Message)
+                    $ssmOutputText.Text = $Message
+                    $firstLine = ($Message -split "`n" | Select-Object -First 1)
+                    if ([string]::IsNullOrWhiteSpace($firstLine)) {
+                        $statusBarText.Text = "$($yaml.Name) 実行中..."
+                    }
+                    else {
+                        $statusBarText.Text = "$($yaml.Name) 実行中... $firstLine"
+                    }
+                    & $pumpUi
+                }
 
-            $ssmStatusCallback = {
-                param([string]$Message)
-                $ssmOutputText.Text = $Message
-                $firstLine = ($Message -split "`n" | Select-Object -First 1)
-                if ([string]::IsNullOrWhiteSpace($firstLine)) {
-                    $statusBarText.Text = "$($yaml.Name) 実行中..."
+                $result = Invoke-SsmTask -Profile $name -InstanceId $inst.InstanceId -YamlPath $yaml.Path -Platform $yaml.Platform -StatusCallback $ssmStatusCallback
+
+                $ssmProgressBar.Visibility = [System.Windows.Visibility]::Collapsed
+
+                $outType = if ($null -ne $result.OutputType) { [string]$result.OutputType } else { 'text' }
+                if ($outType -eq 'html') {
+                    $tmpDir = Join-Path $env:TEMP 'aws-ec2-manager'
+                    if (-not (Test-Path -LiteralPath $tmpDir)) {
+                        New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
+                    }
+                    $safe = Get-SafeFileName -Name $yaml.Name
+                    $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
+                    $htmlPath = Join-Path $tmpDir "$safe-$stamp.html"
+                    Set-Content -LiteralPath $htmlPath -Value $result.Output -Encoding UTF8
+                    $browser = Open-TaskHtmlResult -HtmlPath $htmlPath
+                    $ssmOutputText.Text = "HTML 結果をブラウザで開きました: $htmlPath ($browser)"
                 }
                 else {
-                    $statusBarText.Text = "$($yaml.Name) 実行中... $firstLine"
+                    if ($result.Status -eq 'Success') {
+                        $ssmOutputText.Text = [string]$result.Output
+                    }
+                    else {
+                        $err = if ([string]::IsNullOrEmpty([string]$result.Error)) { '' } else { "`n--- STDERR ---`n$($result.Error)" }
+                        $ssmOutputText.Text = "$([string]$result.Output)$err"
+                    }
                 }
-                & $pumpUi
+
+                $dur = if ($null -ne $result.Duration) { '{0:0.0}' -f $result.Duration.TotalSeconds } else { '?' }
+                $statusBarText.Text = "Status: $($result.Status) / Duration: ${dur}s"
+                Write-AppLog -Level 'INFO' -Message "SSM 実行完了: $($yaml.Name) on $($inst.InstanceId) Status=$($result.Status) Duration=${dur}s"
             }
-
-            $result = Invoke-SsmTask -Profile $name -InstanceId $inst.InstanceId -YamlPath $yaml.Path -Platform $yaml.Platform -StatusCallback $ssmStatusCallback
-
-            $ssmProgressBar.Visibility = [System.Windows.Visibility]::Collapsed
-
-            $outType = if ($null -ne $result.OutputType) { [string]$result.OutputType } else { 'text' }
-            if ($outType -eq 'html') {
-                $tmpDir = Join-Path $env:TEMP 'aws-ec2-manager'
-                if (-not (Test-Path -LiteralPath $tmpDir)) {
-                    New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
-                }
-                $safe = Get-SafeFileName -Name $yaml.Name
-                $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
-                $htmlPath = Join-Path $tmpDir "$safe-$stamp.html"
-                Set-Content -LiteralPath $htmlPath -Value $result.Output -Encoding UTF8
-                $browser = Open-TaskHtmlResult -HtmlPath $htmlPath
-                $ssmOutputText.Text = "HTML 結果をブラウザで開きました: $htmlPath ($browser)"
+            finally {
+                Set-UiBusy -Busy $false
             }
-            else {
-                if ($result.Status -eq 'Success') {
-                    $ssmOutputText.Text = [string]$result.Output
-                }
-                else {
-                    $err = if ([string]::IsNullOrEmpty([string]$result.Error)) { '' } else { "`n--- STDERR ---`n$($result.Error)" }
-                    $ssmOutputText.Text = "$([string]$result.Output)$err"
-                }
-            }
-
-            $dur = if ($null -ne $result.Duration) { '{0:0.0}' -f $result.Duration.TotalSeconds } else { '?' }
-            $statusBarText.Text = "Status: $($result.Status) / Duration: ${dur}s"
-            Write-AppLog -Level 'INFO' -Message "SSM 実行完了: $($yaml.Name) on $($inst.InstanceId) Status=$($result.Status) Duration=${dur}s"
         }
         catch {
             $ssmProgressBar.Visibility = [System.Windows.Visibility]::Collapsed

@@ -177,12 +177,12 @@ Describe 'AwsManager' {
             $b.SsmStatus | Should -Be '未登録'
         }
 
-        It 'keeps EC2 listing available when SSM status lookup fails' {
+        It 'keeps EC2 listing available and marks SsmStatus distinctly when SSM status lookup fails' {
             $fakeJson = '{ "Reservations": [ { "Instances": [ { "InstanceId": "i-1", "InstanceType": "t3.micro", "State": { "Name": "running" }, "Placement": { "AvailabilityZone": "ap-northeast-1a" }, "SecurityGroups": [] } ] } ] }'
             Mock -ModuleName AwsManager Invoke-AwsCli -ParameterFilter {
                 $Arguments -contains 'describe-instance-information'
             } -MockWith {
-                [PSCustomObject]@{ ExitCode = 255; Output = 'denied'; Success = $false }
+                [PSCustomObject]@{ ExitCode = 255; Output = ''; Stderr = 'denied'; Success = $false }
             }
             Mock -ModuleName AwsManager Invoke-AwsCli -ParameterFilter {
                 $Arguments -contains 'describe-instances'
@@ -190,9 +190,10 @@ Describe 'AwsManager' {
                 [PSCustomObject]@{ ExitCode = 0; Output = $fakeJson; Success = $true }
             }
 
-            $list = Get-Ec2Instances -Profile 'dev'
+            $list = Get-Ec2Instances -Profile 'dev' -ErrorAction SilentlyContinue
             $list.Count | Should -Be 1
-            $list[0].SsmStatus | Should -Be '未登録'
+            # 取得失敗（権限不足等）は「未登録」ではなく専用ステータスで区別する
+            $list[0].SsmStatus | Should -Be 'SSM情報取得失敗'
         }
     }
 
@@ -220,6 +221,13 @@ Describe 'AwsManager' {
             $map.ContainsKey('i-aaa') | Should -BeTrue
             $map['i-aaa'].PingStatus | Should -Be 'Online'
             $map['i-aaa'].PlatformName | Should -Be 'Ubuntu'
+        }
+
+        It 'throws when aws cli fails, instead of returning an empty map silently' {
+            Mock -ModuleName AwsManager Invoke-AwsCli {
+                [PSCustomObject]@{ ExitCode = 255; Output = ''; Stderr = 'An error occurred (AccessDeniedException)'; Success = $false }
+            }
+            { Get-SsmInstanceInformation -Profile 'dev' } | Should -Throw '*AccessDeniedException*'
         }
     }
 
@@ -256,11 +264,11 @@ Describe 'AwsManager' {
             Restart-Ec2Instance -Profile 'dev' -InstanceId 'i-123' | Should -BeTrue
         }
 
-        It 'returns false when aws cli fails' {
+        It 'throws with AWS CLI detail when aws cli fails' {
             Mock -ModuleName AwsManager Invoke-AwsCli {
-                [PSCustomObject]@{ ExitCode = 255; Output = 'err'; Success = $false }
+                [PSCustomObject]@{ ExitCode = 255; Output = 'err'; Stderr = 'An error occurred (UnauthorizedOperation)'; Success = $false }
             }
-            Start-Ec2Instance -Profile 'dev' -InstanceId 'i-bad' | Should -BeFalse
+            { Start-Ec2Instance -Profile 'dev' -InstanceId 'i-bad' } | Should -Throw '*UnauthorizedOperation*'
         }
     }
 
@@ -314,6 +322,13 @@ Describe 'AwsManager' {
 
             $instIdx = [Array]::IndexOf($script:capturedArgs, '--instance-id')
             $script:capturedArgs[$instIdx + 1] | Should -Be 'i-1'
+        }
+
+        It 'throws with AWS CLI detail when aws cli fails' {
+            Mock -ModuleName AwsManager Invoke-AwsCli {
+                [PSCustomObject]@{ ExitCode = 254; Output = ''; Stderr = 'An error occurred (InvalidGroupId.Malformed)'; Success = $false }
+            }
+            { Set-InstanceSecurityGroups -Profile 'dev' -InstanceId 'i-1' -GroupIds @('sg-a') } | Should -Throw '*InvalidGroupId.Malformed*'
         }
     }
 

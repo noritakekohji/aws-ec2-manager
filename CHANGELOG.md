@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `Invoke-AwsCli`（AwsManager 側）にプロセスレベルのタイムアウト（既定60秒）を追加。ネットワーク障害等で aws CLI プロセスが応答しなくなり、アプリ全体がフリーズする問題を防止。
+- インスタンス起動・停止・再起動・SG適用が AWS CLI 失敗時に詳細を伏せたまま `$false` を返していた問題を修正し、CLI のエラー詳細を伴って例外を送出するよう統一。ステータスバー・ログに具体的な失敗理由が表示される。
+- SSM 情報取得（`describe-instance-information`）が権限不足等で失敗した場合に「未登録」と誤表示していた問題を修正。取得失敗は「SSM情報取得失敗」として区別して表示する。
+- SSM 実行・インスタンス操作・SG適用・インスタンスロール適用の実行中、DoEvents 相当の UI ポンプにより操作系ボタンが再クリックできてしまい、ハンドラが再入し得た問題を修正。処理中は関連ボタンを無効化するガードを追加。
+
 ## [1.6.0] - 2026-07-07
 
 ### Added

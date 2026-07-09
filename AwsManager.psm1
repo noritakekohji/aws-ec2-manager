@@ -84,7 +84,13 @@ function Invoke-AwsCli {
 
         [Parameter()]
         [AllowNull()]
-        [scriptblock]$LogCallback = $null
+        [scriptblock]$LogCallback = $null,
+
+        # aws CLI プロセスがネットワーク障害等でハングした場合の保険。
+        # SSM 系呼び出しは --cli-connect-timeout / --cli-read-timeout を別途渡しているが、
+        # それらが効かないケース（プロセス自体の無応答）に備えたプロセスレベルの上限。
+        [Parameter()]
+        [int]$TimeoutSeconds = 60
     )
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
@@ -105,10 +111,23 @@ function Invoke-AwsCli {
         [void]$process.Start()
         $stdoutTask = $process.StandardOutput.ReadToEndAsync()
         $stderrTask = $process.StandardError.ReadToEndAsync()
-        $process.WaitForExit()
-        $joined = [string]$stdoutTask.Result
-        $stderrJoined = [string]$stderrTask.Result
-        $exitCode = [int]$process.ExitCode
+        $exited = $process.WaitForExit([Math]::Max(1, $TimeoutSeconds) * 1000)
+
+        if (-not $exited) {
+            try { $process.Kill() } catch { }
+            $process.WaitForExit(5000) | Out-Null
+
+            $joined = ''
+            $stderrJoined = "aws CLI process did not exit within ${TimeoutSeconds}s and was terminated."
+            $exitCode = -1
+        }
+        else {
+            $joined = ''
+            $stderrJoined = ''
+            if ($stdoutTask.Wait(5000)) { $joined = [string]$stdoutTask.Result }
+            if ($stderrTask.Wait(5000)) { $stderrJoined = [string]$stderrTask.Result }
+            $exitCode = [int]$process.ExitCode
+        }
     }
     catch {
         $joined = ''
@@ -185,7 +204,9 @@ function Get-SsmInstanceInformation {
     $map = @{}
     $result = Invoke-AwsCli -Arguments @('ssm', 'describe-instance-information', '--profile', $Profile, '--output', 'json')
     if (-not $result.Success) {
-        return $map
+        # 呼び出し自体の失敗（権限不足・トークン切れ・ネットワーク等）を「登録なし」と
+        # 取り違えないよう、ここでは空 map を返さず throw して呼び出し元に区別させる。
+        throw "aws ssm describe-instance-information failed: $(Get-AwsCliErrorText -Result $result)"
     }
     if ([string]::IsNullOrWhiteSpace($result.Output)) {
         return $map
@@ -223,7 +244,17 @@ function Get-Ec2Instances {
         [string]$Profile
     )
 
-    $ssmInfoById = Get-SsmInstanceInformation -Profile $Profile
+    $ssmInfoById = @{}
+    $ssmFetchFailed = $false
+    try {
+        $ssmInfoById = Get-SsmInstanceInformation -Profile $Profile
+    }
+    catch {
+        # SSM 情報が取得できなかっただけで EC2 一覧自体は表示継続する。
+        # ただし「未登録」と誤認させないよう、後段で専用ステータスに倒す。
+        $ssmFetchFailed = $true
+        Write-Error "SSM 情報の取得に失敗しました。SSM ステータスは表示できません: $($_.Exception.Message)"
+    }
 
     $result = Invoke-AwsCli -Arguments @('ec2', 'describe-instances', '--profile', $Profile, '--output', 'json')
     if (-not $result.Success) {
@@ -303,7 +334,7 @@ function Get-Ec2Instances {
                 $ssmPlatformVersion = [string]$ssmInfo.PlatformVersion
                 $ssmLastPing = [string]$ssmInfo.LastPingDateTime
             }
-            $ssmStatus = if ([string]::IsNullOrWhiteSpace($ssmPing)) { '未登録' } else { $ssmPing }
+            $ssmStatus = if ($ssmFetchFailed) { 'SSM情報取得失敗' } elseif ([string]::IsNullOrWhiteSpace($ssmPing)) { '未登録' } else { $ssmPing }
 
             $iamArn = ''
             if ($inst.PSObject.Properties.Name -contains 'IamInstanceProfile' -and $null -ne $inst.IamInstanceProfile) {
@@ -357,6 +388,7 @@ function Start-Ec2Instance {
     )
     if (-not $PSCmdlet.ShouldProcess($InstanceId, 'Start EC2 instance')) { return $false }
     $r = Invoke-AwsCli -Arguments @('ec2', 'start-instances', '--profile', $Profile, '--instance-ids', $InstanceId, '--output', 'json')
+    Assert-AwsCliSuccess -Result $r -Operation 'aws ec2 start-instances'
     return $r.Success
 }
 
@@ -369,6 +401,7 @@ function Stop-Ec2Instance {
     )
     if (-not $PSCmdlet.ShouldProcess($InstanceId, 'Stop EC2 instance')) { return $false }
     $r = Invoke-AwsCli -Arguments @('ec2', 'stop-instances', '--profile', $Profile, '--instance-ids', $InstanceId, '--output', 'json')
+    Assert-AwsCliSuccess -Result $r -Operation 'aws ec2 stop-instances'
     return $r.Success
 }
 
@@ -381,6 +414,7 @@ function Restart-Ec2Instance {
     )
     if (-not $PSCmdlet.ShouldProcess($InstanceId, 'Reboot EC2 instance')) { return $false }
     $r = Invoke-AwsCli -Arguments @('ec2', 'reboot-instances', '--profile', $Profile, '--instance-ids', $InstanceId, '--output', 'json')
+    Assert-AwsCliSuccess -Result $r -Operation 'aws ec2 reboot-instances'
     return $r.Success
 }
 
@@ -447,6 +481,7 @@ function Set-InstanceSecurityGroups {
     foreach ($g in $GroupIds) { $cliArgs.Add($g) }
 
     $r = Invoke-AwsCli -Arguments $cliArgs.ToArray()
+    Assert-AwsCliSuccess -Result $r -Operation 'aws ec2 modify-instance-attribute'
     return $r.Success
 }
 
