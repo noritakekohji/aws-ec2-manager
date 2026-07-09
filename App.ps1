@@ -766,40 +766,39 @@ function Update-InstancesGridFromItems {
     Update-InstanceLockButtons
 }
 
-function Update-CachedInstanceSecurityGroups {
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Updates local UI cache after a confirmed AWS change.')]
+function Update-CachedInstanceFromAws {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Refreshes local UI cache after a confirmed AWS change.')]
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)][string]$InstanceId,
-        [Parameter(Mandatory = $true)][string[]]$GroupIds
+        [Parameter(Mandatory = $true)][string]$Profile,
+        [Parameter(Mandatory = $true)][string]$InstanceId
     )
 
-    $items = New-Object System.Collections.Generic.List[object]
-    foreach ($it in @(ConvertTo-InstanceItemArray -Items $instanceScanState.Items)) {
-        if ([string]$it.InstanceId -eq $InstanceId) {
-            $it | Add-Member -NotePropertyName SecurityGroupIds -NotePropertyValue @($GroupIds) -Force
-            $it | Add-Member -NotePropertyName SecurityGroupNames -NotePropertyValue @() -Force
-        }
-        $items.Add($it)
+    # SG/ロール変更直後に SecurityGroupNames や IamInstanceProfileArn 等の副次項目を
+    # その場で手組みすると、変更するたびにロジックが増えて食い違いの元になる
+    # （実際、以前は SecurityGroupNames が空・Arn が空文字のまま残っていた）。
+    # 対象 1 台だけ AWS から取り直して丸ごと差し替える方が単純で正しい。
+    try {
+        [object[]]$fresh = Get-Ec2Instances -Profile $Profile -InstanceIds @($InstanceId)
     }
-    $instanceScanState.Items = $items.ToArray()
-}
-
-function Update-CachedInstanceRole {
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Updates local UI cache after a confirmed AWS change.')]
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)][string]$InstanceId,
-        [AllowNull()][string]$InstanceProfileName
-    )
+    catch {
+        Write-AppLog -Level 'WARN' -Message "変更後のインスタンス再取得に失敗: $InstanceId - $($_.Exception.Message)"
+        return
+    }
+    if ($null -eq $fresh -or $fresh.Count -eq 0) {
+        Write-AppLog -Level 'WARN' -Message "変更後のインスタンス再取得で 0 件: $InstanceId"
+        return
+    }
+    $updated = $fresh[0]
 
     $items = New-Object System.Collections.Generic.List[object]
     foreach ($it in @(ConvertTo-InstanceItemArray -Items $instanceScanState.Items)) {
         if ([string]$it.InstanceId -eq $InstanceId) {
-            $it | Add-Member -NotePropertyName IamInstanceProfile -NotePropertyValue ([string]$InstanceProfileName) -Force
-            $it | Add-Member -NotePropertyName IamInstanceProfileArn -NotePropertyValue '' -Force
+            $items.Add($updated)
         }
-        $items.Add($it)
+        else {
+            $items.Add($it)
+        }
     }
     $instanceScanState.Items = $items.ToArray()
 }
@@ -2030,7 +2029,7 @@ $applySgButton.Add_Click({
                     }
                     Write-AppLog -Level 'INFO' -Message "SG 適用完了: $instanceId"
                     $instanceScanState.SelectedInstanceId = $instanceId
-                    Update-CachedInstanceSecurityGroups -InstanceId $instanceId -GroupIds $newIds
+                    Update-CachedInstanceFromAws -Profile $name -InstanceId $instanceId
                     Update-InstancesGridFromItems -Items $instanceScanState.Items
                     Update-SgInstanceComboBoxFromItems -Items $instanceScanState.Items -PreferredInstanceId $instanceId -LoadDetails | Out-Null
                 }
@@ -2457,8 +2456,7 @@ function Invoke-InstanceProfileApply {
             $statusBarText.Text = "$instanceId にインスタンスロール変更を適用しました"
             Write-AppLog -Level 'INFO' -Message "インスタンスロール適用完了: $instanceId action=$Action"
             $instanceScanState.SelectedInstanceId = $instanceId
-            $cacheRoleName = if ($Action -eq 'Detach') { '' } else { $plannedName }
-            Update-CachedInstanceRole -InstanceId $instanceId -InstanceProfileName $cacheRoleName
+            Update-CachedInstanceFromAws -Profile $name -InstanceId $instanceId
             Update-InstancesGridFromItems -Items $instanceScanState.Items
             Update-RoleInstanceComboBoxFromItems -Items $instanceScanState.Items -PreferredInstanceId $instanceId -LoadDetails | Out-Null
         }

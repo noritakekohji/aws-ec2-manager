@@ -195,6 +195,58 @@ Describe 'AwsManager' {
             # 取得失敗（権限不足等）は「未登録」ではなく専用ステータスで区別する
             $list[0].SsmStatus | Should -Be 'SSM情報取得失敗'
         }
+
+        It 'keeps EC2 listing available when the caller has $ErrorActionPreference = Stop (App.ps1 sets this globally)' {
+            # App.ps1 は先頭で $ErrorActionPreference = 'Stop' を設定するため、
+            # -ErrorAction を明示せず呼び出した場合にこの前提が壊れていないか検証する。
+            # （-ErrorAction SilentlyContinue を呼び出し側に付けるテストだけだと、
+            #   その指定自体が関数内 $ErrorActionPreference を上書きしてしまい、
+            #   実アプリと同じ条件を再現できない）
+            $fakeJson = '{ "Reservations": [ { "Instances": [ { "InstanceId": "i-1", "InstanceType": "t3.micro", "State": { "Name": "running" }, "Placement": { "AvailabilityZone": "ap-northeast-1a" }, "SecurityGroups": [] } ] } ] }'
+            Mock -ModuleName AwsManager Invoke-AwsCli -ParameterFilter {
+                $Arguments -contains 'describe-instance-information'
+            } -MockWith {
+                [PSCustomObject]@{ ExitCode = 255; Output = ''; Stderr = 'denied'; Success = $false }
+            }
+            Mock -ModuleName AwsManager Invoke-AwsCli -ParameterFilter {
+                $Arguments -contains 'describe-instances'
+            } -MockWith {
+                [PSCustomObject]@{ ExitCode = 0; Output = $fakeJson; Success = $true }
+            }
+
+            $prevPref = $ErrorActionPreference
+            $ErrorActionPreference = 'Stop'
+            try {
+                $list = Get-Ec2Instances -Profile 'dev'
+            }
+            finally {
+                $ErrorActionPreference = $prevPref
+            }
+            $list.Count | Should -Be 1
+            $list[0].SsmStatus | Should -Be 'SSM情報取得失敗'
+        }
+
+        It 'passes --instance-ids to describe-instances when -InstanceIds is given' {
+            $fakeJson = '{ "Reservations": [ { "Instances": [ { "InstanceId": "i-1", "InstanceType": "t3.micro", "State": { "Name": "running" }, "Placement": { "AvailabilityZone": "ap-northeast-1a" }, "SecurityGroups": [] } ] } ] }'
+            Mock -ModuleName AwsManager Invoke-AwsCli -ParameterFilter {
+                $Arguments -contains 'describe-instance-information'
+            } -MockWith {
+                [PSCustomObject]@{ ExitCode = 0; Output = '{ "InstanceInformationList": [] }'; Success = $true }
+            }
+            $script:capturedDescribeArgs = $null
+            Mock -ModuleName AwsManager Invoke-AwsCli -ParameterFilter {
+                $Arguments -contains 'describe-instances'
+            } -MockWith {
+                $script:capturedDescribeArgs = $Arguments
+                [PSCustomObject]@{ ExitCode = 0; Output = $fakeJson; Success = $true }
+            }
+
+            $list = Get-Ec2Instances -Profile 'dev' -InstanceIds @('i-1')
+            $list.Count | Should -Be 1
+            $idx = [Array]::IndexOf($script:capturedDescribeArgs, '--instance-ids')
+            $idx | Should -BeGreaterThan -1
+            $script:capturedDescribeArgs[$idx + 1] | Should -Be 'i-1'
+        }
     }
 
     Context 'Get-SsmInstanceInformation' {
@@ -437,6 +489,13 @@ Describe 'AwsManager' {
             $r['timeout'] | Should -Be 120
             ($r['timeout']) -is [int] | Should -BeTrue
         }
+
+        It 'throws on an unrecognized top-level line instead of silently dropping it' {
+            # インデント崩れ等でキーが欠落したまま「script」だけは非空、という
+            # サイレントな部分実行を防ぐため、認識できない行はエラーにする。
+            $yaml = "name: foo`n- bad line`noutput: text`nscript: |`n  echo hi"
+            { ConvertFrom-MinimalYaml -Text $yaml } | Should -Throw '*bad line*'
+        }
     }
 
     Context 'Invoke-SsmTask - YAML parsing' {
@@ -634,9 +693,22 @@ script: |
                 Start-Sleep -Milliseconds 1100
                 [PSCustomObject]@{ ExitCode = 0; Output = '{ "Status": "InProgress" }'; Success = $true }
             }
+            $script:cancelArgs = $null
+            Mock -ModuleName AwsManager Invoke-AwsCli -ParameterFilter {
+                $Arguments -contains 'cancel-command'
+            } -MockWith {
+                $script:cancelArgs = $Arguments
+                [PSCustomObject]@{ ExitCode = 0; Output = '{}'; Success = $true }
+            }
 
             $r = Invoke-SsmTask -Profile 'dev' -InstanceId 'i-1' -YamlPath $tmp
             $r.Status | Should -Be 'TimedOut'
+            $r.Error | Should -Match 'キャンセルを要求しました'
+
+            # タイムアウト時にリモート側のコマンドもキャンセルを試みること
+            $script:cancelArgs | Should -Not -BeNullOrEmpty
+            $script:cancelArgs | Should -Contain 'c3'
+            $script:cancelArgs | Should -Contain 'i-1'
 
             Remove-Item -LiteralPath $tmp -Force
         }

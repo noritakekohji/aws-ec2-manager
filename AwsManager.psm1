@@ -241,7 +241,13 @@ function Get-Ec2Instances {
     [OutputType([PSCustomObject[]])]
     param(
         [Parameter(Mandatory = $true)]
-        [string]$Profile
+        [string]$Profile,
+
+        # 指定時は該当インスタンスのみを取得する（SG/ロール変更後に1台だけ
+        # 最新状態へ差し替えたい場合など）。未指定なら従来どおり全件取得。
+        [Parameter()]
+        [AllowNull()]
+        [string[]]$InstanceIds
     )
 
     $ssmInfoById = @{}
@@ -252,11 +258,19 @@ function Get-Ec2Instances {
     catch {
         # SSM 情報が取得できなかっただけで EC2 一覧自体は表示継続する。
         # ただし「未登録」と誤認させないよう、後段で専用ステータスに倒す。
+        # 呼び出し元（App.ps1）は $ErrorActionPreference = 'Stop' のため、
+        # -ErrorAction Continue を明示しないと Write-Error 自体が終了エラーとなり、
+        # この後の describe-instances 呼び出しに到達できず一覧全体が失われてしまう。
         $ssmFetchFailed = $true
-        Write-Error "SSM 情報の取得に失敗しました。SSM ステータスは表示できません: $($_.Exception.Message)"
+        Write-Error "SSM 情報の取得に失敗しました。SSM ステータスは表示できません: $($_.Exception.Message)" -ErrorAction Continue
     }
 
-    $result = Invoke-AwsCli -Arguments @('ec2', 'describe-instances', '--profile', $Profile, '--output', 'json')
+    $describeArgs = @('ec2', 'describe-instances', '--profile', $Profile, '--output', 'json')
+    if ($null -ne $InstanceIds -and @($InstanceIds).Count -gt 0) {
+        $describeArgs += '--instance-ids'
+        $describeArgs += @($InstanceIds)
+    }
+    $result = Invoke-AwsCli -Arguments $describeArgs
     if (-not $result.Success) {
         $errDetail = if ([string]::IsNullOrWhiteSpace($result.Stderr)) { $result.Output } else { $result.Stderr }
         Write-Error "aws ec2 describe-instances failed: $errDetail"
@@ -685,6 +699,10 @@ function ConvertFrom-MinimalYaml {
 
     $result = @{}
     $lines = $Text -split "`r?`n"
+    # SSM で実行するスクリプトはこの簡易パーサの解釈結果がそのまま実行対象になるため、
+    # 解釈できない行を黙って読み飛ばすと「一部だけ実行される/意図と違う内容が実行される」
+    # 事故につながる。トップレベルで認識できない行は集めて最後にまとめてエラーにする。
+    $unrecognizedLines = New-Object System.Collections.Generic.List[string]
     $i = 0
     while ($i -lt $lines.Count) {
         $line = $lines[$i]
@@ -696,6 +714,7 @@ function ConvertFrom-MinimalYaml {
         # top-level key: value or key: |
         $m = [regex]::Match($line, '^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$')
         if (-not $m.Success) {
+            $unrecognizedLines.Add("行 $($i + 1): $line")
             $i++; continue
         }
         $key = $m.Groups[1].Value
@@ -744,6 +763,9 @@ function ConvertFrom-MinimalYaml {
             }
             $i++
         }
+    }
+    if ($unrecognizedLines.Count -gt 0) {
+        throw "YAML の解析に失敗した行があります（インデントやキー名を確認してください）:`n$($unrecognizedLines -join "`n")"
     }
     return $result
 }
@@ -873,6 +895,26 @@ function Invoke-SsmTask {
                 if (-not [string]::IsNullOrWhiteSpace($lastError)) {
                     $stderr = "$stderr`nLast AWS CLI error: $lastError"
                 }
+            }
+            # クライアント側がポーリングを諦めても、リモートではコマンドが実行され続けるため
+            # ベストエフォートでキャンセルを要求する（失敗してもタイムアウト結果自体は返す）
+            try {
+                $cancelResult = Invoke-AwsCli -Arguments @(
+                    'ssm', 'cancel-command',
+                    '--profile', $Profile,
+                    '--command-id', $commandId,
+                    '--instance-ids', $InstanceId,
+                    '--output', 'json'
+                )
+                if ($cancelResult.Success) {
+                    $stderr = "$stderr`nリモートコマンドのキャンセルを要求しました。"
+                }
+                else {
+                    $stderr = "$stderr`nリモートコマンドのキャンセルに失敗しました: $(Get-AwsCliErrorText -Result $cancelResult)"
+                }
+            }
+            catch {
+                $stderr = "$stderr`nリモートコマンドのキャンセル試行中にエラーが発生しました: $($_.Exception.Message)"
             }
             break
         }

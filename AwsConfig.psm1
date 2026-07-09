@@ -128,6 +128,48 @@ function Get-AwsProfileDetail {
     }
 }
 
+function ConvertTo-NativeArgument {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [AllowNull()]
+        [string]$Argument
+    )
+
+    if ($null -eq $Argument) { return '""' }
+    if ($Argument -notmatch '[\s"]' -and $Argument.Length -gt 0) { return $Argument }
+
+    $result = '"'
+    $backslashes = 0
+    foreach ($ch in $Argument.ToCharArray()) {
+        if ($ch -eq '\') {
+            $backslashes++
+            continue
+        }
+
+        if ($ch -eq '"') {
+            if ($backslashes -gt 0) {
+                $result += ('\' * ($backslashes * 2))
+                $backslashes = 0
+            }
+            $result += '\"'
+            continue
+        }
+
+        if ($backslashes -gt 0) {
+            $result += ('\' * $backslashes)
+            $backslashes = 0
+        }
+        $result += [string]$ch
+    }
+
+    if ($backslashes -gt 0) {
+        $result += ('\' * ($backslashes * 2))
+    }
+    $result += '"'
+    return $result
+}
+
 function Invoke-AwsCli {
     [CmdletBinding()]
     [OutputType([PSCustomObject])]
@@ -137,24 +179,60 @@ function Invoke-AwsCli {
 
         [Parameter()]
         [AllowNull()]
-        [scriptblock]$LogCallback = $null
+        [scriptblock]$LogCallback = $null,
+
+        # AwsManager.psm1 の Invoke-AwsCli と同じプロセスレベルの上限。
+        # 2 つのモジュールで別実装（挙動差）にならないよう同一ロジックを維持する。
+        [Parameter()]
+        [int]$TimeoutSeconds = 60
     )
 
-    $combined = & aws @Arguments 2>&1
-    $exitCode = [int]$LASTEXITCODE
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = 'aws'
+    $quotedArgs = New-Object System.Collections.Generic.List[string]
+    foreach ($arg in @($Arguments)) {
+        $quotedArgs.Add((ConvertTo-NativeArgument -Argument $arg))
+    }
+    $psi.Arguments = ($quotedArgs.ToArray() -join ' ')
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
 
-    $stdoutLines = New-Object System.Collections.Generic.List[string]
-    $stderrLines = New-Object System.Collections.Generic.List[string]
-    foreach ($item in $combined) {
-        if ($item -is [System.Management.Automation.ErrorRecord]) {
-            $stderrLines.Add($item.ToString())
-        } else {
-            $stdoutLines.Add([string]$item)
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+    try {
+        [void]$process.Start()
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $exited = $process.WaitForExit([Math]::Max(1, $TimeoutSeconds) * 1000)
+
+        if (-not $exited) {
+            try { $process.Kill() } catch { }
+            $process.WaitForExit(5000) | Out-Null
+
+            $joined = ''
+            $stderrJoined = "aws CLI process did not exit within ${TimeoutSeconds}s and was terminated."
+            $exitCode = -1
+        }
+        else {
+            $joined = ''
+            $stderrJoined = ''
+            if ($stdoutTask.Wait(5000)) { $joined = [string]$stdoutTask.Result }
+            if ($stderrTask.Wait(5000)) { $stderrJoined = [string]$stderrTask.Result }
+            $exitCode = [int]$process.ExitCode
         }
     }
-
-    $joined       = if ($stdoutLines.Count -eq 0) { '' } else { ($stdoutLines.ToArray() -join [Environment]::NewLine) }
-    $stderrJoined = if ($stderrLines.Count -eq 0)  { '' } else { ($stderrLines.ToArray()  -join [Environment]::NewLine) }
+    catch {
+        $joined = ''
+        $stderrJoined = [string]$_.Exception.Message
+        $exitCode = 1
+    }
+    finally {
+        if ($null -ne $process) {
+            $process.Dispose()
+        }
+    }
 
     if ($null -ne $LogCallback) {
         $argStr = ($Arguments -join ' ')
