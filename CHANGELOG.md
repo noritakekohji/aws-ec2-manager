@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SSM タスク YAML の自作パーサ（`ConvertFrom-MinimalYaml`）が、インデント崩れ等で解釈できない行を黙って読み飛ばしていた問題を修正。認識できない行はまとめてエラーにし、意図と異なる内容がリモートで実行されるのを防ぐ。
 - SSM コマンドがクライアント側のタイムアウトでポーリングを打ち切った後もリモートでは実行が続いていた問題を修正。タイムアウト時は `aws ssm cancel-command` でリモート側のキャンセルもベストエフォートで試みる。
 - SG適用・インスタンスロール適用後、キャッシュ済み一覧の `SecurityGroupNames` が空に、`IamInstanceProfileArn` が空文字になったまま残っていた問題を修正。変更対象の1台だけ AWS から取り直して丸ごと差し替えるよう統一（`Get-Ec2Instances` に `-InstanceIds` フィルタを追加）。
+- `Get-InstanceProfileAssociation` にあったほぼ同一のループ（associated優先→フォールバック）を共通関数 `ConvertTo-IamInstanceProfileAssociationObject` に抽出して重複を解消。
+- アプリログ出力先に日付フォルダが無期限に溜まり続ける問題を修正。起動時に保持日数（既定30日）を超えた過去フォルダを自動削除するようにした。
+- MainWindow.xaml / LocalToolsLauncher*.xaml の構文破損を起動前に検出できるよう、XamlReader での読み込みスモークテストを追加。
+- SSM コマンド実行の確認ダイアログにタスク名しか表示されず、リモートで実際に何が実行されるか確認できなかった問題を改善。実行内容（スクリプト冒頭部分）をダイアログ内にプレビュー表示するようにした。
 
 ## [1.6.0] - 2026-07-07
 

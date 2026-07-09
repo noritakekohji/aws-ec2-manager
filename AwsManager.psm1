@@ -541,6 +541,32 @@ function Get-IamInstanceProfiles {
     return , ($list.ToArray())
 }
 
+function ConvertTo-IamInstanceProfileAssociationObject {
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param(
+        [Parameter(Mandatory = $true)]$Association,
+        [Parameter(Mandatory = $true)][string]$InstanceId
+    )
+
+    $state = if ($Association.PSObject.Properties.Name -contains 'State') { [string]$Association.State } else { '' }
+    $iamArn = ''
+    if ($Association.PSObject.Properties.Name -contains 'IamInstanceProfile' -and $null -ne $Association.IamInstanceProfile) {
+        if ($Association.IamInstanceProfile.PSObject.Properties.Name -contains 'Arn') {
+            $iamArn = [string]$Association.IamInstanceProfile.Arn
+        }
+    }
+    $iamName = ''
+    if (-not [string]::IsNullOrWhiteSpace($iamArn)) { $iamName = ($iamArn -split '/')[-1] }
+    return [PSCustomObject]@{
+        AssociationId      = if ($Association.PSObject.Properties.Name -contains 'AssociationId') { [string]$Association.AssociationId } else { '' }
+        InstanceId         = if ($Association.PSObject.Properties.Name -contains 'InstanceId') { [string]$Association.InstanceId } else { $InstanceId }
+        State              = $state
+        InstanceProfileArn = $iamArn
+        InstanceProfileName = $iamName
+    }
+}
+
 function Get-InstanceProfileAssociation {
     [CmdletBinding()]
     [OutputType([PSCustomObject])]
@@ -573,45 +599,15 @@ function Get-InstanceProfileAssociation {
             ($_.PSObject.Properties.Name -contains 'State') -and
             [string]$_.State -eq 'associated'
         })
-    foreach ($assoc in $associatedItems) {
+
+    # 'associated' 状態のものを優先し、なければ disassociated 以外の先頭を採用する。
+    # associatedItems は associations の部分集合だが、最初に見つかった時点で
+    # return するため二重ヒットしても実害はない。
+    foreach ($assoc in (@($associatedItems) + @($associations))) {
         if ($null -eq $assoc) { continue }
         $state = if ($assoc.PSObject.Properties.Name -contains 'State') { [string]$assoc.State } else { '' }
         if ($state -eq 'disassociated') { continue }
-        $iamArn = ''
-        if ($assoc.PSObject.Properties.Name -contains 'IamInstanceProfile' -and $null -ne $assoc.IamInstanceProfile) {
-            if ($assoc.IamInstanceProfile.PSObject.Properties.Name -contains 'Arn') {
-                $iamArn = [string]$assoc.IamInstanceProfile.Arn
-            }
-        }
-        $iamName = ''
-        if (-not [string]::IsNullOrWhiteSpace($iamArn)) { $iamName = ($iamArn -split '/')[-1] }
-        return [PSCustomObject]@{
-            AssociationId      = if ($assoc.PSObject.Properties.Name -contains 'AssociationId') { [string]$assoc.AssociationId } else { '' }
-            InstanceId         = if ($assoc.PSObject.Properties.Name -contains 'InstanceId') { [string]$assoc.InstanceId } else { $InstanceId }
-            State              = $state
-            InstanceProfileArn = $iamArn
-            InstanceProfileName = $iamName
-        }
-    }
-    foreach ($assoc in @($associations)) {
-        if ($null -eq $assoc) { continue }
-        $state = if ($assoc.PSObject.Properties.Name -contains 'State') { [string]$assoc.State } else { '' }
-        if ($state -eq 'disassociated') { continue }
-        $iamArn = ''
-        if ($assoc.PSObject.Properties.Name -contains 'IamInstanceProfile' -and $null -ne $assoc.IamInstanceProfile) {
-            if ($assoc.IamInstanceProfile.PSObject.Properties.Name -contains 'Arn') {
-                $iamArn = [string]$assoc.IamInstanceProfile.Arn
-            }
-        }
-        $iamName = ''
-        if (-not [string]::IsNullOrWhiteSpace($iamArn)) { $iamName = ($iamArn -split '/')[-1] }
-        return [PSCustomObject]@{
-            AssociationId      = if ($assoc.PSObject.Properties.Name -contains 'AssociationId') { [string]$assoc.AssociationId } else { '' }
-            InstanceId         = if ($assoc.PSObject.Properties.Name -contains 'InstanceId') { [string]$assoc.InstanceId } else { $InstanceId }
-            State              = $state
-            InstanceProfileArn = $iamArn
-            InstanceProfileName = $iamName
-        }
+        return ConvertTo-IamInstanceProfileAssociationObject -Association $assoc -InstanceId $InstanceId
     }
     return $null
 }

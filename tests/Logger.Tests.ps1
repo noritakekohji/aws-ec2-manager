@@ -72,4 +72,52 @@ Describe 'Logger' {
             }
         }
     }
+
+    Context 'Remove-OldAppLogFolder' {
+        It 'deletes date folders older than the retention period, keeps recent ones' {
+            $root = Join-Path ([System.IO.Path]::GetTempPath()) ('aws-ec2-manager-log-retention-' + [guid]::NewGuid().ToString())
+            try {
+                $oldFolder = Join-Path $root (Get-Date).AddDays(-40).ToString('yyyy-MM-dd')
+                $recentFolder = Join-Path $root (Get-Date).AddDays(-1).ToString('yyyy-MM-dd')
+                New-Item -ItemType Directory -Path $oldFolder -Force | Out-Null
+                New-Item -ItemType Directory -Path $recentFolder -Force | Out-Null
+                Set-Content -LiteralPath (Join-Path $oldFolder 'app.log') -Value 'old' -Encoding UTF8
+                Set-Content -LiteralPath (Join-Path $recentFolder 'app.log') -Value 'recent' -Encoding UTF8
+
+                Remove-OldAppLogFolder -LogRoot $root -RetentionDays 30
+
+                Test-Path -LiteralPath $oldFolder | Should -BeFalse
+                Test-Path -LiteralPath $recentFolder | Should -BeTrue
+            } finally {
+                Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'does nothing when RetentionDays is 0 or negative' {
+            $root = Join-Path ([System.IO.Path]::GetTempPath()) ('aws-ec2-manager-log-retention-off-' + [guid]::NewGuid().ToString())
+            try {
+                $oldFolder = Join-Path $root (Get-Date).AddDays(-400).ToString('yyyy-MM-dd')
+                New-Item -ItemType Directory -Path $oldFolder -Force | Out-Null
+
+                Remove-OldAppLogFolder -LogRoot $root -RetentionDays 0
+
+                Test-Path -LiteralPath $oldFolder | Should -BeTrue
+            } finally {
+                Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'ignores folder names that do not look like yyyy-MM-dd' {
+            $root = Join-Path ([System.IO.Path]::GetTempPath()) ('aws-ec2-manager-log-retention-nondate-' + [guid]::NewGuid().ToString())
+            try {
+                $nonDateFolder = Join-Path $root 'not-a-date'
+                New-Item -ItemType Directory -Path $nonDateFolder -Force | Out-Null
+
+                { Remove-OldAppLogFolder -LogRoot $root -RetentionDays 1 } | Should -Not -Throw
+                Test-Path -LiteralPath $nonDateFolder | Should -BeTrue
+            } finally {
+                Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
 }

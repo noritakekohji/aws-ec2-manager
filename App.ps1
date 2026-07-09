@@ -2678,6 +2678,27 @@ function Get-SafeFileName {
     return $safe
 }
 
+function Get-ScriptPreviewText {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [AllowNull()]
+        [string]$Script
+    )
+
+    # SSM 実行確認ダイアログにスクリプト名だけでなく実行内容も出し、
+    # 意図しないタスクをそのまま実行してしまう事故を防ぐためのプレビュー。
+    $maxPreviewLines = 12
+    if ([string]::IsNullOrWhiteSpace($Script)) { return '(スクリプトが空です)' }
+
+    $lines = $Script -split "`r?`n"
+    $preview = ($lines | Select-Object -First $maxPreviewLines) -join "`n"
+    if ($lines.Count -gt $maxPreviewLines) {
+        $preview += "`n... (以下 $($lines.Count - $maxPreviewLines) 行省略、詳細はプレビュー欄で確認してください)"
+    }
+    return $preview
+}
+
 function ConvertTo-YamlScalarText {
     [CmdletBinding()]
     [OutputType([string])]
@@ -3119,8 +3140,10 @@ $runSsmButton.Add_Click({
                 return
             }
 
+            $scriptPreview = Get-ScriptPreviewText -Script $yaml.Script
+            $confirmMessage = "$($inst.InstanceId) で『$($yaml.Name)』を実行しますか？`n`n--- 実行内容 ($($yaml.Platform)) ---`n$scriptPreview"
             $answer = [System.Windows.MessageBox]::Show(
-                "$($inst.InstanceId) で『$($yaml.Name)』を実行しますか？",
+                $confirmMessage,
                 'aws-ec2-manager',
                 [System.Windows.MessageBoxButton]::YesNo,
                 [System.Windows.MessageBoxImage]::Question
