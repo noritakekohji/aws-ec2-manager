@@ -56,20 +56,28 @@ v1.6 時点の課題(ソース確認 + ユーザーヒアリングで特定):
     (メッセージボックス + ステータスバー + WARN ログ)
 - ロック / ロック解除ボタンは左ペインに配置
 
-### 3. 非同期実行基盤(AsyncRunner)
+### 3. 非同期実行基盤(AsyncRunner)— イベント駆動、常時ポーリングなし
 
-- LocalToolsLauncher.ps1 で実績のあるパターンを汎用化:
-  **バックグラウンド Runspace + `BeginInvoke` + DispatcherTimer(300ms)ポーリング**
+- **バックグラウンド Runspace + イベント駆動の完了通知**。UI 側の DispatcherTimer による
+  常時ポーリングは行わない(ユーザー要件)。アイドル時のバックグラウンド動作はゼロ
+- 完了通知: 背景 Runspace が Work 完了時に自ら `$window.Dispatcher.BeginInvoke($callbackDelegate, $result)`
+  を呼んで UI スレッドへ push する
+  - OnSuccess / OnError / OnProgress の scriptblock は UI Runspace 側で delegate に変換してから
+    背景 Runspace へ渡す(Add_Click ハンドラと同じ実行機構で UI スレッド上で動く)
+  - この方式が実機で不安定な場合のフォールバックは「タスク実行中のみ起動し完了で停止する
+    DispatcherTimer」とする(それでも常時ポーリングはしない)
 - すべての AWS CLI 呼び出し(describe / start / stop / SG / ロール / SSM)がここを通る
 - API 形:`Start-AsyncTask -Name <表示名> -Work {scriptblock} -OnSuccess {} -OnError {} [-OnProgress {}]`
   - Work は背景 Runspace 内で AwsManager.psm1 を import して実行
-  - 結果の受け渡しは synchronized hashtable。UI 反映は Dispatcher タイマー側(UI スレッド)で行う
+- データの自動定期更新も行わない。取得はユーザー操作(更新ボタン / タブ表示 / 選択変更)時のみ
 - 同時実行は 1 つ(直列)。実行中:
   - 操作系ボタンは無効化(現行 Set-UiBusy 相当)
   - 一覧スクロール・フィルタ・タブ切替・詳細閲覧は可能
   - ステータスバーに実行中タスク名 + プログレスバー + **キャンセルボタン**
     (背景 Runspace と子 aws プロセスを kill。SSM 実行中なら現行同様 cancel-command も送る)
-- SSM の途中経過(ステータスポーリング)は OnProgress 経由でステータスバー / 出力欄に反映
+- SSM の途中経過は OnProgress 経由でステータスバー / 出力欄に反映
+  (SSM API 自体は push 通知を持たないため、背景 Runspace 内での間隔付き状態確認は継続する。
+  UI 側にタイマーは置かない)
 - `$pumpUi`(DoEvents 相当)と再入抑止のための全ボタン無効化ロジックは廃止し、
   AsyncRunner の直列実行で置き換える
 
