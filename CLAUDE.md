@@ -3,6 +3,16 @@
 AWS EC2 を WPF GUI で管理するツール。PowerShell 5.1 + XAML + AWS CLI（SSO）+ SSM Run Command。
 Windows 11 / AVD 上で動作する前提。
 
+v2.0 構成: App.ps1 は薄いエントリで、機能は `src/*.ps1` に分割(dot-source、全ファイルが
+同一スクリプトスコープを共有)。AWS 呼び出しは `src/AsyncRunner.ps1` 経由の
+バックグラウンド Runspace で実行され、完了・進捗は `Dispatcher.BeginInvoke` で UI へ push
+される(UI 側にタイマー・ポーリングは置かない)。
+
+**非同期コールバックの注意**: `Start-AsyncTask` の OnSuccess/OnError scriptblock は
+定義元関数のローカル変数を参照できない(実行時には定義元スコープが消滅)。
+必要な値は `-Context` で渡し、`param($result, $ctx)` で受け取ること。
+`GetNewClosure()` は `$script:` 参照を壊すため使わない。
+
 ## 重要方針
 
 - **PS 5.1 互換必須**。`??` / `?:` / `?.` / `utf8NoBOM` は禁止

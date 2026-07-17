@@ -713,4 +713,104 @@ script: |
             Remove-Item -LiteralPath $tmp -Force
         }
     }
+
+    Context 'キャンセルチャネル' {
+        AfterEach {
+            Set-AwsCliChannel -Channel $null
+        }
+
+        It 'Set-AwsCliChannel はハッシュテーブルと $null を受け付ける' {
+            $ch = [hashtable]::Synchronized(@{ AwsPid = 0; CancelRequested = $false })
+            { Set-AwsCliChannel -Channel $ch } | Should -Not -Throw
+            { Set-AwsCliChannel -Channel $null } | Should -Not -Throw
+        }
+
+        It 'Invoke-AwsCli は実行後にチャネルの AwsPid を 0 に戻す' {
+            $ch = [hashtable]::Synchronized(@{ AwsPid = 0; CancelRequested = $false })
+            Set-AwsCliChannel -Channel $ch
+            InModuleScope AwsManager {
+                Invoke-AwsCli -Arguments @('--version') | Out-Null
+            }
+            $ch.AwsPid | Should -Be 0
+        }
+
+        It 'Invoke-SsmTask は CancelRequested でポーリングを中断し cancel-command を送る' {
+            $yaml = @'
+name: cancel-test
+platform: Linux
+script: |
+  sleep 100
+'@
+            $tmp = [System.IO.Path]::GetTempFileName()
+            Set-Content -LiteralPath $tmp -Value $yaml -Encoding UTF8
+
+            $ch = [hashtable]::Synchronized(@{ AwsPid = 0; CancelRequested = $false })
+            Set-AwsCliChannel -Channel $ch
+
+            Mock -ModuleName AwsManager Start-Sleep { }
+            Mock -ModuleName AwsManager Invoke-AwsCli -ParameterFilter {
+                $Arguments -contains 'send-command'
+            } -MockWith {
+                [PSCustomObject]@{ ExitCode = 0; Output = '{ "Command": { "CommandId": "c9" } }'; Success = $true }
+            }
+            $script:ccPolls = 0
+            Mock -ModuleName AwsManager Invoke-AwsCli -ParameterFilter {
+                $Arguments -contains 'get-command-invocation'
+            } -MockWith {
+                $script:ccPolls++
+                # 1 回目のポーリング後にユーザーがキャンセルを要求した状況を再現
+                $script:ccChannel.CancelRequested = $true
+                [PSCustomObject]@{ ExitCode = 0; Output = '{ "Status": "InProgress" }'; Success = $true }
+            }
+            $script:ccCancelArgs = $null
+            Mock -ModuleName AwsManager Invoke-AwsCli -ParameterFilter {
+                $Arguments -contains 'cancel-command'
+            } -MockWith {
+                $script:ccCancelArgs = $Arguments
+                [PSCustomObject]@{ ExitCode = 0; Output = '{}'; Success = $true }
+            }
+            $script:ccChannel = $ch
+
+            $r = Invoke-SsmTask -Profile 'dev' -InstanceId 'i-1' -YamlPath $tmp
+            $r.Status | Should -Be 'Cancelled'
+            $script:ccCancelArgs | Should -Not -BeNullOrEmpty
+            $script:ccCancelArgs | Should -Contain 'c9'
+            $script:ccCancelArgs | Should -Contain 'i-1'
+            $script:ccPolls | Should -Be 1
+
+            Remove-Item -LiteralPath $tmp -Force
+        }
+
+        It 'Invoke-SsmTask はチャネルへ CommandId を公開する' {
+            $yaml = @'
+name: publish-test
+platform: Linux
+script: |
+  echo hi
+'@
+            $tmp = [System.IO.Path]::GetTempFileName()
+            Set-Content -LiteralPath $tmp -Value $yaml -Encoding UTF8
+
+            $ch = [hashtable]::Synchronized(@{ AwsPid = 0; CancelRequested = $false })
+            Set-AwsCliChannel -Channel $ch
+
+            Mock -ModuleName AwsManager Invoke-AwsCli -ParameterFilter {
+                $Arguments -contains 'send-command'
+            } -MockWith {
+                [PSCustomObject]@{ ExitCode = 0; Output = '{ "Command": { "CommandId": "c10" } }'; Success = $true }
+            }
+            Mock -ModuleName AwsManager Invoke-AwsCli -ParameterFilter {
+                $Arguments -contains 'get-command-invocation'
+            } -MockWith {
+                [PSCustomObject]@{ ExitCode = 0; Output = '{ "Status": "Success", "StandardOutputContent": "hi", "StandardErrorContent": "" }'; Success = $true }
+            }
+
+            Invoke-SsmTask -Profile 'dev' -InstanceId 'i-1' -YamlPath $tmp | Out-Null
+            $ch['SsmCommandId'] | Should -Be 'c10'
+            $ch['SsmInstanceId'] | Should -Be 'i-1'
+            $ch['SsmProfile'] | Should -Be 'dev'
+
+            Remove-Item -LiteralPath $tmp -Force
+        }
+    }
 }

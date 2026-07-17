@@ -20,3 +20,43 @@ Describe 'XAML files load without error' {
         } | Should -Not -Throw
     }
 }
+
+Describe 'MainWindow control inventory' {
+    BeforeAll {
+        Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml
+        $xamlPath = Join-Path $PSScriptRoot '..\MainWindow.xaml'
+        [xml]$xaml = Get-Content -LiteralPath $xamlPath -Raw -Encoding UTF8
+        $reader = New-Object System.Xml.XmlNodeReader $xaml
+        $script:MainWindow = [Windows.Markup.XamlReader]::Load($reader)
+    }
+
+    # src/*.ps1 が Find-Control で参照するコントロールが揃っていることの担保。
+    # 名前を変えた場合はここも合わせて更新する。
+    It 'contains required control <_>' -ForEach @(
+        # ヘッダー
+        'ProfileComboBox', 'ProfileInfoText', 'CheckTokenButton', 'SsoLoginButton',
+        'OpenSsoButton', 'LogButton', 'SettingsButton',
+        # 左ペイン
+        'InstanceFilterBox', 'InstanceFilterHint', 'InstancesGrid', 'InstanceEmptyText',
+        'InstanceListProgressBar', 'InstanceCountText', 'RefreshInstancesButton',
+        'StartInstanceButton', 'StopInstanceButton', 'RestartInstanceButton',
+        'LockInstanceButton', 'UnlockInstanceButton',
+        # 右ペイン共通
+        'SelectedInstanceHeaderText', 'SelectedInstanceSubText', 'DetailTabs', 'NoSelectionOverlay',
+        # 詳細タブ
+        'DetailGrid',
+        # SG タブ
+        'ReloadSgButton', 'SgStatusText', 'ExportSgReportButton', 'ApplySgButton',
+        'AppliedSgList', 'AvailableSgList', 'MoveToAppliedButton', 'MoveToAvailableButton', 'SgDiffPanel',
+        # ロールタブ
+        'ReloadRoleButton', 'RoleStatusText', 'ApplyRoleButton',
+        'AppliedRoleList', 'AvailableRoleList', 'MoveRoleToAppliedButton', 'MoveRoleToAvailableButton', 'RoleDiffPanel',
+        # ツール実行タブ
+        'RescanYamlButton', 'OpenYamlFolderButton', 'SsmPlatformText', 'AddYamlButton',
+        'YamlListBox', 'YamlInfoText', 'YamlScriptPreviewText', 'SaveYamlButton', 'RunSsmButton', 'SsmOutputText',
+        # ステータスバー
+        'StatusBarText', 'TaskProgressBar', 'CancelTaskButton'
+    ) {
+        $script:MainWindow.FindName($_) | Should -Not -BeNullOrEmpty
+    }
+}
