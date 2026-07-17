@@ -10,6 +10,32 @@
 
 Set-StrictMode -Version Latest
 
+# UI(AsyncRunner)との連絡用チャネル。synchronized hashtable を想定。
+# AwsPid: 実行中の aws CLI プロセス ID(キャンセル時に UI 側から Kill する)
+# CancelRequested: UI 側がキャンセルを要求したら $true
+$script:AwsCliChannel = $null
+
+function Set-AwsCliChannel {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Sets an in-memory communication channel only.')]
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowNull()]
+        [hashtable]$Channel
+    )
+    $script:AwsCliChannel = $Channel
+}
+
+function Test-AwsCliCancelRequested {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param()
+    $ch = $script:AwsCliChannel
+    if ($null -eq $ch) { return $false }
+    if (-not $ch.ContainsKey('CancelRequested')) { return $false }
+    return [bool]$ch['CancelRequested']
+}
+
 function Get-ErrorRecordText {
     [CmdletBinding()]
     [OutputType([string])]
@@ -109,6 +135,10 @@ function Invoke-AwsCli {
     $process.StartInfo = $psi
     try {
         [void]$process.Start()
+        # UI からのキャンセル(プロセス Kill)を可能にするため PID を公開する
+        if ($null -ne $script:AwsCliChannel) {
+            try { $script:AwsCliChannel['AwsPid'] = [int]$process.Id } catch { }
+        }
         $stdoutTask = $process.StandardOutput.ReadToEndAsync()
         $stderrTask = $process.StandardError.ReadToEndAsync()
         $exited = $process.WaitForExit([Math]::Max(1, $TimeoutSeconds) * 1000)
@@ -135,6 +165,9 @@ function Invoke-AwsCli {
         $exitCode = 1
     }
     finally {
+        if ($null -ne $script:AwsCliChannel) {
+            try { $script:AwsCliChannel['AwsPid'] = 0 } catch { }
+        }
         if ($null -ne $process) {
             $process.Dispose()
         }
@@ -835,6 +868,16 @@ function Invoke-SsmTask {
     $sendObj = $sendResult.Output | ConvertFrom-Json
     $commandId = [string]$sendObj.Command.CommandId
 
+    # UI 側がパイプライン停止後にリモートコマンドをキャンセルできるよう、チャネルへ公開する
+    if ($null -ne $script:AwsCliChannel) {
+        try {
+            $script:AwsCliChannel['SsmCommandId'] = $commandId
+            $script:AwsCliChannel['SsmInstanceId'] = $InstanceId
+            $script:AwsCliChannel['SsmProfile'] = $Profile
+        }
+        catch { }
+    }
+
     $startTime = Get-Date
     $finalStatus = $null
     $lastStatus = 'Pending'
@@ -883,6 +926,27 @@ function Invoke-SsmTask {
             $lastError = Get-AwsCliErrorText -Result $invResult
         }
 
+        if (Test-AwsCliCancelRequested) {
+            $finalStatus = 'Cancelled'
+            $stderr = "ユーザー要求により SSM コマンド $commandId をキャンセルしました。"
+            try {
+                $cancelResult = Invoke-AwsCli -Arguments @(
+                    'ssm', 'cancel-command',
+                    '--profile', $Profile,
+                    '--command-id', $commandId,
+                    '--instance-ids', $InstanceId,
+                    '--output', 'json'
+                )
+                if (-not $cancelResult.Success) {
+                    $stderr = "$stderr`nリモートコマンドのキャンセルに失敗しました: $(Get-AwsCliErrorText -Result $cancelResult)"
+                }
+            }
+            catch {
+                $stderr = "$stderr`nリモートコマンドのキャンセル試行中にエラーが発生しました: $($_.Exception.Message)"
+            }
+            break
+        }
+
         $elapsed = (Get-Date) - $startTime
         if ($elapsed.TotalSeconds -ge $timeoutSec) {
             $finalStatus = 'TimedOut'
@@ -919,10 +983,11 @@ function Invoke-SsmTask {
 
     $duration = (Get-Date) - $startTime
     $normalized = switch ($finalStatus) {
-        'Success'  { 'Success' }
-        'Failed'   { 'Failed' }
-        'TimedOut' { 'TimedOut' }
-        default    { 'Failed' }
+        'Success'   { 'Success' }
+        'Failed'    { 'Failed' }
+        'TimedOut'  { 'TimedOut' }
+        'Cancelled' { 'Cancelled' }
+        default     { 'Failed' }
     }
 
     return [PSCustomObject]@{
@@ -991,4 +1056,4 @@ function Get-SgRuleDiff {
     }
 }
 
-Export-ModuleMember -Function Get-Ec2Instances, Get-SsmInstanceInformation, Start-Ec2Instance, Stop-Ec2Instance, Restart-Ec2Instance, Get-VpcSecurityGroups, Set-InstanceSecurityGroups, Get-IamInstanceProfiles, Get-InstanceProfileAssociation, Set-InstanceProfileAssociation, Invoke-SsmTask, ConvertFrom-MinimalYaml, Get-SgRuleDiff
+Export-ModuleMember -Function Get-Ec2Instances, Get-SsmInstanceInformation, Start-Ec2Instance, Stop-Ec2Instance, Restart-Ec2Instance, Get-VpcSecurityGroups, Set-InstanceSecurityGroups, Get-IamInstanceProfiles, Get-InstanceProfileAssociation, Set-InstanceProfileAssociation, Invoke-SsmTask, ConvertFrom-MinimalYaml, Get-SgRuleDiff, Set-AwsCliChannel
