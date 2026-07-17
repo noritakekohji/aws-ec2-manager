@@ -22,6 +22,7 @@ $script:AsyncRunnerState = [PSCustomObject]@{
     TaskName      = ''
     OnSuccess     = $null
     OnError       = $null
+    Context       = $null
     Channel       = [hashtable]::Synchronized(@{ AwsPid = 0; CancelRequested = $false })
 }
 
@@ -89,6 +90,7 @@ function Clear-AsyncTaskResources {
     $state.Handle = $null
     $state.OnSuccess = $null
     $state.OnError = $null
+    $state.Context = $null
     $state.TaskName = ''
     $state.Channel.AwsPid = 0
     $state.Channel.CancelRequested = $false
@@ -106,14 +108,17 @@ function Complete-AsyncTask {
 
     $onSuccess = $state.OnSuccess
     $onError = $state.OnError
+    $context = $state.Context
     Clear-AsyncTaskResources
     Set-AsyncBusyState -Busy $false
 
+    # scriptblock は定義元関数のローカル変数を実行時に参照できない(動的スコープ)ため、
+    # 呼び出し元の文脈は第 2 引数 $Context で受け渡す。
     if ($Envelope.Ok) {
-        if ($null -ne $onSuccess) { & $onSuccess $Envelope.Value }
+        if ($null -ne $onSuccess) { & $onSuccess $Envelope.Value $context }
     }
     else {
-        if ($null -ne $onError) { & $onError ([string]$Envelope.Error) }
+        if ($null -ne $onError) { & $onError ([string]$Envelope.Error) $context }
     }
 }
 
@@ -132,7 +137,11 @@ function Start-AsyncTask {
 
         [Parameter(Mandatory = $true)][scriptblock]$OnSuccess,
         [Parameter()][AllowNull()][scriptblock]$OnError = $null,
-        [Parameter()][AllowNull()][scriptblock]$OnProgress = $null
+        [Parameter()][AllowNull()][scriptblock]$OnProgress = $null,
+
+        # OnSuccess / OnError の第 2 引数として渡される任意の文脈オブジェクト。
+        # ハンドラは定義元のローカル変数を参照できないため、必要な値はここに載せる。
+        [Parameter()][AllowNull()]$Context = $null
     )
 
     $state = $script:AsyncRunnerState
@@ -145,8 +154,13 @@ function Start-AsyncTask {
     $state.TaskName = $Name
     $state.OnSuccess = $OnSuccess
     $state.OnError = $OnError
+    $state.Context = $Context
     $state.Channel.AwsPid = 0
     $state.Channel.CancelRequested = $false
+    # 前回タスクの SSM 情報が残っていると誤キャンセルの元になるため掃除する
+    foreach ($staleKey in @('SsmCommandId', 'SsmInstanceId', 'SsmProfile')) {
+        if ($state.Channel.ContainsKey($staleKey)) { $state.Channel.Remove($staleKey) }
+    }
 
     # UI Runspace 側で delegate 化しておく(UI スレッド上で Dispatcher が実行するため、
     # Add_Click ハンドラと同じ実行機構で安全に動く)
@@ -247,10 +261,11 @@ function Stop-AsyncTask {
 
     # パイプライン停止後は背景側から完了通知が来ないため、UI 側でクリーンアップする
     $onError = $state.OnError
+    $context = $state.Context
     try { if ($null -ne $state.PowerShell) { $state.PowerShell.Stop() } } catch { }
     Clear-AsyncTaskResources
     Set-AsyncBusyState -Busy $false
     if ($null -ne $onError) {
-        & $onError "タスク『$taskName』をキャンセルしました"
+        & $onError "タスク『$taskName』をキャンセルしました" $context
     }
 }
