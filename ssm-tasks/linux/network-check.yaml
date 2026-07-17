@@ -4,4 +4,4 @@ script: |
   cd /tmp
   pwd
   ls -la
-  date
+  cat /etc/hosts

@@ -262,6 +262,10 @@ function Invoke-RoleLoadAsync {
 
     $roleStatusText.Text = 'Instance Profile 情報を取得中…'
     Set-StatusText -Message "$instanceId の Instance Profile 取得中…"
+    $appliedRoleList.ItemsSource = $null
+    $availableRoleList.ItemsSource = $null
+    $roleDiffPanel.Children.Clear()
+    Add-RoleDiffText -Text "Instance Profile 情報を取得中… ($instanceId)" -Color '#94A3B8'
 
     $started = Start-AsyncTask -Name "ロール取得: $instanceId" -Work {
         param($Channel, $ReportProgress, $profileName, $targetId)

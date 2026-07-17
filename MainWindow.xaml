@@ -453,12 +453,12 @@
                         <Grid>
                             <TextBox x:Name="InstanceFilterBox" VerticalContentAlignment="Center" ToolTip="Name / InstanceId / IP の部分一致で絞り込み" />
                             <TextBlock x:Name="InstanceFilterHint"
-                                       Text="&#xE721; Name / ID / IP で絞り込み"
-                                       FontFamily="Segoe MDL2 Assets, Yu Gothic UI"
                                        Foreground="{StaticResource MutedText}"
                                        Margin="10,0,0,0"
                                        VerticalAlignment="Center"
-                                       IsHitTestVisible="False" />
+                                       IsHitTestVisible="False">
+                                <Run FontFamily="Segoe MDL2 Assets" Text="&#xE721;" /><Run Text=" Name / ID / IP で絞り込み" />
+                            </TextBlock>
                         </Grid>
                     </DockPanel>
 

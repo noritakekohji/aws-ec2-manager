@@ -115,8 +115,10 @@ function Invoke-AwsCli {
         # aws CLI プロセスがネットワーク障害等でハングした場合の保険。
         # SSM 系呼び出しは --cli-connect-timeout / --cli-read-timeout を別途渡しているが、
         # それらが効かないケース（プロセス自体の無応答）に備えたプロセスレベルの上限。
+        # 遅いネットワーク/プロキシ環境では単発の API 呼び出しが 60 秒を超えることが
+        # 実測で確認されたため 120 秒とする(非同期実行なので UI はブロックされない)。
         [Parameter()]
-        [int]$TimeoutSeconds = 60
+        [int]$TimeoutSeconds = 120
     )
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo

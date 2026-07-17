@@ -746,6 +746,10 @@ function Invoke-SgLoadAsync {
 
     $sgStatusText.Text = "SG 情報を取得中… ($vpcId)"
     Set-StatusText -Message "$instanceId の SG 取得中…"
+    $appliedSgList.ItemsSource = $null
+    $availableSgList.ItemsSource = $null
+    $sgDiffPanel.Children.Clear()
+    Add-SgDiffText -Text "SG 情報を取得中… ($instanceId)" -Color '#94A3B8' | Out-Null
 
     $started = Start-AsyncTask -Name "SG 取得: $instanceId" -Work {
         param($Channel, $ReportProgress, $profileName, $targetVpcId)
