@@ -259,11 +259,21 @@ function Stop-AsyncTask {
         try { Stop-Process -Id $awsPid -Force -ErrorAction Stop } catch { }
     }
 
-    # パイプライン停止後は背景側から完了通知が来ないため、UI 側でクリーンアップする
+    # パイプライン停止後は背景側から完了通知が来ないため、UI 側でクリーンアップする。
+    # Stop() は停止完了まで UI をブロックし得る(WaitForExit 中のネイティブ呼び出しは
+    # 中断できない)ため BeginStop を使い、リソースは参照を手放して後始末を任せる。
+    # 遅延して届く完了通知は Complete-AsyncTask の TaskId ガードで無視される。
     $onError = $state.OnError
     $context = $state.Context
-    try { if ($null -ne $state.PowerShell) { $state.PowerShell.Stop() } } catch { }
-    Clear-AsyncTaskResources
+    try { if ($null -ne $state.PowerShell) { [void]$state.PowerShell.BeginStop($null, $null) } } catch { }
+    $state.PowerShell = $null
+    $state.Runspace = $null
+    $state.Handle = $null
+    $state.OnSuccess = $null
+    $state.OnError = $null
+    $state.Context = $null
+    $state.TaskName = ''
+    $state.Channel.AwsPid = 0
     Set-AsyncBusyState -Busy $false
     if ($null -ne $onError) {
         & $onError "タスク『$taskName』をキャンセルしました" $context

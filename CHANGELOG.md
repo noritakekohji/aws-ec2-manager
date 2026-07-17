@@ -7,7 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-07-17
+
+### Changed
+- **UI をマスター/ディテール型に全面再構成**。左ペインに常駐のインスタンス一覧(検索フィルタ + 電源操作 + ロック)、右ペインに選択インスタンス追従のタブ(詳細 / セキュリティグループ / インスタンスロール / ツール実行)。タブごとのインスタンス選択 ComboBox・更新ボタン・タブ間同期コード(約 500 行)を全廃し、選択は 1 箇所に統一。
+- **全 AWS CLI 呼び出しを非同期化**。バックグラウンド Runspace + `Dispatcher.BeginInvoke` によるイベント駆動の実行基盤(`src/AsyncRunner.ps1`)を導入し、describe / 電源操作 / SG / ロール / SSM 実行のすべてで UI がフリーズしなくなった。UI 側に常時タイマー・定期ポーリングは置かない。実行中はステータスバーにプログレスとキャンセルボタンを表示し、aws プロセス kill + SSM リモート `cancel-command` で中断できる。
+- App.ps1(3,237 行)を薄いエントリ(約 130 行)+ 機能別 `src/*.ps1`(AsyncRunner / AppState / UiCommon / HeaderPane / InstanceListPane / DetailTab / SgTab / RoleTab / SsmTab)に分割。
+- SG / インスタンスロール情報はインスタンス ID 単位でキャッシュし、タブがアクティブになったときだけ遅延取得。手動「再取得」ボタンを各タブに配置。
+- インスタンス詳細を別ウィンドウから右ペインの「詳細」タブに変更(一覧ダブルクリックで詳細タブへ。行ダブルクリックで値コピーは維持)。
+- AWS CLI プロセスタイムアウトを 60 秒 → 120 秒に拡大(遅いネットワーク/プロキシ環境で `stop-instances` が 60 秒を超過する実測に対応)。
+
+### Added
+- インスタンス一覧の絞り込みフィルタ(Name / InstanceId / Private IP / Public IP の部分一致)。
+- 一覧 0 件時・未選択時の案内表示(empty 状態)、タブ内の取得中表示(loading 状態)。
+- `AwsManager.psm1` にキャンセルチャネル(`Set-AwsCliChannel`)を追加。実行中 aws プロセスの PID 公開と `CancelRequested` による SSM ポーリング中断・リモートキャンセルに対応。
+- テスト追加: AsyncRunner(イベント駆動完了・進捗・キャンセル)、AppState(フィルタ・ロック・キャッシュ)、キャンセルチャネル、全 .ps1/.psm1 の構文 + UTF-8 BOM チェック、MainWindow コントロール一覧チェック。
+
 ### Fixed
+- SG 差分 HTML 出力が `Get-SafeFileName -Text`(存在しないパラメータ)で失敗していた潜在バグを修正。
+- ロック機能は現行仕様のまま維持(一覧のロック列、電源操作 / SG 適用 / ロール適用 / SSM 実行のブロック、設定ファイルへの永続化)。
+
+### Fixed (v1.6.0 リリース後の未リリース修正分)
 - `Invoke-AwsCli`（AwsManager 側）にプロセスレベルのタイムアウト（既定60秒）を追加。ネットワーク障害等で aws CLI プロセスが応答しなくなり、アプリ全体がフリーズする問題を防止。
 - インスタンス起動・停止・再起動・SG適用が AWS CLI 失敗時に詳細を伏せたまま `$false` を返していた問題を修正し、CLI のエラー詳細を伴って例外を送出するよう統一。ステータスバー・ログに具体的な失敗理由が表示される。
 - SSM 情報取得（`describe-instance-information`）が権限不足等で失敗した場合に「未登録」と誤表示していた問題を修正。取得失敗は「SSM情報取得失敗」として区別して表示する。あわせて、App.ps1 が設定する `$ErrorActionPreference = 'Stop'` の下では内部の `Write-Error` 自体が終了エラーとなり EC2 一覧全体が取得できなくなっていた回帰を修正（`-ErrorAction Continue` を明示）。
