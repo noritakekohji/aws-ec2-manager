@@ -1002,6 +1002,45 @@ function Invoke-SsmTask {
     }
 }
 
+function Get-SsmSessionArgumentText {
+    <#
+    .SYNOPSIS
+        SSM Session Manager ログイン用の aws CLI 引数文字列を組み立てる。
+    .DESCRIPTION
+        既定は `ssm start-session --target <id>`(リモートでは ssm-user セッション)。
+        -RunAsUser 指定時(Linux のみ想定)は AWS-StartInteractiveCommand ドキュメントで
+        `sudo su - <user>` を起動し、指定 OS ユーザーとしてログインする。
+        ユーザー名はコマンドライン/JSON に埋め込まれるため、英数字と ._- のみ許可する
+        (シェルインジェクション防止)。
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $true)][string]$Profile,
+        [Parameter(Mandatory = $true)][string]$InstanceId,
+        [Parameter()]
+        [AllowNull()]
+        [AllowEmptyString()]
+        [string]$RunAsUser = ''
+    )
+
+    $arguments = @('ssm', 'start-session', '--profile', $Profile, '--target', $InstanceId)
+    if (-not [string]::IsNullOrWhiteSpace($RunAsUser)) {
+        $user = $RunAsUser.Trim()
+        if ($user -notmatch '^[A-Za-z_][A-Za-z0-9_.\-]{0,31}$') {
+            throw "対象ユーザー名が不正です: '$user'(使用できるのは英数字と . _ - のみ)"
+        }
+        $paramJson = '{"command":["sudo su - ' + $user + '"]}'
+        $arguments += @('--document-name', 'AWS-StartInteractiveCommand', '--parameters', $paramJson)
+    }
+
+    $quoted = New-Object System.Collections.Generic.List[string]
+    foreach ($arg in $arguments) {
+        $quoted.Add((ConvertTo-NativeArgument -Argument $arg))
+    }
+    return ($quoted.ToArray() -join ' ')
+}
+
 function Get-SgRuleContentKey {
     param($Rule)
     return (('{0}|{1}|{2}|{3}' -f [string]$Rule.Direction, [string]$Rule.Protocol, [string]$Rule.Port, [string]$Rule.Target)).ToLowerInvariant()
@@ -1058,4 +1097,4 @@ function Get-SgRuleDiff {
     }
 }
 
-Export-ModuleMember -Function Get-Ec2Instances, Get-SsmInstanceInformation, Start-Ec2Instance, Stop-Ec2Instance, Restart-Ec2Instance, Get-VpcSecurityGroups, Set-InstanceSecurityGroups, Get-IamInstanceProfiles, Get-InstanceProfileAssociation, Set-InstanceProfileAssociation, Invoke-SsmTask, ConvertFrom-MinimalYaml, Get-SgRuleDiff, Set-AwsCliChannel
+Export-ModuleMember -Function Get-Ec2Instances, Get-SsmInstanceInformation, Start-Ec2Instance, Stop-Ec2Instance, Restart-Ec2Instance, Get-VpcSecurityGroups, Set-InstanceSecurityGroups, Get-IamInstanceProfiles, Get-InstanceProfileAssociation, Set-InstanceProfileAssociation, Invoke-SsmTask, ConvertFrom-MinimalYaml, Get-SgRuleDiff, Set-AwsCliChannel, Get-SsmSessionArgumentText

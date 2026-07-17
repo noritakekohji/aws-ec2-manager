@@ -53,6 +53,7 @@ Describe 'MainWindow control inventory' {
         'AppliedRoleList', 'AvailableRoleList', 'MoveRoleToAppliedButton', 'MoveRoleToAvailableButton', 'RoleDiffPanel',
         # ツール実行タブ
         'RescanYamlButton', 'OpenYamlFolderButton', 'SsmPlatformText', 'AddYamlButton',
+        'SsmLoginButton', 'SsmUserTextBox', 'SsmUserHint',
         'YamlListBox', 'YamlInfoText', 'YamlScriptPreviewText', 'SaveYamlButton', 'RunSsmButton', 'SsmOutputText',
         # ステータスバー
         'StatusBarText', 'TaskProgressBar', 'CancelTaskButton'

@@ -726,6 +726,18 @@
                                     <DockPanel Grid.Row="0" Margin="0,0,0,12">
                                         <TextBlock x:Name="SsmPlatformText" DockPanel.Dock="Right" Text="SSM Run Command" Foreground="{StaticResource MutedText}" VerticalAlignment="Center" />
                                         <StackPanel Orientation="Horizontal">
+                                            <Button x:Name="SsmLoginButton" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0" ToolTip="SSM Session Manager で選択インスタンスに別ウィンドウでログイン(要 session-manager-plugin)">
+                                                <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE756;" Margin="0,0,7,0" /><TextBlock Text="SSM ログイン" /></StackPanel>
+                                            </Button>
+                                            <Grid Width="170" Margin="0,0,16,0">
+                                                <TextBox x:Name="SsmUserTextBox" VerticalContentAlignment="Center" ToolTip="ログインする OS ユーザー(Linux のみ)。空欄なら既定の ssm-user" />
+                                                <TextBlock x:Name="SsmUserHint"
+                                                           Text="ユーザー(空=ssm-user)"
+                                                           Foreground="{StaticResource MutedText}"
+                                                           Margin="9,0,0,0"
+                                                           VerticalAlignment="Center"
+                                                           IsHitTestVisible="False" />
+                                            </Grid>
                                             <Button x:Name="RescanYamlButton" Margin="0,0,8,0">
                                                 <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE72C;" Margin="0,0,7,0" /><TextBlock Text="再スキャン" /></StackPanel>
                                             </Button>

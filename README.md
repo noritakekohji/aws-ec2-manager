@@ -18,6 +18,9 @@ v2.0 でマスター/ディテール型 UI に全面再構成。左ペインの�
   - 結果 `text` → WPF TextBox 表示
   - 結果 `html` → 一時ファイルに書き出して Edge で開く
   - 実行中の途中経過表示とキャンセル(リモート側も `cancel-command`)
+- **SSM ログイン**: Session Manager の対話セッションを別ウィンドウで開始(要 [session-manager-plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html))
+  - Linux は対象 OS ユーザーを指定可能(`sudo su - <user>` 方式)。空欄なら既定の `ssm-user`
+  - Windows はユーザー指定不可(ssm-user 固定)
 - **ロック**: 操作してはいけないインスタンスを登録し、電源操作 / SG 適用 / ロール適用 / SSM 実行をブロック(設定に永続化)
 - **プロファイル管理**: `~/.aws/config` を読みドロップダウン表示。SSO トークン有効性を再確認
 

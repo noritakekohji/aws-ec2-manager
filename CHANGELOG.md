@@ -7,7 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.0.0] - 2026-07-17
+## [2.1.0] - 2026-07-17
+
+### Added
+- **SSM ログイン機能**。ツール実行タブの「SSM ログイン」ボタンで、選択インスタンスに Session Manager の対話セッションを別ウィンドウで開始する(`aws ssm start-session`)。
+  - **対象ユーザー指定に対応(Linux のみ)**: ユーザー欄に OS ユーザー名を入れると `AWS-StartInteractiveCommand` + `sudo su - <user>` でそのユーザーとしてログイン。空欄なら既定の `ssm-user`。Windows インスタンスはユーザー指定不可(ssm-user 固定)で、指定時は案内を表示。
+  - ガード: ロック中インスタンスはブロック、SSM が Online でない場合は案内、`session-manager-plugin` 未インストール時はインストール手順(winget)を案内。
+  - ユーザー名は英数字と `. _ -` のみ許可(コマンドインジェクション防止)。
+
+### Changed
+- 公開ドキュメント(設計書・プラン)から検証用 SSO プロファイル名を除去。
 
 ### Changed
 - **UI をマスター/ディテール型に全面再構成**。左ペインに常駐のインスタンス一覧(検索フィルタ + 電源操作 + ロック)、右ペインに選択インスタンス追従のタブ(詳細 / セキュリティグループ / インスタンスロール / ツール実行)。タブごとのインスタンス選択 ComboBox・更新ボタン・タブ間同期コード(約 500 行)を全廃し、選択は 1 箇所に統一。

@@ -714,6 +714,31 @@ script: |
         }
     }
 
+    Context 'Get-SsmSessionArgumentText' {
+        It '既定は start-session のみ(ssm-user セッション)' {
+            $text = Get-SsmSessionArgumentText -Profile 'dev' -InstanceId 'i-0abc'
+            $text | Should -Be 'ssm start-session --profile dev --target i-0abc'
+        }
+
+        It 'ユーザー指定時は AWS-StartInteractiveCommand + sudo su になる' {
+            $text = Get-SsmSessionArgumentText -Profile 'dev' -InstanceId 'i-0abc' -RunAsUser 'ec2-user'
+            $text | Should -Match '--document-name AWS-StartInteractiveCommand'
+            $text | Should -Match 'sudo su - ec2-user'
+        }
+
+        It 'ユーザー名の前後空白は無視される' {
+            $text = Get-SsmSessionArgumentText -Profile 'dev' -InstanceId 'i-0abc' -RunAsUser '  ec2-user  '
+            $text | Should -Match 'sudo su - ec2-user'
+        }
+
+        It '不正なユーザー名(空白・引用符・日本語)は拒否する' {
+            { Get-SsmSessionArgumentText -Profile 'dev' -InstanceId 'i-0abc' -RunAsUser 'a b' } | Should -Throw
+            { Get-SsmSessionArgumentText -Profile 'dev' -InstanceId 'i-0abc' -RunAsUser 'a"b' } | Should -Throw
+            { Get-SsmSessionArgumentText -Profile 'dev' -InstanceId 'i-0abc' -RunAsUser 'ユーザー' } | Should -Throw
+            { Get-SsmSessionArgumentText -Profile 'dev' -InstanceId 'i-0abc' -RunAsUser 'a;rm -rf' } | Should -Throw
+        }
+    }
+
     Context 'キャンセルチャネル' {
         AfterEach {
             Set-AwsCliChannel -Channel $null

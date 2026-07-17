@@ -11,6 +11,9 @@
 $rescanYamlButton = Find-Control -Name 'RescanYamlButton'
 $openYamlFolderButton = Find-Control -Name 'OpenYamlFolderButton'
 $ssmPlatformText = Find-Control -Name 'SsmPlatformText'
+$ssmLoginButton = Find-Control -Name 'SsmLoginButton'
+$ssmUserTextBox = Find-Control -Name 'SsmUserTextBox'
+$ssmUserHint = Find-Control -Name 'SsmUserHint'
 $addYamlButton = Find-Control -Name 'AddYamlButton'
 $yamlListBox = Find-Control -Name 'YamlListBox'
 $yamlInfoText = Find-Control -Name 'YamlInfoText'
@@ -113,10 +116,66 @@ function Update-SsmRunButtonState {
     $inst = Get-AppStateInstance -InstanceId $script:AppState.SelectedInstanceId
     if ($null -eq $inst) {
         $runSsmButton.IsEnabled = $false
+        $ssmLoginButton.IsEnabled = $false
         return
     }
     $isLocked = Test-InstanceLocked -InstanceId ([string]$inst.InstanceId)
     $runSsmButton.IsEnabled = (-not $isLocked) -and (-not (Test-AsyncTaskRunning))
+    # ログインは対話セッション(別ウィンドウ)なので AsyncRunner のビジー状態とは独立
+    $ssmLoginButton.IsEnabled = -not $isLocked
+}
+
+function Start-SsmLoginSession {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'User-driven interactive session launch.')]
+    [CmdletBinding()]
+    param()
+
+    $name = Get-SelectedProfile
+    if ($null -eq $name) { return }
+    $inst = Get-AppStateInstance -InstanceId $script:AppState.SelectedInstanceId
+    if ($null -eq $inst) {
+        Set-StatusText -Message 'インスタンス未選択'
+        return
+    }
+    $instanceId = [string]$inst.InstanceId
+    if (-not (Test-InstanceOperationAllowed -InstanceId $instanceId -OperationLabel 'SSM ログイン')) { return }
+
+    $ssmStatus = [string](Get-InstancePropertyText -Instance $inst -Name 'SsmStatus')
+    if ($ssmStatus -ne 'Online') {
+        Set-StatusText -Message "SSM が Online ではないためログインできません(現在: $ssmStatus)。インスタンスが起動済みで SSM Agent が稼働している必要があります"
+        return
+    }
+
+    # Session Manager プラグインはクライアント側の必須要件
+    if ($null -eq (Get-Command -Name 'session-manager-plugin' -ErrorAction SilentlyContinue)) {
+        Show-InfoDialog -Warning -Message ("SSM ログインには Session Manager プラグインが必要です。`n" +
+            "インストール後に再度お試しください。`n`n" +
+            "インストール例 (winget):`n  winget install Amazon.SessionManagerPlugin`n`n" +
+            "参考: AWS ドキュメント『Session Manager plugin をインストールする』")
+        Set-StatusText -Message 'session-manager-plugin が見つかりません(未インストール)'
+        return
+    }
+
+    $runAsUser = [string]$ssmUserTextBox.Text
+    $platform = [string](Get-InstancePropertyText -Instance $inst -Name 'Platform')
+    if (-not [string]::IsNullOrWhiteSpace($runAsUser) -and $platform -eq 'Windows') {
+        Show-InfoDialog -Warning -Message "Windows インスタンスでは対象ユーザーの指定はできません(ssm-user 固定)。`nユーザー欄を空にして再度お試しください。"
+        return
+    }
+
+    try {
+        $argText = Get-SsmSessionArgumentText -Profile $name -InstanceId $instanceId -RunAsUser $runAsUser
+    }
+    catch {
+        Set-StatusText -Message $_.Exception.Message
+        return
+    }
+
+    # 対話セッションのため別コンソールで起動し、GUI はブロックしない(SSO ログインと同方式)
+    Start-Process -FilePath 'aws' -ArgumentList $argText | Out-Null
+    $userLabel = if ([string]::IsNullOrWhiteSpace($runAsUser)) { 'ssm-user(既定)' } else { $runAsUser.Trim() }
+    Set-StatusText -Message "SSM セッションを別ウィンドウで開始しました: $instanceId (ユーザー: $userLabel)"
+    Write-AppLog -Level 'INFO' -Message "SSM ログイン開始: $instanceId user=$userLabel profile=$name"
 }
 
 function Update-SsmTabForSelection {
@@ -480,6 +539,25 @@ $yamlListBox.Add_SelectionChanged({
 
 $yamlListBox.Add_MouseDoubleClick({
         Rename-SelectedYamlTask
+    })
+
+$ssmUserTextBox.Add_TextChanged({
+        if ([string]::IsNullOrEmpty([string]$ssmUserTextBox.Text)) {
+            $ssmUserHint.Visibility = [System.Windows.Visibility]::Visible
+        }
+        else {
+            $ssmUserHint.Visibility = [System.Windows.Visibility]::Collapsed
+        }
+    })
+
+$ssmLoginButton.Add_Click({
+        try {
+            Start-SsmLoginSession
+        }
+        catch {
+            Set-StatusText -Message "SSM ログインエラー: $($_.Exception.Message)"
+            Write-AppLog -Level 'ERROR' -Message "SSM ログインエラー: $($_.Exception.Message)"
+        }
     })
 
 $saveYamlButton.Add_Click({
