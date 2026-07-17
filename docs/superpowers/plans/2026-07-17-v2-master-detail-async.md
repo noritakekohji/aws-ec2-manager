@@ -238,9 +238,9 @@ YAML リストを切替。YAML 追加・改名・保存・フォルダを開く�
 - [ ] BOM / エンコーディング確認(全 .ps1 UTF-8 BOM)
 - [ ] commit `refactor: v2 統合クリーンアップ`
 
-### Task 12: 実機検証(kohji-Power)
+### Task 12: 実機検証(検証用 SSO プロファイル)
 
-- [ ] ユーザーに `aws sso login --profile kohji-Power` を依頼(GUI の SSO ログインボタンでも可)
+- [ ] ユーザーに `aws sso login --profile <sso-profile>` を依頼(GUI の SSO ログインボタンでも可)
 - [ ] GUI 起動 → スクリーンショット取得(computer-use)
 - [ ] 一覧取得 / フィルタ / 選択追従(4 タブ)/ SG・ロール表示 / read-only 系 SSM 実行
 - [ ] 実行中の UI 応答(スクロール・タブ切替)とキャンセル動作

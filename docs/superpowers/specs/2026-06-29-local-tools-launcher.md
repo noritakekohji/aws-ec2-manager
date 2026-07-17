@@ -64,7 +64,7 @@ Windows 版と Linux 版は UI 方式こそ異なるが、同じツール群、�
 |---|---|---|
 | `ToolsRoot` | ツール群のルートディレクトリ | `C:\ops\tools` / `/opt/ops/tools` |
 | `OutputRoot` | 実行結果の集約先 | `D:\ops-output` / `/var/tmp/ops-output` |
-| `DefaultAwsProfile` | 既定 AWS SSO プロファイル | `kohji-Power` |
+| `DefaultAwsProfile` | 既定 AWS SSO プロファイル | `<sso-profile>` |
 | `OpenReportAfterRun` | HTML レポート生成後に開くか | `true` |
 | `KeepConsoleOpen` | Windows 実行時にコンソールを残すか | `false` |
 
