@@ -7,7 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.1.0] - 2026-07-17
+## [2.2.0] - 2026-07-18
+
+### Changed
+- **ツールランチャー(LocalToolsLauncher)の UI を本体と統一**。パレット・ボタン/コンボ/リストのスタイル・ヘッダー・ステータスバーを aws-ec2-manager 本体と同一デザインに刷新(設定ダイアログも同様)。
+- AWS Profile を手入力 TextBox から `~/.aws/config` のプロファイル一覧ドロップダウンに変更(本体と同じ AwsConfig.psm1 を利用)。
+- ツール一覧を「名前 + 説明」の 2 行表示に変更し、ツール解決を表示文字列一致からオブジェクト参照に変更。
+- 「プレビュー更新」ボタンを廃止(パラメーター変更で自動更新のため冗長)。コマンドプレビューはパラメーターの下に移動。
+- 実行終了時のステータス表記を改善: 非 0 の ExitCode は「失敗」と断定せず「NG 検出またはエラー」と表示(cert-check / port-inventory 等はチェック NG で非 0 を返すため)。
+
+### Added
+- **実行成功時に HTML レポートを自動で開く**(設定 `OpenReportAfterRun` は従来から存在したが未実装だった)。NG 検出時(非 0 終了)もレポートがあれば開く。
+- ログ欄に「実行結果フォルダ」(直近の実行ディレクトリを開く)と「クリア」ボタンを追加。
+- 実行中インジケーター(ステータスバーのプログレスバー)を追加。ログ欄の高さを GridSplitter で調整可能に。
+- tool-catalog: server-snapshot に HTML レポートオプションを追加(after/compare 時。ツール本体は対応済みだった)。
+- テスト: LocalToolsLauncher のコントロール一覧チェックを追加。
+
+### Fixed
+- プロファイル一覧の取得で unary-comma 配列が 1 要素に化け、全プロファイルが連結表示される問題を修正。
 
 ### Added
 - **SSM ログイン機能**。ツール実行タブの「SSM ログイン」ボタンで、選択インスタンスに Session Manager の対話セッションを別ウィンドウで開始する(`aws ssm start-session`)。

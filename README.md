@@ -49,6 +49,7 @@ aws sso login --profile <profile>
 ## 使い方
 
 `launch.bat` をダブルクリックで GUI 起動。
+`launch-tools.bat` でローカルツールランチャー(tools/ 配下の運用スクリプトをローカル実行)を起動。
 プロファイルを選択 → タブで操作対象を切替（インスタンス / SG / インスタンスロール / ツール）。
 
 詳細は [`docs/superpowers/specs/`](docs/superpowers/specs/) を参照。

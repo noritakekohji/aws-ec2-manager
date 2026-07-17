@@ -283,12 +283,9 @@ function Read-ToolCatalog {
 }
 
 function Get-SelectedTool {
-    if ($null -eq $ToolListBox.SelectedItem) { return $null }
-    $selected = [string]$ToolListBox.SelectedItem
-    foreach ($tool in $script:Catalog) {
-        if ($selected -eq ("{0}  ({1})" -f $tool.Name, $tool.Id)) { return $tool }
-    }
-    return $null
+    $item = $ToolListBox.SelectedItem
+    if ($null -eq $item) { return $null }
+    return $item.Tool
 }
 
 function Get-ToolById {
@@ -935,6 +932,7 @@ function Disable-RunButtons {
     if ($null -ne $RunCollectSnapshotButton) { $RunCollectSnapshotButton.IsEnabled = $false }
     if ($null -ne $RunSnapshotReportButton) { $RunSnapshotReportButton.IsEnabled = $false }
     if ($null -ne $StopButton) { $StopButton.IsEnabled = $true }
+    if ($null -ne $RunProgressBar) { $RunProgressBar.Visibility = 'Visible' }
 }
 
 function Enable-RunButtons {
@@ -942,6 +940,32 @@ function Enable-RunButtons {
     if ($null -ne $RunCollectSnapshotButton) { $RunCollectSnapshotButton.IsEnabled = $true }
     if ($null -ne $RunSnapshotReportButton) { $RunSnapshotReportButton.IsEnabled = $true }
     if ($null -ne $StopButton) { $StopButton.IsEnabled = $false }
+    if ($null -ne $RunProgressBar) { $RunProgressBar.Visibility = 'Collapsed' }
+}
+
+function Open-RunReportIfEnabled {
+    # 成果物フォルダ内の HTML レポートを自動で開く(設定 OpenReportAfterRun)。
+    # カタログ規約でツールは {ArtifactsDir} に HTML を出力するため、ツール側の対応は不要。
+    # ExitCode 非 0 でも開く: ops ツールの非 0 は「チェック NG 検出」を含み、
+    # そのときこそレポートを確認したいため(レポートが無ければ何もしない)。
+    param([string]$RunDir, [string]$ExitCode)
+    if (-not (Get-ConfigBool -Config $script:LoadedConfig -Name 'OpenReportAfterRun' -DefaultValue $true)) { return }
+    $artifactsDir = Get-ArtifactsDir -RunDir $RunDir
+    if (-not (Test-Path -LiteralPath $artifactsDir)) { return }
+    $html = Get-ChildItem -LiteralPath $artifactsDir -Filter '*.html' -File -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($null -eq $html) { return }
+    try {
+        Start-Process -FilePath $html.FullName -ErrorAction Stop
+        Append-Log "レポートを開きました: $($html.FullName)"
+    } catch {
+        try {
+            Start-Process -FilePath 'msedge.exe' -ArgumentList $html.FullName -ErrorAction Stop
+            Append-Log "レポートを開きました: $($html.FullName)"
+        } catch {
+            Append-Log "レポートを開けませんでした: $($html.FullName) - $($_.Exception.Message)"
+        }
+    }
 }
 
 function Test-Running {
@@ -1113,7 +1137,15 @@ function Complete-ToolExecution {
                 if ($stderr) { Append-Log $stderr.TrimEnd() }
             }
             Append-Log "ExitCode: $exitCode"
-            Set-Status "完了: ExitCode $exitCode / $($ctx.RunDir)"
+            if ($exitCode -eq '0') {
+                Set-Status "完了: ExitCode 0 / $($ctx.RunDir)"
+            }
+            else {
+                # 非 0 はツールにより「チェック NG 検出」(cert-check / port-inventory 等) と
+                # 実行エラーの両方があり得るため、「失敗」と断定しない表現にする
+                Set-Status "終了: ExitCode $exitCode / $($ctx.RunDir)(NG 検出またはエラー。ログとレポートを確認してください)"
+            }
+            Open-RunReportIfEnabled -RunDir $ctx.RunDir -ExitCode $exitCode
             if ($ctx.ToolId -eq 'collect-snapshot' -and $null -ne $SnapshotZipTextBox) {
                 $artifactsDir = Join-Path $ctx.RunDir 'artifacts'
                 if (Test-Path -LiteralPath $artifactsDir) {
@@ -1287,8 +1319,12 @@ function Show-SettingsDialog {
         }
         $obj | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $ConfigPath -Encoding UTF8
         $script:LoadedConfig = $obj
-        if ($HeaderAwsProfileTextBox.Text -ne $script:AwsProfile) {
-            $HeaderAwsProfileTextBox.Text = $script:AwsProfile
+        if ($script:AwsProfile -and ([string]$HeaderAwsProfileComboBox.SelectedItem) -ne $script:AwsProfile) {
+            $items = @($HeaderAwsProfileComboBox.ItemsSource)
+            if ($items -notcontains $script:AwsProfile) {
+                $HeaderAwsProfileComboBox.ItemsSource = @(@($script:AwsProfile) + $items)
+            }
+            $HeaderAwsProfileComboBox.SelectedItem = $script:AwsProfile
         }
         Set-Status "設定を保存しました: $ConfigPath"
         Update-CommandPreview
@@ -1306,7 +1342,7 @@ Add-Type -AssemblyName WindowsBase
 $reader = New-Object System.Xml.XmlNodeReader $xaml
 $window = [Windows.Markup.XamlReader]::Load($reader)
 
-$HeaderAwsProfileTextBox = $window.FindName('HeaderAwsProfileTextBox')
+$HeaderAwsProfileComboBox = $window.FindName('HeaderAwsProfileComboBox')
 $OpenOutputButton = $window.FindName('OpenOutputButton')
 $OpenLogButton = $window.FindName('OpenLogButton')
 $OpenSettingsButton = $window.FindName('OpenSettingsButton')
@@ -1318,7 +1354,9 @@ $LogTextBox = $window.FindName('LogTextBox')
 $StatusText = $window.FindName('StatusText')
 $RunButton = $window.FindName('RunButton')
 $StopButton = $window.FindName('StopButton')
-$RefreshPreviewButton = $window.FindName('RefreshPreviewButton')
+$RunProgressBar = $window.FindName('RunProgressBar')
+$OpenLastRunButton = $window.FindName('OpenLastRunButton')
+$ClearLogButton = $window.FindName('ClearLogButton')
 $SnapshotLabelTextBox = $window.FindName('SnapshotLabelTextBox')
 $SnapshotZipTextBox = $window.FindName('SnapshotZipTextBox')
 $SnapshotCompareZipTextBox = $window.FindName('SnapshotCompareZipTextBox')
@@ -1337,23 +1375,62 @@ $script:ToolsRoot = Get-ConfigValue -Config $config -Name 'ToolsRoot' -DefaultVa
 $script:OutputRoot = Get-ConfigValue -Config $config -Name 'OutputRoot' -DefaultValue $DefaultOutputRoot
 $script:AwsProfile = Get-ConfigValue -Config $config -Name 'DefaultAwsProfile' -DefaultValue ''
 $script:ConfigFileOverrides = Load-ConfigFileOverrides -Config $config
-$HeaderAwsProfileTextBox.Text = $script:AwsProfile
+
+# AWS Profile は手入力ではなく ~/.aws/config のプロファイル一覧から選ぶ
+# (aws-ec2-manager 本体と同じ AwsConfig.psm1 を利用。読めない場合は空リストで続行)
+$profileItems = New-Object System.Collections.Generic.List[string]
+try {
+    Import-Module -Force (Join-Path $ScriptRoot 'AwsConfig.psm1')
+    # Get-AwsProfiles は unary-comma 返しのため @() で包むと「1 要素 = 配列まるごと」になる。
+    # [string[]] への代入で 1 段アンラップさせる(本体 App と同じ扱い)
+    [string[]]$awsProfiles = Get-AwsProfiles
+    if ($null -eq $awsProfiles) { $awsProfiles = @() }
+    foreach ($p in $awsProfiles) {
+        if (-not [string]::IsNullOrWhiteSpace($p)) { [void]$profileItems.Add([string]$p) }
+    }
+} catch { }
+if ($script:AwsProfile -and ($profileItems -notcontains $script:AwsProfile)) {
+    [void]$profileItems.Insert(0, $script:AwsProfile)
+}
+$HeaderAwsProfileComboBox.ItemsSource = $profileItems.ToArray()
+if ($script:AwsProfile) {
+    $HeaderAwsProfileComboBox.SelectedItem = $script:AwsProfile
+} elseif ($profileItems.Count -gt 0) {
+    $HeaderAwsProfileComboBox.SelectedIndex = 0
+    $script:AwsProfile = [string]$HeaderAwsProfileComboBox.SelectedItem
+}
 
 $script:Catalog = Read-ToolCatalog
+$toolItems = New-Object System.Collections.Generic.List[object]
 foreach ($tool in $script:Catalog) {
     if ([bool]$tool.Menu) {
-        [void]$ToolListBox.Items.Add(("{0}  ({1})" -f $tool.Name, $tool.Id))
+        [void]$toolItems.Add([pscustomobject]@{
+            Name        = [string]$tool.Name
+            Id          = [string]$tool.Id
+            Description = [string]$tool.Description
+            Tool        = $tool
+        })
     }
 }
-if ($ToolListBox.Items.Count -gt 0) { $ToolListBox.SelectedIndex = 0 }
+$ToolListBox.ItemsSource = $toolItems.ToArray()
+if ($toolItems.Count -gt 0) { $ToolListBox.SelectedIndex = 0 }
 
 $ToolListBox.Add_SelectionChanged({ Update-SelectedTool })
-$HeaderAwsProfileTextBox.Add_TextChanged({
-    $script:AwsProfile = $HeaderAwsProfileTextBox.Text.Trim()
+$HeaderAwsProfileComboBox.Add_SelectionChanged({
+    $sel = $HeaderAwsProfileComboBox.SelectedItem
+    $script:AwsProfile = if ($null -eq $sel) { '' } else { ([string]$sel).Trim() }
     Update-CommandPreview
 })
-$RefreshPreviewButton.Add_Click({ Update-CommandPreview })
 $RunButton.Add_Click({ Invoke-SelectedTool })
+$OpenLastRunButton.Add_Click({
+    $dir = $script:LastRunDir
+    if (-not $dir -or -not (Test-Path -LiteralPath $dir)) {
+        Set-Status 'まだ実行結果がありません(実行後に有効になります)'
+        return
+    }
+    Start-Process explorer.exe -ArgumentList $dir
+})
+$ClearLogButton.Add_Click({ $LogTextBox.Clear() })
 $StopButton.Add_Click({ Invoke-StopExecution })
 $RunCollectSnapshotButton.Add_Click({ Invoke-CollectSnapshot })
 $RunSnapshotReportButton.Add_Click({ Invoke-SnapshotReport })

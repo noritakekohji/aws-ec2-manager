@@ -287,3 +287,9 @@ tools:
         type: hidden
         argument: -OutputPath
         value: "{ArtifactsDir}/server-snapshot.json"
+      - key: html
+        label: HTML レポート(after/compare 時)
+        type: checkbox
+        argument: -HtmlReport
+        value: "{ArtifactsDir}/server-snapshot.html"
+        default: false

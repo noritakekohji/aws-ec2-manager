@@ -61,3 +61,27 @@ Describe 'MainWindow control inventory' {
         $script:MainWindow.FindName($_) | Should -Not -BeNullOrEmpty
     }
 }
+
+Describe 'LocalToolsLauncher control inventory' {
+    BeforeAll {
+        Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml
+        $xamlPath = Join-Path $PSScriptRoot '..\LocalToolsLauncher.xaml'
+        [xml]$xaml = Get-Content -LiteralPath $xamlPath -Raw -Encoding UTF8
+        $reader = New-Object System.Xml.XmlNodeReader $xaml
+        $script:LauncherWindow = [Windows.Markup.XamlReader]::Load($reader)
+    }
+
+    # LocalToolsLauncher.ps1 が FindName で参照するコントロールの担保
+    It 'contains required control <_>' -ForEach @(
+        'HeaderAwsProfileComboBox', 'OpenOutputButton', 'OpenLogButton', 'OpenSettingsButton',
+        'ToolListBox', 'ToolTitleText', 'ToolDescriptionText', 'CommandPreviewTextBox',
+        'LogTextBox', 'StatusText', 'RunButton', 'StopButton',
+        'RunProgressBar', 'OpenLastRunButton', 'ClearLogButton',
+        'SnapshotLabelTextBox', 'SnapshotZipTextBox', 'SnapshotCompareZipTextBox',
+        'SnapshotDiffOnlyCheckBox', 'RunCollectSnapshotButton', 'RunSnapshotReportButton',
+        'BrowseSnapshotZipButton', 'BrowseSnapshotCompareZipButton',
+        'ConfigFilesPanel', 'ConfigFilesItems', 'ParametersItems'
+    ) {
+        $script:LauncherWindow.FindName($_) | Should -Not -BeNullOrEmpty
+    }
+}
