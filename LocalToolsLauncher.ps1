@@ -30,6 +30,7 @@ $script:ToolsRoot = $DefaultToolsRoot
 $script:OutputRoot = $DefaultOutputRoot
 $script:AwsProfile = ''
 $script:ConfigFileOverrides = @{}   # "<toolId>::<label>" -> user-selected absolute path
+$script:LastPerfSessionDir = ''     # perf-monitor: 直近開始したセッションディレクトリ(専用パネルと汎用パネルで共有)
 
 function ConvertTo-DisplayPath {
     param([string]$Path)
@@ -1260,6 +1261,48 @@ function Invoke-SnapshotReport {
     }
 }
 
+function Get-PerfMonitorStartArguments {
+    param([string]$RunDir, $Tool)
+    $argList = New-Object System.Collections.Generic.List[string]
+    [void]$argList.Add('start')
+    Add-ArgumentValue -Arguments $argList -Name '-Interval' -Value $PerfIntervalTextBox.Text
+    Add-ArgumentValue -Arguments $argList -Name '-Duration' -Value $PerfDurationTextBox.Text
+    $artifacts = Get-ArtifactsDir -RunDir $RunDir
+    Add-ArgumentValue -Arguments $argList -Name '-OutputDir' -Value $artifacts
+    Add-ConfigFileArgs -Arguments $argList -Tool $Tool
+    return $argList.ToArray()
+}
+
+function Get-PerfMonitorStopArguments {
+    param([string]$RunDir)
+    $argList = New-Object System.Collections.Generic.List[string]
+    [void]$argList.Add('stop')
+    [void]$argList.Add($PerfSessionDirTextBox.Text.Trim())
+    return $argList.ToArray()
+}
+
+function Invoke-PerfMonitorStart {
+    $tool = Get-ToolById -ToolId 'perf-monitor'
+    if ($null -eq $tool) {
+        [System.Windows.MessageBox]::Show('perf-monitor がカタログに見つかりません。', 'ツールランチャー') | Out-Null
+        return
+    }
+    Invoke-ToolExecution -Tool $tool -ToolArgsFactory { param($runDir) Get-PerfMonitorStartArguments -RunDir $runDir -Tool $tool }
+}
+
+function Invoke-PerfMonitorStop {
+    if (-not $PerfSessionDirTextBox.Text.Trim()) {
+        [System.Windows.MessageBox]::Show('セッションディレクトリを指定してください(開始後に自動入力されます)。', 'ツールランチャー') | Out-Null
+        return
+    }
+    $tool = Get-ToolById -ToolId 'perf-monitor'
+    if ($null -eq $tool) {
+        [System.Windows.MessageBox]::Show('perf-monitor がカタログに見つかりません。', 'ツールランチャー') | Out-Null
+        return
+    }
+    Invoke-ToolExecution -Tool $tool -ToolArgsFactory { param($runDir) Get-PerfMonitorStopArguments -RunDir $runDir }
+}
+
 function Select-FolderDialog {
     param([string]$InitialPath, [string]$Description)
     Add-Type -AssemblyName System.Windows.Forms | Out-Null
@@ -1395,6 +1438,13 @@ $BrowseSnapshotCompareZipButton = $window.FindName('BrowseSnapshotCompareZipButt
 $ConfigFilesPanel = $window.FindName('ConfigFilesPanel')
 $ConfigFilesItems = $window.FindName('ConfigFilesItems')
 $ParametersItems = $window.FindName('ParametersItems')
+$PerfIntervalTextBox = $window.FindName('PerfIntervalTextBox')
+$PerfDurationTextBox = $window.FindName('PerfDurationTextBox')
+$PerfStartButton = $window.FindName('PerfStartButton')
+$PerfSessionDirTextBox = $window.FindName('PerfSessionDirTextBox')
+$BrowsePerfSessionDirButton = $window.FindName('BrowsePerfSessionDirButton')
+$OpenPerfSessionDirButton = $window.FindName('OpenPerfSessionDirButton')
+$PerfStopButton = $window.FindName('PerfStopButton')
 
 $config = Import-LauncherConfig
 $script:LoadedConfig = $config
@@ -1461,6 +1511,23 @@ $ClearLogButton.Add_Click({ $LogTextBox.Clear() })
 $StopButton.Add_Click({ Invoke-StopExecution })
 $RunCollectSnapshotButton.Add_Click({ Invoke-CollectSnapshot })
 $RunSnapshotReportButton.Add_Click({ Invoke-SnapshotReport })
+$PerfStartButton.Add_Click({ Invoke-PerfMonitorStart })
+$PerfStopButton.Add_Click({ Invoke-PerfMonitorStop })
+$BrowsePerfSessionDirButton.Add_Click({
+    $sel = Select-FolderDialog -InitialPath $PerfSessionDirTextBox.Text -Description 'セッションディレクトリを選択'
+    if ($sel) {
+        $PerfSessionDirTextBox.Text = $sel
+        $script:LastPerfSessionDir = $sel
+    }
+})
+$OpenPerfSessionDirButton.Add_Click({
+    $dir = $PerfSessionDirTextBox.Text.Trim()
+    if (-not $dir -or -not (Test-Path -LiteralPath $dir)) {
+        Set-Status 'セッションディレクトリがありません(開始後に自動入力されます)'
+        return
+    }
+    Start-Process explorer.exe -ArgumentList $dir
+})
 $BrowseSnapshotZipButton.Add_Click({
     $sel = Select-FileDialog -InitialPath $SnapshotZipTextBox.Text -Filter 'Snapshot inputs|*.zip;*.json|ZIP files|*.zip|JSON files|*.json|All files|*.*' -Title 'ZIP / JSON を選択'
     if ($sel) { $SnapshotZipTextBox.Text = $sel }
