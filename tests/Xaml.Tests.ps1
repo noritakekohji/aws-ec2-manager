@@ -7,10 +7,9 @@ Describe 'XAML files load without error' {
         Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Xaml
     }
 
-    # XAML は UTF-8 想定（BOM の有無は混在: MainWindow.xaml は BOM 付き、
-    # LocalToolsLauncher*.xaml は BOM なし）。PS 5.1 既定のエンコーディング検出だと
-    # BOM なしファイルが CP932 として読まれ日本語が文字化けするため、
-    # 実アプリの読み込みコードと同じく -Encoding UTF8 を明示する。
+    # XAML ファイルはすべて UTF-8 BOM 付きで保存（MainWindow.xaml、LocalToolsLauncher.xaml、
+    # LocalToolsLauncherSettings.xaml）。デフォルトエンコーディング検出に頼らず、
+    # 実アプリの読み込みコードと同じく -Encoding UTF8 を明示して指定する。
     It 'loads <_.Name> via XamlReader without throwing' -ForEach $xamlFiles {
         $xamlPath = $_.FullName
         {
