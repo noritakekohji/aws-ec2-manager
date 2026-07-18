@@ -6,6 +6,14 @@ on:
   pull_request:
 
 jobs:
+  linux-launcher:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Smoke test (local-tools-launcher.sh)
+        run: bash tests/linux-launcher-smoke.sh
+
   test:
     runs-on: windows-latest
     steps:

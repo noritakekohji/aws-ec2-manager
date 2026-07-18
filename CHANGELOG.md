@@ -7,7 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.2.0] - 2026-07-18
+## [2.3.0] - 2026-07-18
+
+### Added
+- **Linux ツールランチャー v2**(`local-tools-launcher.sh` を仕様書 [2026-07-18-linux-launcher-v2-design.md](docs/superpowers/specs/2026-07-18-linux-launcher-v2-design.md) に基づき再実装):
+  - 対話フロー短縮: ツール選択 → 既定値一覧 + コマンドプレビュー表示 → **Enter で即実行 / e で編集 / n で中止**(毎回の全パラメーター質問を廃止)。必須パラメーターは実行前にチェック
+  - **実行中のライブ出力**: stdout/stderr を画面表示しつつ run ディレクトリへ保存(tee)。完了後に成果物(artifacts)一覧を表示
+  - 終了ステータスを Windows 版と同じ意味論に: exit 0 = `[ok]` / exit 1 = `[warn] NG 検出またはエラー` / exit 2+ = `[FAIL]` / 128+ = 中断
+  - **AWS Profile を `~/.aws/config` からの番号選択に**(実行時は `AWS_PROFILE` を export)
+  - ツール一覧に説明(description)を表示
+  - **非対話モード**: `list`(TSV 一覧)/ `run <tool-id> [--set key=value ...] [--dry-run]`(既定値実行・exit code 透過)/ `archive [<id>]`(run の tar.gz 化)。cron / SSM Run Command からの定型実行に対応
+- tool-catalog に `linuxArgument` / `linuxArgName` を追加し、Linux ツール(getopts / GNU 形式)の引数名をカタログで吸収(Windows 側パーサは未知キーを無視するため無影響)
+- smoke テスト `tests/linux-launcher-smoke.sh`(48 項目)と CI の ubuntu ジョブを追加
+
+### Fixed
+- **v1 の Linux ランチャーがカタログの PowerShell 形式引数(`-TimeoutSec` 等)をそのまま .sh ツールへ渡しており、ツール実行が失敗していた問題を修正**(`linuxArgument` 対応で解消)
 
 ### Changed
 - **ツールランチャー(LocalToolsLauncher)の UI を本体と統一**。パレット・ボタン/コンボ/リストのスタイル・ヘッダー・ステータスバーを aws-ec2-manager 本体と同一デザインに刷新(設定ダイアログも同様)。

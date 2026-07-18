@@ -1,7 +1,8 @@
 # Linux ツールランチャー v2 — 仕様検討
 
 - 日付: 2026-07-18
-- ステータス: **検討(仕様のみ・未実装)**。実装着手前にユーザーレビューを受ける
+- ステータス: **実装済み(v2.3.0)**。§1〜§6 + CI ubuntu ジョブをユーザー承認のうえ実装。
+  実装時の追加決定: カタログに `linuxArgument` / `linuxArgName` を追加(下記追記参照)
 - 対象: `local-tools-launcher.sh`(bash CUI)
 - 背景: Windows 版ランチャー(v2.2.0)の UI 統一・導線改善に合わせ、Linux 版の仕様を再設計する
 
@@ -159,5 +160,17 @@ local-tools-launcher.sh archive [<tool-id>]   # 直近 run を tar.gz 化しパ�
 ## 未決事項(レビューで確認したい点)
 
 1. 非対話モード(§6)の優先度 — 本体 SSM タスクからの定型実行まで見据えるか、対話改善のみ先行するか
-2. `run --set` のキー名はカタログの `key`(例: `timeoutSec`)で良いか
-3. CI への ubuntu ジョブ追加の要否(現行 CI 構成に手を入れる)
+   → **§6 まで実装で承認済み**
+2. `run --set` のキー名はカタログの `key`(例: `timeoutSec`)で良いか → key を採用
+3. CI への ubuntu ジョブ追加の要否 → **追加で承認済み**
+
+## 実装時の追記(2026-07-18)
+
+- **重要発見**: v1 はカタログの PS 形式引数(`-TimeoutSec` 等)をそのまま .sh ツールに渡しており、
+  実行が壊れていた(.sh 側は `--timeout` / getopts 形式)。ツール本体は改修せず、カタログに
+  `parameters[].linuxArgument` / `configFiles[].linuxArgName` を追加して吸収した
+  (Windows 側パーサは未知キーを無視するため無影響)。全 8 ツールの .sh 引数を実斉合で対応付け
+- AWS Profile は実行時に `AWS_PROFILE` 環境変数として export する(aws CLI が直接解釈)
+- 検証: Docker(ubuntu:24.04 / debian:12)で smoke 48 項目 PASS、python:3.12-slim で
+  server-snapshot の実実行(非対話 + 対話ライブ表示)を成功・失敗(python3 欠如 exit 10)の
+  両経路で確認

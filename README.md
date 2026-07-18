@@ -50,6 +50,19 @@ aws sso login --profile <profile>
 
 `launch.bat` をダブルクリックで GUI 起動。
 `launch-tools.bat` でローカルツールランチャー(tools/ 配下の運用スクリプトをローカル実行)を起動。
+
+Linux サーバー上では `local-tools-launcher.sh` を使用:
+
+```bash
+bash local-tools-launcher.sh                 # 対話メニュー(Enter で既定値実行 / e で編集)
+bash local-tools-launcher.sh list            # ツール一覧 (TSV)
+bash local-tools-launcher.sh run cert-check --set timeoutSec=5   # 非対話実行
+bash local-tools-launcher.sh run cert-check --dry-run            # コマンド確認のみ
+bash local-tools-launcher.sh archive cert-check                  # 最新 run を tar.gz 化
+```
+
+HTML レポートは Linux では開かず、run 出力(tar.gz)を Windows へ持ち帰って
+Windows 版ランチャーの「スナップショット一括実行 → レポート生成」等で確認する。
 プロファイルを選択 → タブで操作対象を切替（インスタンス / SG / インスタンスロール / ツール）。
 
 詳細は [`docs/superpowers/specs/`](docs/superpowers/specs/) を参照。

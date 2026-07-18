@@ -11,22 +11,26 @@ tools:
         label: カテゴリ
         type: text
         argument: -Category
+        linuxArgument: -c
         default: all
       - key: region
         label: リージョン
         type: text
         width: short
         argument: -Region
+        linuxArgument: -r
         default: ""
       - key: output
         label: JSON 出力
         type: hidden
         argument: -OutputPath
+        linuxArgument: -o
         value: "{ArtifactsDir}/aws-instance-audit.json"
       - key: html
         label: HTML レポート
         type: checkbox
         argument: -HtmlReport
+        linuxArgument: --html
         value: "{ArtifactsDir}/aws-instance-audit.html"
         default: true
 
@@ -46,22 +50,26 @@ tools:
         label: ターゲットリスト
         type: text
         argument: -TargetList
+        linuxArgument: --target-list
         default: "{ToolDir}/cert_targets.lst"
       - key: timeoutSec
         label: タイムアウト秒
         type: number
         argument: -TimeoutSec
+        linuxArgument: --timeout
         default: 10
       - key: html
         label: HTML レポート
         type: checkbox
         argument: -HtmlReport
+        linuxArgument: --html
         value: "{ArtifactsDir}/cert-check.html"
         default: true
       - key: failOnly
         label: 失敗のみ
         type: checkbox
         argument: -FailOnly
+        linuxArgument: --fail-only
         default: false
 
   - id: collect-snapshot
@@ -76,11 +84,13 @@ tools:
         label: 収集ラベル
         type: text
         argument: -Label
+        linuxArgument: --label
         default: ""
       - key: output
         label: 出力先
         type: hidden
         argument: -Output
+        linuxArgument: --output
         value: "{ArtifactsDir}"
 
   - id: collect-snapshot-report
@@ -124,28 +134,33 @@ tools:
       - label: collect_targets.conf
         path: log-collector/collect_targets.conf
         argName: -ConfigFile
+        linuxArgName: --config
     parameters:
       - key: target
         label: プリセット
         type: text
         width: short
         argument: -Target
+        linuxArgument: --targets
         default: os
       - key: since
         label: 期間
         type: text
         width: short
         argument: -Since
+        linuxArgument: --since
         default: 24h
       - key: maxSizeMb
         label: 最大 MB
         type: number
         argument: -MaxSizeMB
+        linuxArgument: --max-size
         default: 500
       - key: outputDir
         label: 出力先
         type: hidden
         argument: -OutputDir
+        linuxArgument: --output
         value: "{ArtifactsDir}"
 
   - id: network-check
@@ -164,27 +179,32 @@ tools:
         label: ターゲットリスト
         type: text
         argument: -TargetList
+        linuxArgument: -l
         default: "{ToolDir}/targets.lst"
       - key: pingCount
         label: Ping 回数
         type: number
         argument: -PingCount
+        linuxArgument: -c
         default: 3
       - key: timeoutSec
         label: タイムアウト秒
         type: number
         argument: -TimeoutSec
+        linuxArgument: -t
         default: 3
       - key: html
         label: HTML レポート
         type: checkbox
         argument: -HtmlReport
+        linuxArgument: -o
         value: "{ArtifactsDir}/network-check.html"
         default: true
       - key: failOnly
         label: 失敗のみ
         type: checkbox
         argument: -FailOnly
+        linuxArgument: -f
         default: false
 
   - id: perf-monitor
@@ -198,6 +218,7 @@ tools:
       - label: perf_monitor.conf
         path: perf-monitor/perf_monitor.conf
         argName: -Config
+        linuxArgName: -c
     parameters:
       - key: command
         label: アクション
@@ -214,11 +235,13 @@ tools:
         label: 出力先
         type: hidden
         argument: -OutputDir
+        linuxArgument: -o
         value: "{ArtifactsDir}"
       - key: duration
         label: Duration 秒
         type: number
         argument: -Duration
+        linuxArgument: -d
         default: ""
 
   - id: port-inventory
@@ -237,17 +260,20 @@ tools:
         label: 期待ポートリスト
         type: text
         argument: -ExpectedList
+        linuxArgument: --expected
         default: "{ToolDir}/expected_ports.lst"
       - key: html
         label: HTML レポート
         type: checkbox
         argument: -HtmlReport
+        linuxArgument: --html
         value: "{ArtifactsDir}/port-inventory.html"
         default: true
       - key: failOnly
         label: 失敗のみ
         type: checkbox
         argument: -FailOnly
+        linuxArgument: --fail-only
         default: false
 
   - id: server-snapshot
@@ -275,21 +301,25 @@ tools:
         label: カテゴリ
         type: text
         argument: -Category
+        linuxArgument: --category
         default: all
       - key: label
         label: ラベル
         type: text
         width: short
         argument: -Label
+        linuxArgument: --label
         default: ""
       - key: outputPath
         label: JSON 出力
         type: hidden
         argument: -OutputPath
+        linuxArgument: --output
         value: "{ArtifactsDir}/server-snapshot.json"
       - key: html
         label: HTML レポート(after/compare 時)
         type: checkbox
         argument: -HtmlReport
+        linuxArgument: --html
         value: "{ArtifactsDir}/server-snapshot.html"
         default: false
