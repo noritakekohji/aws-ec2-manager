@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-07-18
+
+### Added
+- **LocalToolsLauncher(Windows GUI)に選択式パラメーター(`select`型)を追加**。`tool-catalog.yaml` の `parameters[].type: select` + `options` でコンボボックス化でき、`server-snapshot`/`perf-monitor` の「アクション」パラメーターを自由入力からドロップダウン選択(コード側 `ValidateSet` と一致する選択肢)に変更
+- **perf-monitor 専用の開始/停止パネル**をヘッダー直下に追加(既存の「スナップショット一括実行」パネルと同じ配置)。間隔(秒)/時間(秒)を指定して「開始」でバックグラウンド収集を起動し、完了後にセッションディレクトリを自動検出してテキストボックスへ反映。「停止」で当該セッションを停止。セッションディレクトリはツール一覧の汎用実行パネル側にも初期値として共有される(一方向同期)
+
+### Fixed
+- **perf-monitor の「開始」実行時に GUI 全体がハングするデッドロックを解消**。バックグラウンド収集プロセス(検知プロセス)が標準出力/エラーのパイプハンドルを継承したまま保持し続けるため、`Invoke-ToolExecution` 側の出力読み取りが EOF を検知できず無期限にブロックしていた問題。プロセス終了自体は `WaitForExit()` で確定しているため、出力読み取りに 3 秒のタイムアウトを設けて解消(通常のツールは無影響)
+
 ## [2.3.2] - 2026-07-18
 
 ### Fixed

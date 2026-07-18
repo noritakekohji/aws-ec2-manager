@@ -2,7 +2,7 @@
 
 **日付**: 2026-07-18
 **対象**: `LocalToolsLauncher.ps1` / `LocalToolsLauncher.xaml` / `tools/tool-catalog.yaml`(Windows GUI のみ)
-**ステータス**: 設計承認済み・architect サブエージェントによる実装可能性レビュー反映済み・実装前
+**ステータス**: 実装済み(v2.4.0)
 
 ---
 
