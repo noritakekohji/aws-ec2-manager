@@ -18,3 +18,6 @@ reports/local-tools/
 
 # ローカルエージェント設定
 .claude/
+
+# subagent-driven-development の進捗台帳(スクラッチ)
+.superpowers/
