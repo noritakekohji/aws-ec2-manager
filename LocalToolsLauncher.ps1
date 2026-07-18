@@ -18,6 +18,7 @@ $script:CurrentTool = $null
 $script:LastRunDir = ''
 $script:TextParameterControls = @()
 $script:CheckParameterControls = @()
+$script:SelectParameterControls = @()
 $script:LoadedConfig = $null
 $script:CurrentProc = $null
 $script:CurrentRunCtx = $null
@@ -406,6 +407,13 @@ function Get-ParameterValueByKey {
     foreach ($binding in $script:CheckParameterControls) {
         if ($binding.Parameter.Key -eq $Key) { return [bool]$binding.Control.IsChecked }
     }
+    foreach ($binding in $script:SelectParameterControls) {
+        if ($binding.Parameter.Key -eq $Key) {
+            $sel = $binding.Control.SelectedItem
+            if ($null -eq $sel) { return '' }
+            return [string]$sel
+        }
+    }
     return $null
 }
 
@@ -782,6 +790,7 @@ function Set-ParameterDefaults {
     param($Tool)
     $script:TextParameterControls = @()
     $script:CheckParameterControls = @()
+    $script:SelectParameterControls = @()
     $ParametersItems.Children.Clear()
     $sampleRun = Join-Path (Join-Path $script:OutputRoot $Tool.Id) '<timestamp>'
     $toolId = [string]$Tool.Id
@@ -871,7 +880,7 @@ function Set-ParameterDefaults {
         $script:TextParameterControls += [pscustomobject]@{ Parameter = $p; Control = $box }
     }
 
-    # --- compact fields: numbers + short text (WrapPanel auto-wraps) ---
+    # --- compact fields: numbers + short text + select (WrapPanel auto-wraps) ---
     if ($compactFields.Count -gt 0) {
         $wrap = New-Object System.Windows.Controls.WrapPanel
         $wrap.Margin = '0,0,0,4'
@@ -885,13 +894,29 @@ function Set-ParameterDefaults {
             $lbl.Style = $window.FindResource('FieldLabel')
             $lbl.Margin = '0,0,6,0'
             [void]$cell.Children.Add($lbl)
-            $box = New-Object System.Windows.Controls.TextBox
-            $box.Width = [double]$cfld.BoxWidth
-            $box.Text = Expand-LauncherValue -Value ([string]$p.Default) -Tool $Tool -RunDir $sampleRun
-            $box.Add_TextChanged({ Update-CommandPreview })
-            [void]$cell.Children.Add($box)
+            if ([string]$p.Type -eq 'select') {
+                $box = New-Object System.Windows.Controls.ComboBox
+                $box.Width = [double]$cfld.BoxWidth
+                $opts = @(([string]$p.Options) -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+                $box.ItemsSource = $opts
+                $defaultVal = [string]$p.Default
+                if ($opts -contains $defaultVal) {
+                    $box.SelectedItem = $defaultVal
+                } elseif ($opts.Count -gt 0) {
+                    $box.SelectedIndex = 0
+                }
+                $box.Add_SelectionChanged({ Update-CommandPreview })
+                [void]$cell.Children.Add($box)
+                $script:SelectParameterControls += [pscustomobject]@{ Parameter = $p; Control = $box }
+            } else {
+                $box = New-Object System.Windows.Controls.TextBox
+                $box.Width = [double]$cfld.BoxWidth
+                $box.Text = Expand-LauncherValue -Value ([string]$p.Default) -Tool $Tool -RunDir $sampleRun
+                $box.Add_TextChanged({ Update-CommandPreview })
+                [void]$cell.Children.Add($box)
+                $script:TextParameterControls += [pscustomobject]@{ Parameter = $p; Control = $box }
+            }
             [void]$wrap.Children.Add($cell)
-            $script:TextParameterControls += [pscustomobject]@{ Parameter = $p; Control = $box }
         }
         [void]$ParametersItems.Children.Add($wrap)
     }
