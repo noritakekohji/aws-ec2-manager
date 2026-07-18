@@ -271,7 +271,6 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" MinHeight="260" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="180" MinHeight="90" />
@@ -377,50 +376,8 @@
             </Grid>
         </Border>
 
-        <!-- ============ パフォーマンス監視 (perf-monitor) ============ -->
-        <Border Grid.Row="2" Style="{StaticResource PanelBorder}" Margin="16,12,16,0">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <TextBlock Text="パフォーマンス監視(perf-monitor)" FontWeight="SemiBold" FontSize="15" Foreground="#BAE6FD" />
-
-                <Grid Grid.Row="1" Margin="0,10,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="80" />
-                        <ColumnDefinition Width="70" />
-                        <ColumnDefinition Width="80" />
-                        <ColumnDefinition Width="90" />
-                        <ColumnDefinition Width="120" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="間隔(秒)" Style="{StaticResource FieldLabel}" ToolTip="収集間隔(秒)" />
-                    <TextBox x:Name="PerfIntervalTextBox" Grid.Column="1" Text="5" Margin="0,0,12,0" ToolTip="収集間隔(秒)" />
-                    <TextBlock Grid.Column="2" Text="時間(秒)" Style="{StaticResource FieldLabel}" ToolTip="収集時間(秒)。空欄なら「停止」を押すまで収集し続ける" />
-                    <TextBox x:Name="PerfDurationTextBox" Grid.Column="3" Margin="0,0,12,0" ToolTip="収集時間(秒)。空欄なら「停止」を押すまで収集し続ける" />
-                    <Button x:Name="PerfStartButton" Grid.Column="4" Content="開始" Style="{StaticResource PrimaryButton}" ToolTip="バックグラウンドで収集を開始する" />
-                </Grid>
-
-                <Grid Grid.Row="2" Margin="0,8,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="80" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="44" />
-                        <ColumnDefinition Width="60" />
-                        <ColumnDefinition Width="90" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="セッション" Style="{StaticResource FieldLabel}" ToolTip="収集セッションのディレクトリ。「開始」を押すと自動入力される" />
-                    <TextBox x:Name="PerfSessionDirTextBox" Grid.Column="1" Margin="0,0,4,0" ToolTip="収集セッションのディレクトリ。「開始」を押すと自動入力される" />
-                    <Button x:Name="BrowsePerfSessionDirButton" Grid.Column="2" Content="..." Style="{StaticResource SmallBrowseButton}" Margin="0,0,4,0" ToolTip="セッションディレクトリをエクスプローラから選択" />
-                    <Button x:Name="OpenPerfSessionDirButton" Grid.Column="3" Content="開く" Margin="0,0,12,0" ToolTip="セッションディレクトリをエクスプローラで開く" />
-                    <Button x:Name="PerfStopButton" Grid.Column="4" Content="停止" Style="{StaticResource DangerButton}" ToolTip="このセッションの収集を停止する" />
-                </Grid>
-            </Grid>
-        </Border>
-
         <!-- ============ ツール一覧 + 詳細 ============ -->
-        <Grid Grid.Row="3" Margin="16,12,16,0">
+        <Grid Grid.Row="2" Margin="16,12,16,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="300" />
                 <ColumnDefinition Width="12" />
@@ -494,7 +451,7 @@
             </Border>
         </Grid>
 
-        <GridSplitter Grid.Row="4"
+        <GridSplitter Grid.Row="3"
                       Height="8"
                       HorizontalAlignment="Stretch"
                       VerticalAlignment="Center"
@@ -502,7 +459,7 @@
                       ShowsPreview="False" />
 
         <!-- ============ ログ(高さは上のスプリッタで調整可能) ============ -->
-        <Border Grid.Row="5" Style="{StaticResource PanelBorder}" Margin="16,0,16,0">
+        <Border Grid.Row="4" Style="{StaticResource PanelBorder}" Margin="16,0,16,0">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -524,7 +481,7 @@
         </Border>
 
         <!-- ============ ステータスバー ============ -->
-        <Border Grid.Row="6" Background="#0B1220" BorderBrush="#263247" BorderThickness="0,1,0,0" Padding="14,7" Margin="0,10,0,0">
+        <Border Grid.Row="5" Background="#0B1220" BorderBrush="#263247" BorderThickness="0,1,0,0" Padding="14,7" Margin="0,10,0,0">
             <DockPanel>
                 <Border DockPanel.Dock="Left" Width="8" Height="8" CornerRadius="4" Background="{StaticResource Accent}" Margin="0,0,8,0" VerticalAlignment="Center" />
                 <ProgressBar x:Name="RunProgressBar"

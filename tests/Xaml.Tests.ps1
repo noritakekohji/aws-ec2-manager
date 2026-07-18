@@ -79,10 +79,7 @@ Describe 'LocalToolsLauncher control inventory' {
         'SnapshotLabelTextBox', 'SnapshotZipTextBox', 'SnapshotCompareZipTextBox',
         'SnapshotDiffOnlyCheckBox', 'RunCollectSnapshotButton', 'RunSnapshotReportButton',
         'BrowseSnapshotZipButton', 'BrowseSnapshotCompareZipButton',
-        'ConfigFilesPanel', 'ConfigFilesItems', 'ParametersItems',
-        'PerfIntervalTextBox', 'PerfDurationTextBox', 'PerfStartButton',
-        'PerfSessionDirTextBox', 'BrowsePerfSessionDirButton', 'OpenPerfSessionDirButton',
-        'PerfStopButton'
+        'ConfigFilesPanel', 'ConfigFilesItems', 'ParametersItems'
     ) {
         $script:LauncherWindow.FindName($_) | Should -Not -BeNullOrEmpty
     }

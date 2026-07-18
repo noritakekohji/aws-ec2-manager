@@ -30,7 +30,7 @@ $script:ToolsRoot = $DefaultToolsRoot
 $script:OutputRoot = $DefaultOutputRoot
 $script:AwsProfile = ''
 $script:ConfigFileOverrides = @{}   # "<toolId>::<label>" -> user-selected absolute path
-$script:LastPerfSessionDir = ''     # perf-monitor: 直近開始したセッションディレクトリ(専用パネルと汎用パネルで共有)
+$script:LastPerfSessionDir = ''     # perf-monitor: 直近 start したセッションディレクトリ(sessionDir 欄の初期値に使用)
 
 function ConvertTo-DisplayPath {
     param([string]$Path)
@@ -877,6 +877,42 @@ function Set-ParameterDefaults {
             }.GetNewClosure())
             [System.Windows.Controls.Grid]::SetColumn($openBtn, 3)
             [void]$row.Children.Add($openBtn)
+        } elseif ([string]$p.Type -eq 'directory') {
+            $c2 = New-Object System.Windows.Controls.ColumnDefinition; $c2.Width = 'Auto'
+            $c3 = New-Object System.Windows.Controls.ColumnDefinition; $c3.Width = 'Auto'
+            [void]$row.ColumnDefinitions.Add($c2)
+            [void]$row.ColumnDefinitions.Add($c3)
+            $box.Margin = '0,0,4,0'
+            $box.ToolTip = 'パスを直接入力するか、... で選択'
+            $capDirBox = $box
+            $capLabel = [string]$p.Label
+
+            $browseBtn = New-Object System.Windows.Controls.Button
+            $browseBtn.Content = '...'
+            $browseBtn.Style = $window.FindResource('SmallBrowseButton')
+            $browseBtn.Margin = '0,0,4,0'
+            $browseBtn.ToolTip = 'エクスプローラからディレクトリを選択'
+            $browseBtn.Add_Click({ param($s,$e)
+                $sel = Select-FolderDialog -InitialPath ([string]$capDirBox.Text) -Description "$capLabel を選択"
+                if ($sel) { $capDirBox.Text = $sel }
+            }.GetNewClosure())
+            [System.Windows.Controls.Grid]::SetColumn($browseBtn, 2)
+            [void]$row.Children.Add($browseBtn)
+
+            $openBtn = New-Object System.Windows.Controls.Button
+            $openBtn.Content = '開く'
+            $openBtn.MinWidth = 52
+            $openBtn.ToolTip = 'エクスプローラで開く'
+            $openBtn.Add_Click({ param($s,$e)
+                $dir = ([string]$capDirBox.Text).Trim()
+                if (-not $dir -or -not (Test-Path -LiteralPath $dir)) {
+                    Set-Status 'ディレクトリが存在しません'
+                    return
+                }
+                Start-Process explorer.exe -ArgumentList $dir
+            }.GetNewClosure())
+            [System.Windows.Controls.Grid]::SetColumn($openBtn, 3)
+            [void]$row.Children.Add($openBtn)
         }
 
         [void]$ParametersItems.Children.Add($row)
@@ -1201,14 +1237,20 @@ function Complete-ToolExecution {
                     }
                 }
             }
-            if ($ctx.ToolId -eq 'perf-monitor' -and $null -ne $PerfSessionDirTextBox) {
+            if ($ctx.ToolId -eq 'perf-monitor') {
                 $artifactsDir = Join-Path $ctx.RunDir 'artifacts'
                 if (Test-Path -LiteralPath $artifactsDir) {
                     $sessionSubDir = Get-ChildItem -LiteralPath $artifactsDir -Directory -ErrorAction SilentlyContinue |
                         Sort-Object LastWriteTime -Descending | Select-Object -First 1
                     if ($null -ne $sessionSubDir) {
-                        $PerfSessionDirTextBox.Text = $sessionSubDir.FullName
                         $script:LastPerfSessionDir = $sessionSubDir.FullName
+                        # 選択中ツールが perf-monitor のときはパラメーター欄へ直接反映
+                        # (別ツール選択中でも、次回 perf-monitor を選択した際に
+                        #  Set-ParameterDefaults が $script:LastPerfSessionDir を初期値に使う)
+                        if ($null -ne $script:CurrentTool -and [string]$script:CurrentTool.Id -eq 'perf-monitor') {
+                            $sessionCtl = Get-ParameterControlByKey -Key 'sessionDir'
+                            if ($null -ne $sessionCtl) { $sessionCtl.Text = $sessionSubDir.FullName }
+                        }
                         Add-LogLine "セッションディレクトリを自動設定: $($sessionSubDir.FullName)"
                     }
                 }
@@ -1287,48 +1329,6 @@ function Invoke-SnapshotReport {
     } catch {
         [System.Windows.MessageBox]::Show($_.Exception.Message, 'ツールランチャー') | Out-Null
     }
-}
-
-function Get-PerfMonitorStartArguments {
-    param([string]$RunDir, $Tool)
-    $argList = New-Object System.Collections.Generic.List[string]
-    [void]$argList.Add('start')
-    Add-ArgumentValue -Arguments $argList -Name '-Interval' -Value $PerfIntervalTextBox.Text
-    Add-ArgumentValue -Arguments $argList -Name '-Duration' -Value $PerfDurationTextBox.Text
-    $artifacts = Get-ArtifactsDir -RunDir $RunDir
-    Add-ArgumentValue -Arguments $argList -Name '-OutputDir' -Value $artifacts
-    Add-ConfigFileArgs -Arguments $argList -Tool $Tool
-    return $argList.ToArray()
-}
-
-function Get-PerfMonitorStopArguments {
-    param([string]$RunDir)
-    $argList = New-Object System.Collections.Generic.List[string]
-    [void]$argList.Add('stop')
-    [void]$argList.Add($PerfSessionDirTextBox.Text.Trim())
-    return $argList.ToArray()
-}
-
-function Invoke-PerfMonitorStart {
-    $tool = Get-ToolById -ToolId 'perf-monitor'
-    if ($null -eq $tool) {
-        [System.Windows.MessageBox]::Show('perf-monitor がカタログに見つかりません。', 'ツールランチャー') | Out-Null
-        return
-    }
-    Invoke-ToolExecution -Tool $tool -ToolArgsFactory { param($runDir) Get-PerfMonitorStartArguments -RunDir $runDir -Tool $tool }
-}
-
-function Invoke-PerfMonitorStop {
-    if (-not $PerfSessionDirTextBox.Text.Trim()) {
-        [System.Windows.MessageBox]::Show('セッションディレクトリを指定してください(開始後に自動入力されます)。', 'ツールランチャー') | Out-Null
-        return
-    }
-    $tool = Get-ToolById -ToolId 'perf-monitor'
-    if ($null -eq $tool) {
-        [System.Windows.MessageBox]::Show('perf-monitor がカタログに見つかりません。', 'ツールランチャー') | Out-Null
-        return
-    }
-    Invoke-ToolExecution -Tool $tool -ToolArgsFactory { param($runDir) Get-PerfMonitorStopArguments -RunDir $runDir }
 }
 
 function Select-FolderDialog {
@@ -1466,13 +1466,6 @@ $BrowseSnapshotCompareZipButton = $window.FindName('BrowseSnapshotCompareZipButt
 $ConfigFilesPanel = $window.FindName('ConfigFilesPanel')
 $ConfigFilesItems = $window.FindName('ConfigFilesItems')
 $ParametersItems = $window.FindName('ParametersItems')
-$PerfIntervalTextBox = $window.FindName('PerfIntervalTextBox')
-$PerfDurationTextBox = $window.FindName('PerfDurationTextBox')
-$PerfStartButton = $window.FindName('PerfStartButton')
-$PerfSessionDirTextBox = $window.FindName('PerfSessionDirTextBox')
-$BrowsePerfSessionDirButton = $window.FindName('BrowsePerfSessionDirButton')
-$OpenPerfSessionDirButton = $window.FindName('OpenPerfSessionDirButton')
-$PerfStopButton = $window.FindName('PerfStopButton')
 
 $config = Import-LauncherConfig
 $script:LoadedConfig = $config
@@ -1539,23 +1532,6 @@ $ClearLogButton.Add_Click({ $LogTextBox.Clear() })
 $StopButton.Add_Click({ Invoke-StopExecution })
 $RunCollectSnapshotButton.Add_Click({ Invoke-CollectSnapshot })
 $RunSnapshotReportButton.Add_Click({ Invoke-SnapshotReport })
-$PerfStartButton.Add_Click({ Invoke-PerfMonitorStart })
-$PerfStopButton.Add_Click({ Invoke-PerfMonitorStop })
-$BrowsePerfSessionDirButton.Add_Click({
-    $sel = Select-FolderDialog -InitialPath $PerfSessionDirTextBox.Text -Description 'セッションディレクトリを選択'
-    if ($sel) {
-        $PerfSessionDirTextBox.Text = $sel
-        $script:LastPerfSessionDir = $sel
-    }
-})
-$OpenPerfSessionDirButton.Add_Click({
-    $dir = $PerfSessionDirTextBox.Text.Trim()
-    if (-not $dir -or -not (Test-Path -LiteralPath $dir)) {
-        Set-Status 'セッションディレクトリがありません(開始後に自動入力されます)'
-        return
-    }
-    Start-Process explorer.exe -ArgumentList $dir
-})
 $BrowseSnapshotZipButton.Add_Click({
     $sel = Select-FileDialog -InitialPath $SnapshotZipTextBox.Text -Filter 'Snapshot inputs|*.zip;*.json|ZIP files|*.zip|JSON files|*.json|All files|*.*' -Title 'ZIP / JSON を選択'
     if ($sel) { $SnapshotZipTextBox.Text = $sel }

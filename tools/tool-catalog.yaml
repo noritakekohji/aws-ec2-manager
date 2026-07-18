@@ -229,8 +229,20 @@ tools:
         default: status
       - key: sessionDir
         label: セッション
-        type: text
+        type: directory
         argument: ""
+        default: ""
+      - key: interval
+        label: 間隔秒
+        type: number
+        argument: -Interval
+        linuxArgument: -i
+        default: ""
+      - key: duration
+        label: Duration 秒
+        type: number
+        argument: -Duration
+        linuxArgument: -d
         default: ""
       - key: outputDir
         label: 出力先
@@ -238,12 +250,6 @@ tools:
         argument: -OutputDir
         linuxArgument: -o
         value: "{ArtifactsDir}"
-      - key: duration
-        label: Duration 秒
-        type: number
-        argument: -Duration
-        linuxArgument: -d
-        default: ""
 
   - id: port-inventory
     name: Port Inventory
