@@ -508,7 +508,7 @@ function Join-ProcessArguments {
     }) -join ' '
 }
 
-function Build-Command {
+function New-ToolCommand {
     param(
         $Tool,
         [string]$RunDir,
@@ -949,7 +949,7 @@ function Update-CommandPreview {
             return
         }
         $sampleRun = Join-Path (Join-Path $script:OutputRoot $tool.Id) '<timestamp>'
-        $cmd = Build-Command -Tool $tool -RunDir $sampleRun
+        $cmd = New-ToolCommand -Tool $tool -RunDir $sampleRun
         $CommandPreviewTextBox.Text = $cmd.Preview
         Update-Header
     } catch {
@@ -1036,7 +1036,7 @@ function Invoke-ToolExecution {
         if ($null -ne $ToolArgsFactory) {
             $ToolArgsOverride = & $ToolArgsFactory $runDir
         }
-        $cmd = Build-Command -Tool $tool -RunDir $runDir -ToolArgsOverride $ToolArgsOverride -RequireEntry
+        $cmd = New-ToolCommand -Tool $tool -RunDir $runDir -ToolArgsOverride $ToolArgsOverride -RequireEntry
     } catch {
         $_.Exception.Message | Set-Content -LiteralPath $stderrPath -Encoding UTF8
         '999' | Set-Content -LiteralPath $exitPath -Encoding ASCII
