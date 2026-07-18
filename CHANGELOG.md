@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-07-19
+
+### Changed
+- **perf-monitor 専用パネル(v2.4.0)を廃止し、個別ツールパネルへ統合**。専用パネルと汎用実行パネルでセッション欄・start/stop・Duration が二重に見える問題への対応。開始/停止はツール一覧の perf-monitor を選択し「アクション」ドロップダウン(start/stop)+「実行」で行う。セッションディレクトリの自動検出・自動入力は汎用パラメータ欄に対して行われる
+
+### Added
+- **カタログに `directory` 型パラメータを追加**(パス入力欄 + `...` フォルダ選択 + `開く` エクスプローラ起動)。perf-monitor の「セッション」で使用
+- perf-monitor に「間隔秒」パラメータ(`-Interval`)を追加(空欄ならツール既定値の 5 秒)
+
 ## [2.4.1] - 2026-07-18
 
 ### Fixed

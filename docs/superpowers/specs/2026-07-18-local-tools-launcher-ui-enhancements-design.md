@@ -2,7 +2,7 @@
 
 **日付**: 2026-07-18
 **対象**: `LocalToolsLauncher.ps1` / `LocalToolsLauncher.xaml` / `tools/tool-catalog.yaml`(Windows GUI のみ)
-**ステータス**: 実装済み(v2.4.0)
+**ステータス**: 実装済み(v2.4.0)、v2.5.0 で §3 の専用パネルを廃止し個別ツールパネルへ統合(下記追記参照)
 
 ---
 
@@ -199,3 +199,27 @@ if ($ctx.ToolId -eq 'perf-monitor' -and $null -ne $PerfSessionDirTextBox) {
 - 新規 XAML 要素の `FindName` 取得コード追加箇所の明記漏れ(§3.2)
 
 いずれも重大な設計変更ではなく、実装計画の記述精度を上げるための修正。
+
+---
+
+## 7. v2.5.0 での改訂: 専用パネルの廃止と個別ツールパネルへの統合
+
+v2.4.0 リリース後、ユーザーから「専用パネルと汎用実行パネルでセッション欄・start/stop・Duration が二重に見える」との指摘を受け、§3 の専用パネルを廃止して個別ツールパネル(汎用実行フロー)へ完全統合した。
+
+### 変更内容
+
+- **XAML**: 「パフォーマンス監視(perf-monitor)」パネル(§3.2)と7つの named 要素を削除。Grid.Row 構成を v2.3 以前の6行に戻した
+- **PowerShell**: `Get-PerfMonitorStartArguments` / `Get-PerfMonitorStopArguments` / `Invoke-PerfMonitorStart` / `Invoke-PerfMonitorStop` と関連ボタン配線・FindName を削除。`$script:LastPerfSessionDir` と `Set-ParameterDefaults` の sessionDir 初期値シード(§3.4)は存続
+- **カタログ**: 新パラメータ型 `directory` を追加(パス入力欄 + `...` フォルダ選択 + `開く` エクスプローラ起動を描画する汎用機構)。perf-monitor の `sessionDir` を `text` → `directory` に変更。`interval`(`-Interval`/`-i`、number、default 空 = ツール既定値)を追加し、旧専用パネルの「間隔(秒)」を代替
+- **セッション自動検出**(§3.4)は、専用パネルのテキストボックスの代わりに、perf-monitor 選択中なら汎用パラメータ欄(`Get-ParameterControlByKey -Key 'sessionDir'`)へ直接反映するよう変更。非選択中は `$script:LastPerfSessionDir` 経由で次回描画時に反映(従来どおり)
+
+### 操作フロー(v2.5.0 以降)
+
+- 開始: ツール一覧で perf-monitor を選択 → アクション `start` → 実行。完了後セッション欄に自動入力
+- 停止: アクション `stop` → 実行(セッションは自動入力済み)
+- 状態確認/レポート: アクション `status` / `report` → 実行
+
+### 既知の許容事項
+
+- セッション欄に値が残った状態で `start` を再実行すると、位置引数としてセッションパスが渡るが、`PerfMonitor.ps1` の `start` は `$SessionDir` を無視するため無害(v2.2〜v2.4 の汎用フローと同じ挙動)
+- 2連続 `start`(先行セッションを停止せずに開始)のガードは引き続きスコープ外(§3.5 の方針を踏襲)
