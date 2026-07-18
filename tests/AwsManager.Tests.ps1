@@ -295,7 +295,7 @@ Describe 'AwsManager' {
             }
 
             Start-Ec2Instance -Profile 'dev' -InstanceId 'i-123' | Should -BeTrue
-            Assert-MockCalled -ModuleName AwsManager -CommandName Invoke-AwsCli -Times 1 -Exactly
+            Should -Invoke -ModuleName AwsManager -CommandName Invoke-AwsCli -Times 1 -Exactly
         }
 
         It 'Stop-Ec2Instance uses stop-instances' {
