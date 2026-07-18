@@ -44,13 +44,13 @@ $script:AppInitialized = $false
 . (Join-Path $PSScriptRoot 'src\UiCommon.ps1')
 
 $window.Dispatcher.add_UnhandledException({
-        param($sender, $eventArgs)
-        $message = [string]$eventArgs.Exception.Message
-        if ([string]::IsNullOrWhiteSpace($message)) { $message = [string]$eventArgs.Exception }
+        param($evtSource, $evt)
+        $message = [string]$evt.Exception.Message
+        if ([string]::IsNullOrWhiteSpace($message)) { $message = [string]$evt.Exception }
         if ([string]::IsNullOrWhiteSpace($message)) { $message = '詳細のない UI エラーが発生しました。' }
         Set-StatusText -Message "UI エラー: $message"
         Write-AppLog -Level 'ERROR' -Message "未処理 UI エラー: $message"
-        $eventArgs.Handled = $true
+        $evt.Handled = $true
     })
 
 # AppState: ロック永続化は AppSettings 経由
@@ -81,9 +81,9 @@ Initialize-AsyncRunner -Dispatcher $window.Dispatcher -OnBusyChanged {
 #----------------------------------------------------------------------
 $detailTabsControl = Find-Control -Name 'DetailTabs'
 $detailTabsControl.Add_SelectionChanged({
-        param($sender, $eventArgs)
+        param($evtSource, $evt)
         # ListBox 等の子コントロールから SelectionChanged がバブルしてくるため発生元を確認する
-        if (-not [object]::ReferenceEquals($eventArgs.Source, $detailTabsControl)) { return }
+        if (-not [object]::ReferenceEquals($evt.Source, $detailTabsControl)) { return }
         try {
             switch ($detailTabsControl.SelectedIndex) {
                 1 { Update-SgTabForSelection }
