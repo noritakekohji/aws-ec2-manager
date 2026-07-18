@@ -1087,11 +1087,25 @@ function Invoke-ToolExecution {
                 $stdoutTask = $childProc.StandardOutput.ReadToEndAsync()
                 $stderrTask = $childProc.StandardError.ReadToEndAsync()
                 $childProc.WaitForExit()
-                $stdout = $stdoutTask.Result
-                $stderr = $stderrTask.Result
+                $exitCode = $childProc.ExitCode
+                # perf-monitor の start のように子プロセスがさらに検知プロセスを
+                # デタッチ起動するツールでは、孫プロセスが stdout/stderr ハンドルを
+                # 継承したまま保持し続け、ReadToEndAsync が EOF を検知できず
+                # 無期限にブロックすることがある(Windows のハンドル継承の既知の挙動)。
+                # プロセス自体の終了は WaitForExit() で既に確定しているため、
+                # 出力の読み取りは一定時間で打ち切る。
+                $readTimeoutMs = 3000
+                $readDone = [System.Threading.Tasks.Task]::WaitAll(@($stdoutTask, $stderrTask), $readTimeoutMs)
+                if ($readDone) {
+                    $stdout = $stdoutTask.Result
+                    $stderr = $stderrTask.Result
+                } else {
+                    $stdout = '(バックグラウンドで起動された子プロセスが標準出力を保持しているため、出力の取得を打ち切りました。プロセス自体は正常終了しています。)'
+                    $stderr = ''
+                }
                 Set-Content -LiteralPath $stdoutPath -Value $stdout -Encoding UTF8
                 Set-Content -LiteralPath $stderrPath -Value $stderr -Encoding UTF8
-                Set-Content -LiteralPath $exitPath -Value ([string]$childProc.ExitCode) -Encoding ASCII
+                Set-Content -LiteralPath $exitPath -Value ([string]$exitCode) -Encoding ASCII
             } catch {
                 Set-Content -LiteralPath $stderrPath -Value $_.Exception.Message -Encoding UTF8
                 Set-Content -LiteralPath $exitPath -Value '999' -Encoding ASCII
