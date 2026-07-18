@@ -154,7 +154,7 @@ function Add-SgDiffExpander {
     $sgDiffPanel.Children.Add($expander) | Out-Null
 }
 
-function Render-SgDiffPanel {
+function Show-SgDiffPanel {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper, not a system-state change.')]
     [CmdletBinding()]
     param($Diff)
@@ -223,7 +223,7 @@ function Update-SgDiffPreview {
     [CmdletBinding()]
     param()
     $diff = Get-SgDiffData
-    Render-SgDiffPanel -Diff $diff
+    Show-SgDiffPanel -Diff $diff
     $exportSgReportButton.IsEnabled = $true
 }
 
@@ -662,7 +662,7 @@ function Clear-SgTab {
     Update-SgApplyButtonState
 }
 
-function Render-SgListsFromData {
+function Show-SgListsFromData {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper.')]
     [CmdletBinding()]
     param(
@@ -732,7 +732,7 @@ function Invoke-SgLoadAsync {
     }
 
     if ((-not $Force) -and $script:AppState.SgCache.ContainsKey($instanceId)) {
-        Render-SgListsFromData -Instance $Instance -VpcSgs @($script:AppState.SgCache[$instanceId].VpcSgs)
+        Show-SgListsFromData -Instance $Instance -VpcSgs @($script:AppState.SgCache[$instanceId].VpcSgs)
         return
     }
 
@@ -768,7 +768,7 @@ function Invoke-SgLoadAsync {
         $script:AppState.SgCache[$fetchedFor] = @{ VpcSgs = $items.ToArray() }
         $inst = Get-AppStateInstance -InstanceId $script:AppState.SelectedInstanceId
         if ($null -ne $inst -and [string]$inst.InstanceId -eq $fetchedFor) {
-            Render-SgListsFromData -Instance $inst -VpcSgs $items.ToArray()
+            Show-SgListsFromData -Instance $inst -VpcSgs $items.ToArray()
             Set-StatusText -Message "SG 情報を取得しました ($($items.Count) 件)"
         }
     } -OnError {

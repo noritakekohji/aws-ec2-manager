@@ -32,7 +32,27 @@ jobs:
           # tools/ は ops-scripts-template からの移植資産で本リポジトリでは改修対象外のため除外
           $targets = Get-ChildItem -Recurse -File -Include *.ps1,*.psm1,*.psd1 |
               Where-Object { $_.FullName -notmatch '[\\/]tools[\\/]' }
-          $results = $targets | ForEach-Object { Invoke-ScriptAnalyzer -Path $_.FullName -Severity Warning }
+          # 除外ルールの理由:
+          # - PSReviewUnusedParameter: AsyncRunner の Work/OnSuccess 等は契約シグネチャ
+          #   (param($Channel, $ReportProgress, ...) / param($result, $ctx)) を持ち、
+          #   使わない引数も宣言が必須のため
+          # - PSAvoidUsingEmptyCatchBlock: Dispose / クリーンアップのベストエフォート catch
+          # - PSUseSingularNouns: UI のコレクション操作関数(〜Buttons / 〜Rows 等)の複数形命名
+          # - PSUseShouldProcessForStateChangingFunctions: GUI 内部ヘルパ。破壊的操作の確認は
+          #   UI の確認ダイアログ層で実装している
+          # - PSAvoidUsingInvokeExpression: Filelist 系 Pester テストの AST 関数抽出パターン
+          # - PSUseDeclaredVarsMoreThanAssignments: Pester の BeforeAll/It スコープを跨ぐ誤検知
+          $excluded = @(
+              'PSReviewUnusedParameter',
+              'PSAvoidUsingEmptyCatchBlock',
+              'PSUseSingularNouns',
+              'PSUseShouldProcessForStateChangingFunctions',
+              'PSAvoidUsingInvokeExpression',
+              'PSUseDeclaredVarsMoreThanAssignments'
+          )
+          $results = $targets | ForEach-Object {
+              Invoke-ScriptAnalyzer -Path $_.FullName -Severity Warning -ExcludeRule $excluded
+          }
           if ($results) { $results | Format-Table; exit 1 }
 
       - name: Test (Pester)

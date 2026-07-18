@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-07-18
+
+### Fixed
+- CI(PSScriptAnalyzer)が v2.0 以降ずっと失敗していた問題を解消。未承認動詞の関数をリネーム(`Render-*` → `Show-*`、`Load-*` → `Import-*`、`Append-Log` → `Add-LogLine`、`Poll-RunningProcess` → `Watch-RunningProcess`)し、設計上意図的なパターン(コールバック契約引数・ベストエフォート catch・Pester 構造の誤検知等)は理由コメント付きで lint ルールを除外。
+
 ## [2.3.0] - 2026-07-18
 
 ### Added

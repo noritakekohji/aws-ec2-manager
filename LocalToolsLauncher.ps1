@@ -36,7 +36,7 @@ function ConvertTo-DisplayPath {
     return $Path.Replace('\', '/')
 }
 
-function Load-LauncherConfig {
+function Import-LauncherConfig {
     if (-not (Test-Path -LiteralPath $ConfigDir)) {
         New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null
     }
@@ -99,7 +99,7 @@ function Save-LauncherConfig {
     Set-Status "設定を保存しました: $ConfigPath"
 }
 
-function Load-ConfigFileOverrides {
+function Import-ConfigFileOverrides {
     param($Config)
     $map = @{}
     if ($null -eq $Config) { return $map }
@@ -535,7 +535,7 @@ function Set-Status {
     $StatusText.Text = $Message
 }
 
-function Append-Log {
+function Add-LogLine {
     param([string]$Message)
     if ($LogTextBox.Text) {
         $LogTextBox.AppendText("`r`n$Message")
@@ -957,13 +957,13 @@ function Open-RunReportIfEnabled {
     if ($null -eq $html) { return }
     try {
         Start-Process -FilePath $html.FullName -ErrorAction Stop
-        Append-Log "レポートを開きました: $($html.FullName)"
+        Add-LogLine "レポートを開きました: $($html.FullName)"
     } catch {
         try {
             Start-Process -FilePath 'msedge.exe' -ArgumentList $html.FullName -ErrorAction Stop
-            Append-Log "レポートを開きました: $($html.FullName)"
+            Add-LogLine "レポートを開きました: $($html.FullName)"
         } catch {
-            Append-Log "レポートを開けませんでした: $($html.FullName) - $($_.Exception.Message)"
+            Add-LogLine "レポートを開けませんでした: $($html.FullName) - $($_.Exception.Message)"
         }
     }
 }
@@ -1010,14 +1010,14 @@ function Invoke-ToolExecution {
     } catch {
         $_.Exception.Message | Set-Content -LiteralPath $stderrPath -Encoding UTF8
         '999' | Set-Content -LiteralPath $exitPath -Encoding ASCII
-        Append-Log "ERROR: $($_.Exception.Message)"
+        Add-LogLine "ERROR: $($_.Exception.Message)"
         Set-Status "エラー: $($_.Exception.Message)"
         return
     }
 
     $cmd.Preview | Set-Content -LiteralPath $commandPath -Encoding UTF8
-    Append-Log "=== $($tool.Name) ==="
-    Append-Log $cmd.Preview
+    Add-LogLine "=== $($tool.Name) ==="
+    Add-LogLine $cmd.Preview
     Set-Status "実行中: $($tool.Name)"
     Disable-RunButtons
 
@@ -1083,12 +1083,12 @@ function Invoke-ToolExecution {
 
         $script:WaitTimer = New-Object System.Windows.Threading.DispatcherTimer
         $script:WaitTimer.Interval = [TimeSpan]::FromMilliseconds(300)
-        $script:WaitTimer.Add_Tick({ Poll-RunningProcess })
+        $script:WaitTimer.Add_Tick({ Watch-RunningProcess })
         $script:WaitTimer.Start()
     } catch {
         $_.Exception.Message | Set-Content -LiteralPath $stderrPath -Encoding UTF8
         '999' | Set-Content -LiteralPath $exitPath -Encoding ASCII
-        Append-Log "ERROR: $($_.Exception.Message)"
+        Add-LogLine "ERROR: $($_.Exception.Message)"
         Set-Status "エラー: $($_.Exception.Message)"
         $script:CurrentProc = $null
         $script:CurrentRunCtx = $null
@@ -1099,7 +1099,7 @@ function Invoke-ToolExecution {
     }
 }
 
-function Poll-RunningProcess {
+function Watch-RunningProcess {
     if ($null -eq $script:CurrentHandle) {
         if ($null -ne $script:WaitTimer) { $script:WaitTimer.Stop(); $script:WaitTimer = $null }
         return
@@ -1130,13 +1130,13 @@ function Complete-ToolExecution {
             }
             if (Test-Path -LiteralPath $ctx.StdoutPath) {
                 $stdout = (Get-Content -LiteralPath $ctx.StdoutPath -Raw -Encoding UTF8)
-                if ($stdout) { Append-Log $stdout.TrimEnd() }
+                if ($stdout) { Add-LogLine $stdout.TrimEnd() }
             }
             if (Test-Path -LiteralPath $ctx.StderrPath) {
                 $stderr = (Get-Content -LiteralPath $ctx.StderrPath -Raw -Encoding UTF8)
-                if ($stderr) { Append-Log $stderr.TrimEnd() }
+                if ($stderr) { Add-LogLine $stderr.TrimEnd() }
             }
-            Append-Log "ExitCode: $exitCode"
+            Add-LogLine "ExitCode: $exitCode"
             if ($exitCode -eq '0') {
                 Set-Status "完了: ExitCode 0 / $($ctx.RunDir)"
             }
@@ -1153,13 +1153,13 @@ function Complete-ToolExecution {
                         Sort-Object LastWriteTime -Descending | Select-Object -First 1
                     if ($null -ne $producedZip) {
                         $SnapshotZipTextBox.Text = $producedZip.FullName
-                        Append-Log "出力対象ZIPに自動設定: $($producedZip.FullName)"
+                        Add-LogLine "出力対象ZIPに自動設定: $($producedZip.FullName)"
                     }
                 }
             }
         }
     } catch {
-        Append-Log "ERROR: $($_.Exception.Message)"
+        Add-LogLine "ERROR: $($_.Exception.Message)"
         Set-Status "エラー: $($_.Exception.Message)"
     } finally {
         try { if ($null -ne $proc) { $proc.Dispose() } } catch { }
@@ -1178,10 +1178,10 @@ function Invoke-StopExecution {
     if (-not (Test-Running)) { return }
     try {
         $script:CurrentProc.Kill()
-        Append-Log "[STOP] 中断要求を送信しました。"
+        Add-LogLine "[STOP] 中断要求を送信しました。"
         Set-Status "停止中..."
     } catch {
-        Append-Log "[STOP] 失敗: $($_.Exception.Message)"
+        Add-LogLine "[STOP] 失敗: $($_.Exception.Message)"
     }
 }
 
@@ -1369,12 +1369,12 @@ $ConfigFilesPanel = $window.FindName('ConfigFilesPanel')
 $ConfigFilesItems = $window.FindName('ConfigFilesItems')
 $ParametersItems = $window.FindName('ParametersItems')
 
-$config = Load-LauncherConfig
+$config = Import-LauncherConfig
 $script:LoadedConfig = $config
 $script:ToolsRoot = Get-ConfigValue -Config $config -Name 'ToolsRoot' -DefaultValue $DefaultToolsRoot
 $script:OutputRoot = Get-ConfigValue -Config $config -Name 'OutputRoot' -DefaultValue $DefaultOutputRoot
 $script:AwsProfile = Get-ConfigValue -Config $config -Name 'DefaultAwsProfile' -DefaultValue ''
-$script:ConfigFileOverrides = Load-ConfigFileOverrides -Config $config
+$script:ConfigFileOverrides = Import-ConfigFileOverrides -Config $config
 
 # AWS Profile は手入力ではなく ~/.aws/config のプロファイル一覧から選ぶ
 # (aws-ec2-manager 本体と同じ AwsConfig.psm1 を利用。読めない場合は空リストで続行)

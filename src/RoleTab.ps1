@@ -113,7 +113,7 @@ function Update-RoleActionButtons {
     $applyRoleButton.IsEnabled = ($isReady -and (-not $isLocked) -and (-not $isBusy) -and $action -ne 'None')
 }
 
-function Render-RoleDiffPanel {
+function Show-RoleDiffPanel {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper.')]
     [CmdletBinding()]
     param()
@@ -168,10 +168,10 @@ function Clear-RoleTab {
     $roleTabState.OriginalAssociationState = ''
     $roleTabState.Loaded = $false
     $roleStatusText.Text = 'IAM Instance Profile'
-    Render-RoleDiffPanel
+    Show-RoleDiffPanel
 }
 
-function Render-RoleData {
+function Show-RoleData {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper.')]
     [CmdletBinding()]
     param(
@@ -233,7 +233,7 @@ function Render-RoleData {
     else {
         $roleStatusText.Text = "Instance Profile 候補 $($items.Count) 件"
     }
-    Render-RoleDiffPanel
+    Show-RoleDiffPanel
 }
 
 function Invoke-RoleLoadAsync {
@@ -248,7 +248,7 @@ function Invoke-RoleLoadAsync {
 
     if ((-not $Force) -and $script:AppState.RoleCache.ContainsKey($instanceId)) {
         $cached = $script:AppState.RoleCache[$instanceId]
-        Render-RoleData -Instance $Instance -Association $cached.Association -Profiles @($cached.Profiles)
+        Show-RoleData -Instance $Instance -Association $cached.Association -Profiles @($cached.Profiles)
         return
     }
 
@@ -282,7 +282,7 @@ function Invoke-RoleLoadAsync {
         }
         $inst = Get-AppStateInstance -InstanceId $script:AppState.SelectedInstanceId
         if ($null -ne $inst -and [string]$inst.InstanceId -eq $fetchedFor) {
-            Render-RoleData -Instance $inst -Association $result.Association -Profiles @($result.Profiles)
+            Show-RoleData -Instance $inst -Association $result.Association -Profiles @($result.Profiles)
             Set-StatusText -Message "Instance Profile 情報を取得しました"
         }
     } -OnError {
@@ -341,7 +341,7 @@ function Move-RoleToApplied {
     $appliedRoleList.ItemsSource = @($selected)
     $appliedRoleList.SelectedIndex = 0
     $availableRoleList.ItemsSource = $available.ToArray()
-    Render-RoleDiffPanel
+    Show-RoleDiffPanel
 }
 
 function Move-RoleToAvailable {
@@ -359,7 +359,7 @@ function Move-RoleToAvailable {
     $available.Add($planned)
     $appliedRoleList.ItemsSource = @()
     $availableRoleList.ItemsSource = $available.ToArray()
-    Render-RoleDiffPanel
+    Show-RoleDiffPanel
 }
 
 function Invoke-InstanceProfileApply {
