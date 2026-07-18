@@ -818,6 +818,8 @@ function Set-ParameterDefaults {
         if ($paramCfgMap.ContainsKey($key)) { $cf = $paramCfgMap[$key] }
         if ($null -ne $cf) {
             $initial = Get-ConfigFileEffectivePath -ToolId $toolId -ConfigFile $cf
+        } elseif ($key -eq 'sessionDir' -and $toolId -eq 'perf-monitor' -and $script:LastPerfSessionDir) {
+            $initial = $script:LastPerfSessionDir
         } else {
             $initial = Expand-LauncherValue -Value ([string]$p.Default) -Tool $Tool -RunDir $sampleRun
         }
@@ -1182,6 +1184,18 @@ function Complete-ToolExecution {
                     if ($null -ne $producedZip) {
                         $SnapshotZipTextBox.Text = $producedZip.FullName
                         Add-LogLine "出力対象ZIPに自動設定: $($producedZip.FullName)"
+                    }
+                }
+            }
+            if ($ctx.ToolId -eq 'perf-monitor' -and $null -ne $PerfSessionDirTextBox) {
+                $artifactsDir = Join-Path $ctx.RunDir 'artifacts'
+                if (Test-Path -LiteralPath $artifactsDir) {
+                    $sessionSubDir = Get-ChildItem -LiteralPath $artifactsDir -Directory -ErrorAction SilentlyContinue |
+                        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                    if ($null -ne $sessionSubDir) {
+                        $PerfSessionDirTextBox.Text = $sessionSubDir.FullName
+                        $script:LastPerfSessionDir = $sessionSubDir.FullName
+                        Add-LogLine "セッションディレクトリを自動設定: $($sessionSubDir.FullName)"
                     }
                 }
             }
