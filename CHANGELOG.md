@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-07-18
+
+### Fixed
+- `LocalToolsLauncher.ps1` の `Build-Command` が PSScriptAnalyzer `PSUseApprovedVerbs` に違反していた問題を解消(`New-ToolCommand` にリネーム)。v2.0.0 以前から存在していた既存の lint 漏れで、今回の select 型/perf-monitor 実装より前から存在
+
 ## [2.4.0] - 2026-07-18
 
 ### Added
