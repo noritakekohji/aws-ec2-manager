@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.2] - 2026-07-18
+
+### Fixed
+- CI 緑化の残り 2 件: App.ps1 のイベントハンドラ引数名(`$sender`/`$eventArgs` → PSSA 自動変数警告)をリネーム、既存テストの Pester v4 構文 `Assert-MockCalled` を `Should -Invoke` に置換(CI の最新 Pester で削除されていたため)。**これで CI(lint + Pester + Linux smoke)が全ジョブ緑**。
+
 ## [2.3.1] - 2026-07-18
 
 ### Fixed
