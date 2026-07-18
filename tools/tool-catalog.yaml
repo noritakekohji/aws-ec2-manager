@@ -222,9 +222,10 @@ tools:
     parameters:
       - key: command
         label: アクション
-        type: text
+        type: select
         width: short
         argument: ""
+        options: "start,stop,report,status,list"
         default: status
       - key: sessionDir
         label: セッション
@@ -293,9 +294,10 @@ tools:
     parameters:
       - key: command
         label: アクション
-        type: text
+        type: select
         width: short
         argument: ""
+        options: "collect,before,after,compare,list"
         default: collect
       - key: category
         label: カテゴリ

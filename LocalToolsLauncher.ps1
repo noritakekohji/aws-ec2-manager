@@ -188,6 +188,7 @@ function Read-ToolCatalog {
                 Default = ''
                 Value = ''
                 Required = $false
+                Options = ''
             }
             $paramSubKeyIndent = $listIndent + 2
             continue
@@ -241,6 +242,7 @@ function Read-ToolCatalog {
                     'default' { $currentParam.Default = $value }
                     'value' { $currentParam.Value = $value }
                     'required' { $currentParam.Required = ($value -eq 'true') }
+                    'options' { $currentParam.Options = $value }
                 }
                 continue
             }
