@@ -6,7 +6,7 @@
 # 使い方:
 #   perf_monitor.sh start  [-c conf] [-i 秒] [-d 秒] [-o 出力先] [-p prefix]
 #   perf_monitor.sh stop   [session_dir]
-#   perf_monitor.sh report <session_dir> [-c conf]
+#   perf_monitor.sh report <session_dir> [-c conf] [-f ISO日時] [-t ISO日時]
 #   perf_monitor.sh status [session_dir]
 #   perf_monitor.sh list
 #
@@ -16,6 +16,13 @@
 #   -d  収集期間秒（0 = stop で明示停止、既定: 0）
 #   -o  セッション親ディレクトリ（既定: カレント）
 #   -p  セッションディレクトリ名プレフィックス（既定: perf）
+#
+# オプション（report）:
+#   -c  設定ファイルパス
+#   -f  範囲フィルタ開始日時（ISO 8601。片方のみの指定も可）
+#   -t  範囲フィルタ終了日時（ISO 8601。片方のみの指定も可）
+#       統計値・しきい値超過一覧は絞り込み後の全データを対象に計算する。
+#       サンプル数が多い場合、グラフ描画のみ自動的に間引かれる（統計には影響しない）。
 #
 # 出力ファイル（セッションディレクトリ内）:
 #   data.jsonl       収集データ（JSON Lines）
@@ -103,7 +110,7 @@ _find_latest_session() {
 }
 
 usage() {
-    sed -n '2,18p' "$0" >&2
+    sed -n '2,25p' "$0" >&2
     exit 1
 }
 
@@ -465,12 +472,18 @@ cmd_stop() {
 cmd_report() {
     local session_dir="${1:-}"
     local conf_file="$DEFAULT_CONF"
+    local from_ts="" to_ts=""
 
     shift 2>/dev/null || true
     # OPTIND は前回呼び出しの値を引き継ぐので明示的にリセット
     OPTIND=1
-    while getopts "c:h" opt; do
-        case "$opt" in c) conf_file="$OPTARG" ;; h|*) usage ;; esac
+    while getopts "c:f:t:h" opt; do
+        case "$opt" in
+            c) conf_file="$OPTARG" ;;
+            f) from_ts="$OPTARG" ;;
+            t) to_ts="$OPTARG" ;;
+            h|*) usage ;;
+        esac
     done
 
     if [[ -z "$session_dir" ]]; then
@@ -494,6 +507,10 @@ cmd_report() {
     local output_html="${session_dir}/report.html"
     log_info "Generating report: $output_html"
 
+    local render_args=("$data_file" "$output_html")
+    [[ -n "$from_ts" ]] && render_args+=(--from "$from_ts")
+    [[ -n "$to_ts"   ]] && render_args+=(--to "$to_ts")
+
     # set -e 下では python3 が失敗した時点で停止するため、if 文の中で実行して
     # 成否で分岐する（旧コードの `if [[ $? -eq 0 ]]` は意味を持たなかった）。
     if PERF_THR_CPU="${CFG[ThresholdCpuPct]}"           \
@@ -503,7 +520,7 @@ cmd_report() {
        PERF_THR_NET_RX="${CFG[ThresholdNetRxMbps]}"     \
        PERF_THR_NET_TX="${CFG[ThresholdNetTxMbps]}"     \
        PERF_THR_LOAD="${CFG[ThresholdLoadAvg1]}"        \
-       python3 "$RENDER_PY" "$data_file" "$output_html"; then
+       python3 "$RENDER_PY" "${render_args[@]}"; then
         log_info "Report generated: $output_html"
         echo ""
         echo "  レポート生成完了: ${output_html}"

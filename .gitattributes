@@ -38,6 +38,9 @@
 *.py    text eol=lf
 
 # ---------- バイナリ: 変換しない ----------
+# 同梱 Chart.js は CDN からの pin バージョン取得物。改行コード変換で
+# バイト単位の同一性を崩さないよう変換対象から除外する。
+tools/perf-monitor/chart.umd.min.js  binary
 *.xlsm  binary
 *.zip   binary
 *.tar   binary

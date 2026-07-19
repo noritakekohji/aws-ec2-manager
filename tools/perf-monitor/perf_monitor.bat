@@ -7,7 +7,7 @@
 ::   perf_monitor.bat start  [-Interval sec] [-Duration sec] [-OutputDir dir]
 ::                           [-Prefix name]  [-Config file]
 ::   perf_monitor.bat stop   [session_dir]
-::   perf_monitor.bat report <session_dir>  [-Config file]
+::   perf_monitor.bat report <session_dir>  [-Config file] [-From iso] [-To iso]
 ::   perf_monitor.bat status [session_dir]
 ::   perf_monitor.bat list
 ::
@@ -17,6 +17,7 @@
 ::   perf_monitor.bat stop
 ::   perf_monitor.bat stop   .\perf_20260517-100000
 ::   perf_monitor.bat report .\perf_20260517-100000
+::   perf_monitor.bat report .\perf_20260517-100000 -From "2026-05-17T10:15:00" -To "2026-05-17T10:30:00"
 ::   perf_monitor.bat status
 ::   perf_monitor.bat list
 ::
@@ -124,8 +125,9 @@ echo.
 echo    stop   [session_dir]
 echo           Stop collection (omit to auto-detect latest session)
 echo.
-echo    report ^<session_dir^> [-Config file]
+echo    report ^<session_dir^> [-Config file] [-From iso] [-To iso]
 echo           Generate HTML report (python3 optional; PS-native fallback)
+echo           -From/-To narrow the report to a time range (either alone is OK)
 echo.
 echo    status [session_dir]
 echo           Show collection state and latest metric snapshot

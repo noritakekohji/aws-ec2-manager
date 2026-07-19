@@ -3,7 +3,11 @@
 render_report.py  -  perf_monitor の JSON Lines データから HTML レポートを生成
 
 使い方:
-    python3 render_report.py <data.jsonl> <output.html>
+    python3 render_report.py <data.jsonl> <output.html> [--from ISO日時] [--to ISO日時]
+
+    --from / --to は ts フィールド（ISO 8601）に対する範囲フィルタ。
+    片方のみの指定も可。統計値・しきい値超過一覧はフィルタ後の全データを対象に計算する
+    （間引きの対象はグラフの描画データのみ）。
 
 環境変数（しきい値、未設定 or 0 で無効）:
     PERF_THR_CPU      CPU使用率しきい値 (%)
@@ -15,9 +19,16 @@ render_report.py  -  perf_monitor の JSON Lines データから HTML レポー�
     PERF_THR_LOAD     ロードアベレージ1分しきい値
 """
 from __future__ import annotations
-import json, os, sys, statistics
+import json, math, os, sys, statistics
 from pathlib import Path
 from datetime import datetime
+
+# グラフに描画する最大点数。超えた場合は等間隔で間引く（統計・アラートには影響しない）。
+MAX_CHART_POINTS = 2000
+
+# 同梱 Chart.js（オフライン環境でもグラフを描画するため CDN ではなくローカル埋め込みを優先）
+CHART_JS_LOCAL = Path(__file__).resolve().parent / 'chart.umd.min.js'
+CHART_JS_CDN_URL = 'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js'
 
 # ─────────────────────────────────────────────────────────────
 # しきい値読み込み
@@ -71,6 +82,50 @@ def stats(records: list[dict], key: str) -> dict | None:
         'p95':  pct(vals, 95),
         'count': len(vals),
     }
+
+def parse_range_bound(value: str | None, name: str) -> datetime | None:
+    """--from/--to の値を datetime にパースする。失敗時は警告を出して None（フィルタ無効）を返す。"""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        print(f'[WARN] {name} の日時形式を解釈できません（無視します）: {value}', file=sys.stderr)
+        return None
+
+def filter_by_range(records: list[dict], from_dt: datetime | None, to_dt: datetime | None) -> list[dict]:
+    if from_dt is None and to_dt is None:
+        return records
+    filtered = []
+    for r in records:
+        try:
+            ts = datetime.fromisoformat(r.get('ts', ''))
+        except ValueError:
+            continue  # ts をパースできないレコードは範囲指定時のみ除外
+        if from_dt is not None and ts < from_dt:
+            continue
+        if to_dt is not None and ts > to_dt:
+            continue
+        filtered.append(r)
+    return filtered
+
+def decimate(records: list[dict], max_points: int) -> list[dict]:
+    """グラフ描画用に等間隔で間引く。統計・アラート計算には使わない。"""
+    n = len(records)
+    if n <= max_points or max_points <= 0:
+        return records
+    step = math.ceil(n / max_points)
+    return records[::step]
+
+def chart_js_script_tag() -> str:
+    """同梱 chart.umd.min.js があれば inline 埋め込み、なければ CDN にフォールバック。"""
+    try:
+        content = CHART_JS_LOCAL.read_text(encoding='utf-8')
+        return f'<script>\n{content}\n</script>'
+    except OSError:
+        print(f'[WARN] 同梱 Chart.js が見つかりません（{CHART_JS_LOCAL}）。CDN にフォールバックします。'
+              'オフライン環境ではグラフが表示されない可能性があります。', file=sys.stderr)
+        return f'<script src="{CHART_JS_CDN_URL}"></script>'
 
 def ts_label(ts_str: str) -> str:
     """ISO timestamp → 表示用短縮文字列"""
@@ -205,11 +260,19 @@ def find_alerts(records: list[dict]) -> list[dict]:
 # ─────────────────────────────────────────────────────────────
 # HTML レポート生成
 # ─────────────────────────────────────────────────────────────
-def render(data_path: str, output_path: str) -> None:
-    records = load_data(data_path)
-    if not records:
+def render(data_path: str, output_path: str, from_str: str | None = None, to_str: str | None = None) -> None:
+    all_records = load_data(data_path)
+    if not all_records:
         print(f'[ERROR] No data in {data_path}', file=sys.stderr)
         sys.exit(1)
+
+    from_dt = parse_range_bound(from_str, '--from')
+    to_dt   = parse_range_bound(to_str, '--to')
+    records = filter_by_range(all_records, from_dt, to_dt)
+    if not records:
+        print(f'[ERROR] 指定範囲内にデータがありません（--from {from_str} --to {to_str}）', file=sys.stderr)
+        sys.exit(1)
+    range_filtered = (from_dt is not None or to_dt is not None)
 
     # メタ情報
     hostname = records[0].get('hostname', 'unknown')
@@ -228,8 +291,12 @@ def render(data_path: str, output_path: str) -> None:
         start_str = ts_first[:19]; end_str = ts_last[:19]; dur_str = '不明'
 
     is_linux   = (os_name == 'linux')
-    labels     = [ts_label(r.get('ts', '')) for r in records]
     gen_time   = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    # ── グラフ描画用データ(間引き。統計・アラートは records=全件のまま使う) ──
+    chart_records  = decimate(records, MAX_CHART_POINTS)
+    chart_decimated = len(chart_records) < len(records)
+    labels = [ts_label(r.get('ts', '')) for r in chart_records]
 
     # ── 統計値 ────────────────────────────────────────────────
     st = {k: stats(records, k) for k in [
@@ -278,9 +345,9 @@ def render(data_path: str, output_path: str) -> None:
         card('しきい値超過',      f'{alert_count} 回', alert_color),
     ])
 
-    # ── データ抽出 ────────────────────────────────────────────
+    # ── データ抽出(グラフ用。間引き後の chart_records を使う) ──────
     def vals(key: str) -> list:
-        return [r.get(key) for r in records]
+        return [r.get(key) for r in chart_records]
 
     # ── グラフ生成 ────────────────────────────────────────────
     charts_html = ''
@@ -424,7 +491,7 @@ def render(data_path: str, output_path: str) -> None:
 <head>
 <meta charset="UTF-8">
 <title>Performance Monitor Report</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+{chart_js_script_tag()}
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;background:#f0f2f5;color:#222}}
@@ -458,6 +525,9 @@ td.na{{color:#94a3b8}}
     padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}}
 .ok-badge{{display:inline-block;background:#dcfce7;color:#15803d;
     padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}}
+.range-badge{{display:inline-block;background:#dbeafe;color:#1d4ed8;
+    padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}}
+.chart-note{{font-size:11px;color:#64748b;margin-bottom:10px}}
 .footer{{text-align:center;padding:16px;font-size:11px;color:#94a3b8}}
 </style>
 </head>
@@ -478,6 +548,7 @@ td.na{{color:#94a3b8}}
   <div class="meta-item">しきい値超過
     <span>{"<span class='alert-badge'>" + str(alert_count) + " 回</span>" if alert_count > 0 else "<span class='ok-badge'>なし</span>"}</span>
   </div>
+  {'<div class="meta-item">表示範囲<span class="range-badge">' + (from_str or '(先頭)') + ' 〜 ' + (to_str or '(末尾)') + '</span></div>' if range_filtered else ''}
 </div>
 
 <div class="section">
@@ -487,6 +558,7 @@ td.na{{color:#94a3b8}}
 
 <div class="section">
   <div class="section-title">リソース推移グラフ</div>
+  {'<div class="chart-note">サンプル数が多いため、グラフは間引いて表示しています（全 ' + str(n_samples) + ' 件中 ' + str(len(chart_records)) + ' 点）。統計値・しきい値超過一覧は全データを対象に計算しています。</div>' if chart_decimated else ''}
   <div class="charts-grid">
     {charts_html}
   </div>
@@ -531,6 +603,16 @@ td.na{{color:#94a3b8}}
 # ─────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     if len(sys.argv) < 3:
-        print(f'Usage: {sys.argv[0]} <data.jsonl> <output.html>', file=sys.stderr)
+        print(f'Usage: {sys.argv[0]} <data.jsonl> <output.html> [--from ISO日時] [--to ISO日時]', file=sys.stderr)
         sys.exit(1)
-    render(sys.argv[1], sys.argv[2])
+    data_path, output_path = sys.argv[1], sys.argv[2]
+    from_str = to_str = None
+    i = 3
+    while i < len(sys.argv):
+        if sys.argv[i] == '--from' and i + 1 < len(sys.argv):
+            from_str = sys.argv[i + 1]; i += 2
+        elif sys.argv[i] == '--to' and i + 1 < len(sys.argv):
+            to_str = sys.argv[i + 1]; i += 2
+        else:
+            i += 1
+    render(data_path, output_path, from_str, to_str)

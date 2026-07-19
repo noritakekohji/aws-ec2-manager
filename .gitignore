@@ -21,3 +21,7 @@ reports/local-tools/
 
 # subagent-driven-development の進捗台帳(スクラッチ)
 .superpowers/
+
+# ========== Python (tools/perf-monitor 等) ==========
+__pycache__/
+*.pyc

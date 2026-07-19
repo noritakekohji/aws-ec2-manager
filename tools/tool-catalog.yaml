@@ -244,6 +244,20 @@ tools:
         argument: -Duration
         linuxArgument: -d
         default: ""
+      - key: from
+        label: 範囲開始(report用)
+        type: text
+        width: short
+        argument: -From
+        linuxArgument: -f
+        default: ""
+      - key: to
+        label: 範囲終了(report用)
+        type: text
+        width: short
+        argument: -To
+        linuxArgument: -t
+        default: ""
       - key: outputDir
         label: 出力先
         type: hidden

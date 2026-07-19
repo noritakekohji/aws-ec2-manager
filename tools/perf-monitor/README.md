@@ -11,7 +11,8 @@ tools/perf-monitor/
 ├── perf_monitor.bat       # Windows 起動用バッチ
 ├── perf_monitor.sh        # Linux 本体（コレクタ + レポート生成）
 ├── perf_monitor.conf      # 既定設定（しきい値・収集間隔など）
-└── render_report.py       # python3 製の HTML レポート生成器（共通）
+├── render_report.py       # python3 製の HTML レポート生成器（共通）
+└── chart.umd.min.js       # 同梱 Chart.js（レポートに inline 埋め込み。オフライン動作用）
 ```
 
 ---
@@ -24,8 +25,13 @@ tools/perf-monitor/
 | Linux   | Bash 4+, `python3`, `ping` |
 
 > **python3 は Windows では任意**: PerfMonitor.ps1 は python3 が見つからない場合、
-> PowerShell ネイティブの簡易レンダラー（Chart.js を CDN から読み込む HTML）にフォールバックします。
+> PowerShell ネイティブの簡易レンダラーにフォールバックします。
 > セキュリティで python3 が制限されている環境でも `report` が動作します。
+>
+> **グラフはインターネット接続不要**: 両レンダラーとも Chart.js を CDN からではなく
+> 同梱の `chart.umd.min.js` を HTML に直接埋め込んで出力します。踏み台サーバーなど
+> インターネットに出られない環境でもグラフが正しく表示されます（`chart.umd.min.js` が
+> 見つからない場合のみ CDN にフォールバックします）。
 
 ---
 
@@ -52,6 +58,8 @@ perf_monitor.bat start -Interval 5 -Duration 1800 -OutputDir C:\results
 perf_monitor.bat status
 perf_monitor.bat stop
 perf_monitor.bat report .\perf_20260518-100000
+:: 特定の時間帯だけレポート化（片方のみの指定も可）
+perf_monitor.bat report .\perf_20260518-100000 -From "2026-05-18T10:15:00" -To "2026-05-18T10:30:00"
 perf_monitor.bat list
 ```
 
@@ -67,6 +75,8 @@ perf_monitor.bat list
 # 停止 / レポート
 ./perf_monitor.sh stop
 ./perf_monitor.sh report ./perf_20260518-100000
+# 特定の時間帯だけレポート化（片方のみの指定も可）
+./perf_monitor.sh report ./perf_20260518-100000 -f "2026-05-18T10:15:00" -t "2026-05-18T10:30:00"
 ./perf_monitor.sh status
 ./perf_monitor.sh list
 ```
@@ -89,6 +99,21 @@ perf_monitor.bat list
 | `ThresholdNetRxMbps` | 900.0 | NIC Rx しきい値 (Mbps) |
 | `ThresholdNetTxMbps` | 900.0 | NIC Tx しきい値 (Mbps) |
 | `ThresholdLoadAvg1` | 4.0 | Load avg(1) しきい値（Linux のみ） |
+
+---
+
+## 大量サンプル時のグラフ表示について
+
+長時間・短間隔で収集すると `data.jsonl` のサンプル数が数千件を超えることがあります。
+
+- **統計値（最小/平均/最大/95パーセンタイル）としきい値超過一覧は、常に全サンプルを対象に計算されます。**
+  間引きの影響を受けません。
+- **グラフ描画のみ**、サンプル数が 2000 件を超えると自動的に等間隔で間引かれます
+  （例: 5000 件なら 3 件おきに 1 件抽出）。間引きが発生した場合、レポート上部に
+  「グラフは間引いて表示しています（全 N 件中 M 点）」という注記が出ます。
+- 特定の時間帯だけを詳しく見たい場合は、`report` コマンドの `-From`/`-To`（Linux は `-f`/`-t`）
+  で範囲を絞り込んでからレポートを生成してください。絞り込み後の件数が 2000 件以下であれば
+  全点がそのままグラフに描画されます。
 
 ---
 

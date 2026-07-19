@@ -11,14 +11,19 @@
     使い方:
       PerfMonitor.ps1 start  [-Config path] [-Interval 秒] [-Duration 秒] [-OutputDir dir] [-Prefix name]
       PerfMonitor.ps1 stop   [session_dir]
-      PerfMonitor.ps1 report <session_dir> [-Config path]
+      PerfMonitor.ps1 report <session_dir> [-Config path] [-From ISO日時] [-To ISO日時]
       PerfMonitor.ps1 status [session_dir]
       PerfMonitor.ps1 list
+
+    -From / -To はレポート対象を時間範囲で絞り込む（片方のみの指定も可）。
+    統計値・しきい値超過一覧は絞り込み後の全データを対象に計算する。
+    サンプル数が多い場合、グラフ描画のみ自動的に間引かれる（統計には影響しない）。
 
 .EXAMPLE
     .\PerfMonitor.ps1 start -Interval 5 -Duration 1800
     .\PerfMonitor.ps1 stop
     .\PerfMonitor.ps1 report .\perf_20260517-100000
+    .\PerfMonitor.ps1 report .\perf_20260517-100000 -From "2026-05-17T10:15:00" -To "2026-05-17T10:30:00"
     .\PerfMonitor.ps1 status
 #>
 [CmdletBinding()]
@@ -38,6 +43,10 @@ param(
     # 例: .\PerfMonitor.ps1 report .\results\perf_20260517-100000
     [Parameter(Position = 1)]
     [string]$SessionDir = '',
+
+    # --- report: 時間範囲フィルタ(片方のみの指定も可) ---
+    [string]$From = '',
+    [string]$To   = '',
 
     # --- _collect (internal: called by Start-Process) ---
     [string]$_Session   = '',   # session directory
@@ -477,7 +486,10 @@ function Invoke-Report {
         $env:PERF_THR_NET_RX = $CFG['ThresholdNetRxMbps']
         $env:PERF_THR_NET_TX = $CFG['ThresholdNetTxMbps']
         $env:PERF_THR_LOAD   = $CFG['ThresholdLoadAvg1']
-        & $py3.Source $RenderPy $df $outHtml
+        $renderArgs = @($df, $outHtml)
+        if ($From) { $renderArgs += @('--from', $From) }
+        if ($To)   { $renderArgs += @('--to', $To) }
+        & $py3.Source $RenderPy @renderArgs
         if ($LASTEXITCODE -eq 0) {
             Log-Info "Report generated via python3: $outHtml"
             Write-Host ""; Write-Host "  レポート生成完了: $outHtml"; Write-Host ""
@@ -498,7 +510,7 @@ function Invoke-Report {
         net_tx_mbps    = [double]$CFG['ThresholdNetTxMbps']
         load_avg_1     = [double]$CFG['ThresholdLoadAvg1']
     }
-    if (New-PerfHtmlReport -DataFile $df -OutputFile $outHtml -Thresholds $thr) {
+    if (New-PerfHtmlReport -DataFile $df -OutputFile $outHtml -Thresholds $thr -From $From -To $To) {
         Log-Info "Report generated via PS renderer: $outHtml"
         Write-Host ""; Write-Host "  レポート生成完了: $outHtml"; Write-Host ""
     } else {
@@ -516,17 +528,67 @@ function New-PerfHtmlReport {
     param(
         [string]$DataFile,
         [string]$OutputFile,
-        [hashtable]$Thresholds
+        [hashtable]$Thresholds,
+        [string]$From = '',
+        [string]$To   = ''
     )
     $enc = [System.Text.UTF8Encoding]::new($false)
 
+    # 同梱 Chart.js を inline 埋め込み（オフライン環境でもグラフを描画するため CDN より優先）。
+    # 見つからない場合のみ CDN にフォールバックする。
+    $chartJsLocalPath = Join-Path $ScriptDir 'chart.umd.min.js'
+    if (Test-Path -LiteralPath $chartJsLocalPath) {
+        $chartJsContent = Get-Content -LiteralPath $chartJsLocalPath -Raw -Encoding UTF8
+        $chartJsTag = "<script>`n$chartJsContent`n</script>"
+    } else {
+        Write-Log 'WARN' "同梱 Chart.js が見つかりません（$chartJsLocalPath）。CDN にフォールバックします。オフライン環境ではグラフが表示されない可能性があります。"
+        $chartJsTag = '<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>'
+    }
+
     # データ読み込み
-    $records = @(
+    $allRecords = @(
         Get-Content $DataFile -Encoding utf8 |
         Where-Object { $_.Trim() } |
         ForEach-Object { ConvertFrom-Json $_ }
     )
-    if ($records.Count -eq 0) { Write-Log 'ERROR' "No records in $DataFile"; return $false }
+    if ($allRecords.Count -eq 0) { Write-Log 'ERROR' "No records in $DataFile"; return $false }
+
+    # ── 時間範囲フィルタ(-From/-To。片方のみの指定も可) ─────────────
+    $fromDt = $null; $toDt = $null
+    if ($From) {
+        try { $fromDt = [datetime]::Parse($From) }
+        catch { Write-Log 'WARN' "-From の日時形式を解釈できません（無視します）: $From" }
+    }
+    if ($To) {
+        try { $toDt = [datetime]::Parse($To) }
+        catch { Write-Log 'WARN' "-To の日時形式を解釈できません（無視します）: $To" }
+    }
+    $rangeFiltered = ($null -ne $fromDt -or $null -ne $toDt)
+    if ($rangeFiltered) {
+        $records = @($allRecords | Where-Object {
+            $ts = $null
+            try { $ts = [datetime]::Parse($_.ts) } catch { return $false }
+            if ($null -ne $fromDt -and $ts -lt $fromDt) { return $false }
+            if ($null -ne $toDt   -and $ts -gt $toDt)   { return $false }
+            return $true
+        })
+    } else {
+        $records = $allRecords
+    }
+    if ($records.Count -eq 0) { Write-Log 'ERROR' "指定範囲内にデータがありません（-From $From -To $To）"; return $false }
+
+    # ── グラフ描画用データ(間引き。統計・アラートには影響しない) ──────
+    $MaxChartPoints = 2000
+    if ($records.Count -gt $MaxChartPoints) {
+        $step = [int][math]::Ceiling($records.Count / [double]$MaxChartPoints)
+        $decimated = New-Object System.Collections.Generic.List[object]
+        for ($i = 0; $i -lt $records.Count; $i += $step) { [void]$decimated.Add($records[$i]) }
+        # 環境によっては @(List[object]) が ArgumentException を投げるため ToArray() を使う
+        $chartRecords = $decimated.ToArray()
+    } else {
+        $chartRecords = $records
+    }
+    $chartDecimated = ($chartRecords.Count -lt $records.Count)
 
     # ── ヘルパー ─────────────────────────────────────────────────
     function Get-TsLabel([string]$Ts) {
@@ -548,7 +610,8 @@ function New-PerfHtmlReport {
     }
 
     function To-JsArr([string]$Key) {
-        $parts = $records | ForEach-Object { To-JsValue $_.$Key }
+        # グラフ用データは間引き後の chartRecords を使う（統計・アラートは records=全件のまま）
+        $parts = $chartRecords | ForEach-Object { To-JsValue $_.$Key }
         return '[' + ($parts -join ',') + ']'
     }
 
@@ -639,8 +702,9 @@ function New-PerfHtmlReport {
     )
 
     # ── Chart.js 生成 ────────────────────────────────────────────
-    # 共通ラベル JS 配列
-    $labelsJs = '[' + (($records | ForEach-Object { JsStr (Get-TsLabel $_.ts) }) -join ',') + ']'
+    # 共通ラベル JS 配列（間引き後の chartRecords を使う）
+    $labelsJs = '[' + (($chartRecords | ForEach-Object { JsStr (Get-TsLabel $_.ts) }) -join ',') + ']'
+    $nChartSam = $chartRecords.Count
 
     function Make-Chart {
         param(
@@ -662,7 +726,7 @@ function New-PerfHtmlReport {
 "@)
         }
         if ($Threshold -gt 0) {
-            $thrData = '[' + ((1..$nSam | ForEach-Object { $Threshold }) -join ',') + ']'
+            $thrData = '[' + ((1..$nChartSam | ForEach-Object { $Threshold }) -join ',') + ']'
             $thrLabel = if ($ThresholdLabel) { $ThresholdLabel } else { "しきい値 ($Threshold)" }
             $dsJson.Add("{label:$(JsStr $thrLabel),data:$thrData,borderColor:'#ef4444',borderWidth:1.5,borderDash:[6,4],pointRadius:0,fill:false,spanGaps:true}")
         }
@@ -843,6 +907,16 @@ function New-PerfHtmlReport {
         "<span class=`"alert-badge`">$alertCount 回</span>"
     } else { "<span class=`"ok-badge`">なし</span>" }
 
+    $rangeBadgeHtml = if ($rangeFiltered) {
+        $fromDisp = if ($From) { $From } else { '(先頭)' }
+        $toDisp   = if ($To)   { $To }   else { '(末尾)' }
+        "<div class=`"meta-item`">表示範囲<span class=`"range-badge`">$fromDisp 〜 $toDisp</span></div>"
+    } else { '' }
+
+    $chartNoteHtml = if ($chartDecimated) {
+        "<div class=`"chart-note`">サンプル数が多いため、グラフは間引いて表示しています（全 $nSam 件中 $nChartSam 点）。統計値・しきい値超過一覧は全データを対象に計算しています。</div>"
+    } else { '' }
+
     # ── HTML 組み立て ───────────────────────────────────────────
     $html = @"
 <!DOCTYPE html>
@@ -850,7 +924,7 @@ function New-PerfHtmlReport {
 <head>
 <meta charset="UTF-8">
 <title>Performance Monitor Report</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+$chartJsTag
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;background:#f0f2f5;color:#222}
@@ -878,6 +952,8 @@ td.warn{color:#d97706;font-weight:600}
 td.na{color:#94a3b8}
 .alert-badge{display:inline-block;background:#fee2e2;color:#b91c1c;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
 .ok-badge{display:inline-block;background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.range-badge{display:inline-block;background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.chart-note{font-size:11px;color:#64748b;margin-bottom:10px}
 .footer{text-align:center;padding:16px;font-size:11px;color:#94a3b8}
 </style>
 </head>
@@ -894,6 +970,7 @@ td.na{color:#94a3b8}
   <div class="meta-item">計測時間<span>$durStr</span></div>
   <div class="meta-item">サンプル数<span>$nSam 件</span></div>
   <div class="meta-item">しきい値超過<span>$alertBadge</span></div>
+  $rangeBadgeHtml
 </div>
 <div class="section">
   <div class="section-title">サマリー</div>
@@ -901,6 +978,7 @@ td.na{color:#94a3b8}
 </div>
 <div class="section">
   <div class="section-title">リソース推移グラフ</div>
+  $chartNoteHtml
   <div class="charts-grid">$chartsHtml</div>
 </div>
 <div class="section">
