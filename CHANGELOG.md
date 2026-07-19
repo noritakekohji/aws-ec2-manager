@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-07-19
+
+### Fixed
+- **perf-monitor レポートでグラフが表示されない問題を解消**。両レンダラー(`render_report.py` / `PerfMonitor.ps1` ネイティブフォールバック)とも Chart.js を CDN(cdn.jsdelivr.net)から読み込んでおり、インターネットに出られない踏み台/AVD 環境では描画に失敗していた。Chart.js v4.5.1(MIT)を `tools/perf-monitor/chart.umd.min.js` として同梱し、レポート HTML に inline 埋め込むよう変更(同梱ファイルが見つからない場合のみ CDN にフォールバック)
+
+### Added
+- **perf-monitor: サンプル数が多い場合の自動間引き**。グラフ描画のみ 2000 点を超えたら等間隔で間引き(統計値・しきい値超過一覧は常に全データが対象)。間引き発生時はレポートに注記を表示
+- **perf-monitor: `report` コマンドに時間範囲フィルタを追加**(Windows: `-From`/`-To`、Linux: `-f`/`-t`。片方のみの指定も可)。絞り込み後の全データを対象に統計・アラートを計算
+- LocalToolsLauncher のカタログに `directory` 型パラメータの `sessionDir` 連携と `from`/`to` パラメータを追加し、汎用実行フローからそのまま範囲指定可能に
+
 ## [2.5.0] - 2026-07-19
 
 ### Changed
