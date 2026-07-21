@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.8.1] - 2026-07-22
+
+### Fixed
+- LocalToolsLauncher の設定ダイアログで「ツールルート」/「出力先」を変更しても、選択中ツールのパラメータ欄・設定ファイル欄の表示に反映されない問題を修正。設定保存時に `Update-CommandPreview` だけでなく `Update-SelectedTool` を呼び、選択中ツールのパネルを新しい設定値で再構築するようにした
+
 ## [2.8.0] - 2026-07-22
 
 ### Changed

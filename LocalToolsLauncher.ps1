@@ -1434,7 +1434,10 @@ function Show-SettingsDialog {
             $HeaderAwsProfileComboBox.SelectedItem = $script:AwsProfile
         }
         Set-Status "設定を保存しました: $ConfigPath"
-        Update-CommandPreview
+        # ToolsRoot/OutputRoot 変更を選択中ツールのパラメータ・設定ファイルパネルへ反映する
+        # (Update-CommandPreview だけではプレビュー文字列しか再生成されず、画面上のパス表示は
+        # ツール選択時に展開した古い値のまま残ってしまうため)
+        Update-SelectedTool
         $dlg.Close()
     }.GetNewClosure())
 
