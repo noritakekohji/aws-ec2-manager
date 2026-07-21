@@ -1,0 +1,9 @@
+name: ファイアウォール設定
+description: プロファイル状態と有効な受信ルールを確認する
+output: text
+timeout: 300
+script: |
+  Write-Output "=== プロファイル ==="
+  Get-NetFirewallProfile | Select-Object Name, Enabled, DefaultInboundAction, DefaultOutboundAction | Format-Table -AutoSize
+  Write-Output "=== 有効な受信ルール(先頭50件) ==="
+  Get-NetFirewallRule -Direction Inbound -Enabled True | Select-Object -First 50 DisplayName, Action, Profile | Format-Table -AutoSize

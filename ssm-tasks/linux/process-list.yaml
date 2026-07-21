@@ -1,0 +1,6 @@
+name: プロセス一覧
+description: 全プロセスをツリー表示で確認する
+output: text
+timeout: 300
+script: |
+  ps auxf

@@ -1,0 +1,14 @@
+name: インストール済みパッケージ一覧
+description: rpm/dpkgいずれかを自動判定してパッケージ一覧を取得する
+output: text
+timeout: 600
+script: |
+  if command -v rpm >/dev/null 2>&1; then
+    echo "=== rpm -qa ==="
+    rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n' | sort
+  elif command -v dpkg >/dev/null 2>&1; then
+    echo "=== dpkg -l ==="
+    dpkg -l
+  else
+    echo "rpm/dpkg のいずれも見つかりませんでした"
+  fi

@@ -1,0 +1,6 @@
+name: プロセス一覧
+description: CPU使用時間順にプロセス一覧を確認する
+output: text
+timeout: 300
+script: |
+  Get-Process | Sort-Object CPU -Descending | Select-Object -First 40 Id, ProcessName, CPU, @{N='MemoryMB';E={[math]::Round($_.WorkingSet / 1MB, 1)}} | Format-Table -AutoSize

@@ -1,0 +1,11 @@
+name: ネットワークインターフェース
+description: IPアドレス・経路・DNS設定を確認する
+output: text
+timeout: 300
+script: |
+  echo "=== ip addr ==="
+  ip addr show 2>/dev/null || ifconfig -a
+  echo "=== ip route ==="
+  ip route show 2>/dev/null || route -n
+  echo "=== /etc/resolv.conf ==="
+  cat /etc/resolv.conf 2>/dev/null

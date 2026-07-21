@@ -1,0 +1,8 @@
+name: イベントログ(直近24時間のエラー/警告)
+description: System/ApplicationログからLevel 1-3(重大/エラー/警告)を抽出する
+output: text
+timeout: 600
+script: |
+  Get-WinEvent -FilterHashtable @{ LogName = 'System', 'Application'; Level = 1, 2, 3; StartTime = (Get-Date).AddHours(-24) } -MaxEvents 100 -ErrorAction SilentlyContinue |
+    Select-Object TimeCreated, LogName, Id, LevelDisplayName, ProviderName, Message |
+    Format-Table -Wrap -AutoSize

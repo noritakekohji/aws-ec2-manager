@@ -1,0 +1,6 @@
+name: ディスク使用状況
+description: ドライブごとの空き容量と全体容量を確認する
+output: text
+timeout: 300
+script: |
+  Get-Volume | Select-Object DriveLetter, FileSystemLabel, FileSystem, SizeRemaining, Size | Format-Table -AutoSize

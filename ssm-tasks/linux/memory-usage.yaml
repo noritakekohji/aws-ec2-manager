@@ -1,0 +1,9 @@
+name: メモリ使用状況
+description: 空きメモリとメモリ使用量上位プロセスを確認する
+output: text
+timeout: 300
+script: |
+  echo "=== free -h ==="
+  free -h
+  echo "=== メモリ使用量上位20プロセス ==="
+  ps aux --sort=-%mem | head -20

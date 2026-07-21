@@ -1,0 +1,8 @@
+name: CPU/負荷状況
+description: CPU情報とCPU使用率上位プロセスを確認する
+output: text
+timeout: 300
+script: |
+  Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors, LoadPercentage | Format-List
+  Write-Output "=== CPU使用率上位20プロセス ==="
+  Get-Process | Sort-Object CPU -Descending | Select-Object -First 20 Name, Id, CPU | Format-Table -AutoSize

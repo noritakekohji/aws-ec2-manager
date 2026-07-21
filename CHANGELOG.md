@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-07-21
+
+### Added
+- **SSM Run Command タブ用のインフラ調査タスクを追加**。`ssm-tasks/linux/` と `ssm-tasks/windows/` にそれぞれ12種類(OS基本情報、ディスク使用状況、メモリ使用状況、CPU/負荷状況、ネットワークI/F、ネットワーク接続/待受ポート、プロセス一覧、サービス状態、パッケージ/ソフトウェア一覧、ログ確認、ファイアウォール設定、ディスクI/O)を追加。distro差異が大きいコマンド(パッケージ管理、ファイアウォール)は自動判定するようにした
+
 ## [2.6.0] - 2026-07-19
 
 ### Fixed

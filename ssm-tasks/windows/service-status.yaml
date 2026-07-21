@@ -1,0 +1,9 @@
+name: サービス状態
+description: 自動起動なのに停止中のサービスと稼働中サービスを確認する
+output: text
+timeout: 300
+script: |
+  Write-Output "=== 自動起動だが停止中 ==="
+  Get-Service | Where-Object { $_.StartType -eq 'Automatic' -and $_.Status -ne 'Running' } | Format-Table -AutoSize
+  Write-Output "=== 稼働中サービス ==="
+  Get-Service | Where-Object { $_.Status -eq 'Running' } | Sort-Object DisplayName | Format-Table -AutoSize

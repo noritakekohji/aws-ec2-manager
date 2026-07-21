@@ -1,0 +1,9 @@
+name: OS基本情報
+description: ホスト名/OSバージョン/起動時刻を確認する
+output: text
+timeout: 300
+script: |
+  Write-Output "=== OS ==="
+  Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, OSArchitecture, LastBootUpTime | Format-List
+  Write-Output "=== Computer ==="
+  Get-CimInstance Win32_ComputerSystem | Select-Object Name, Domain, Manufacturer, Model | Format-List

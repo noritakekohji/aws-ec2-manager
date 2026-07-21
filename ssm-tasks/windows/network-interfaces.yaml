@@ -1,0 +1,9 @@
+name: ネットワークインターフェース
+description: IPアドレス・DNS設定を確認する
+output: text
+timeout: 300
+script: |
+  Write-Output "=== ipconfig /all ==="
+  ipconfig /all
+  Write-Output "=== DNSサーバー ==="
+  Get-DnsClientServerAddress -AddressFamily IPv4 | Format-Table -AutoSize

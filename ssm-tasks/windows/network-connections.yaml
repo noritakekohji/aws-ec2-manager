@@ -1,0 +1,9 @@
+name: ネットワーク接続/待受ポート
+description: 待受ポートと確立済み接続の一覧を確認する
+output: text
+timeout: 300
+script: |
+  Write-Output "=== 待受ポート ==="
+  Get-NetTCPConnection -State Listen | Sort-Object LocalPort | Select-Object LocalAddress, LocalPort, OwningProcess | Format-Table -AutoSize
+  Write-Output "=== 確立済み接続 ==="
+  Get-NetTCPConnection -State Established | Select-Object LocalAddress, LocalPort, RemoteAddress, RemotePort, OwningProcess | Format-Table -AutoSize

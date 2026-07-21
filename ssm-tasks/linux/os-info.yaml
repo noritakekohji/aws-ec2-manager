@@ -1,0 +1,13 @@
+name: OS基本情報
+description: ホスト名/OSバージョン/カーネル/稼働時間を確認する
+output: text
+timeout: 300
+script: |
+  echo "=== hostname ==="
+  hostname
+  echo "=== os-release ==="
+  cat /etc/os-release 2>/dev/null
+  echo "=== kernel ==="
+  uname -a
+  echo "=== uptime ==="
+  uptime

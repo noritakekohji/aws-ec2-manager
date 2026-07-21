@@ -1,0 +1,11 @@
+name: CPU/負荷状況
+description: CPU情報・ロードアベレージ・CPU使用率上位プロセスを確認する
+output: text
+timeout: 300
+script: |
+  echo "=== lscpu ==="
+  lscpu 2>/dev/null || cat /proc/cpuinfo
+  echo "=== loadavg ==="
+  cat /proc/loadavg
+  echo "=== CPU使用率上位20プロセス ==="
+  ps aux --sort=-%cpu | head -20

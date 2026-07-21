@@ -1,0 +1,14 @@
+name: インストール済みソフトウェア一覧
+description: レジストリからインストール済みソフトウェアを列挙する(Win32_Productより高速)
+output: text
+timeout: 600
+script: |
+  $paths = @(
+    'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
+    'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+  )
+  Get-ItemProperty -Path $paths -ErrorAction SilentlyContinue |
+    Where-Object { $_.DisplayName } |
+    Select-Object DisplayName, DisplayVersion, Publisher, InstallDate |
+    Sort-Object DisplayName |
+    Format-Table -AutoSize

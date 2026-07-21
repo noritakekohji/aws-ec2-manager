@@ -1,0 +1,13 @@
+name: メモリ使用状況
+description: 総メモリ/空きメモリとメモリ使用量上位プロセスを確認する
+output: text
+timeout: 300
+script: |
+  $os = Get-CimInstance Win32_OperatingSystem
+  [PSCustomObject]@{
+    TotalMemoryMB = [math]::Round($os.TotalVisibleMemorySize / 1KB, 1)
+    FreeMemoryMB  = [math]::Round($os.FreePhysicalMemory / 1KB, 1)
+    UsedMemoryMB  = [math]::Round(($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / 1KB, 1)
+  } | Format-List
+  Write-Output "=== メモリ使用量上位20プロセス ==="
+  Get-Process | Sort-Object WorkingSet -Descending | Select-Object -First 20 Name, Id, @{N='MemoryMB';E={[math]::Round($_.WorkingSet / 1MB, 1)}} | Format-Table -AutoSize

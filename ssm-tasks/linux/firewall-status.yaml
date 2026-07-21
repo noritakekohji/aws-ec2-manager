@@ -1,0 +1,14 @@
+name: ファイアウォール設定
+description: firewalld/iptablesいずれかを自動判定して設定を確認する
+output: text
+timeout: 300
+script: |
+  if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active firewalld >/dev/null 2>&1; then
+    echo "=== firewall-cmd --list-all ==="
+    firewall-cmd --list-all
+  elif command -v iptables >/dev/null 2>&1; then
+    echo "=== iptables -L -n -v ==="
+    iptables -L -n -v
+  else
+    echo "firewalld/iptables のいずれも見つかりませんでした"
+  fi

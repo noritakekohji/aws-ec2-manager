@@ -1,0 +1,9 @@
+name: ディスクI/O状況
+description: 物理ディスクの%Disk Timeとキュー長を数回サンプリングする
+output: text
+timeout: 300
+script: |
+  Get-Counter '\PhysicalDisk(_Total)\% Disk Time', '\PhysicalDisk(_Total)\Avg. Disk Queue Length' -SampleInterval 2 -MaxSamples 3 |
+    Select-Object -ExpandProperty CounterSamples |
+    Select-Object Path, CookedValue |
+    Format-Table -AutoSize

@@ -1,0 +1,9 @@
+name: サービス状態(systemd)
+description: 失敗しているユニットと稼働中サービスの一覧を確認する
+output: text
+timeout: 300
+script: |
+  echo "=== failed units ==="
+  systemctl --failed --no-pager 2>/dev/null || echo "systemctl が利用できません"
+  echo "=== 稼働中サービス ==="
+  systemctl list-units --type=service --state=running --no-pager 2>/dev/null

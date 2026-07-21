@@ -1,0 +1,9 @@
+name: ディスク使用状況
+description: マウントごとの容量とinode使用率を確認する
+output: text
+timeout: 300
+script: |
+  echo "=== df -hT ==="
+  df -hT
+  echo "=== inode使用率 (df -i) ==="
+  df -i

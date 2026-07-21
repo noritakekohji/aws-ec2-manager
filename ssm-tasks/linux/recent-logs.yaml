@@ -1,0 +1,12 @@
+name: 直近ログ確認
+description: journalログまたはsyslogの直近200行を確認する
+output: text
+timeout: 300
+script: |
+  if command -v journalctl >/dev/null 2>&1; then
+    echo "=== journalctl -xe (直近200行) ==="
+    journalctl -xe --no-pager -n 200
+  else
+    echo "=== /var/log/messages または syslog (直近200行) ==="
+    tail -n 200 /var/log/messages 2>/dev/null || tail -n 200 /var/log/syslog 2>/dev/null
+  fi

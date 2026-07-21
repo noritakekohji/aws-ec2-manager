@@ -1,0 +1,9 @@
+name: ディスクI/O状況
+description: vmstatとiostat(sysstat)でI/O状況を確認する
+output: text
+timeout: 300
+script: |
+  echo "=== vmstat 1 3 ==="
+  vmstat 1 3
+  echo "=== iostat -x 1 3 (要 sysstat) ==="
+  iostat -x 1 3 2>/dev/null || echo "iostat が見つかりません(sysstatパッケージ未インストール)"

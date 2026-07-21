@@ -1,0 +1,9 @@
+name: ネットワーク接続/待受ポート
+description: 待受ポートと確立済み接続の一覧を確認する
+output: text
+timeout: 300
+script: |
+  echo "=== 待受ポート ==="
+  ss -tulnp 2>/dev/null || netstat -tulnp 2>/dev/null
+  echo "=== 確立済み接続 ==="
+  ss -tnp state established 2>/dev/null || netstat -tnp 2>/dev/null
