@@ -11,8 +11,7 @@ tools/perf-monitor/
 ├── perf_monitor.bat       # Windows 起動用バッチ
 ├── perf_monitor.sh        # Linux 本体（コレクタ + レポート生成）
 ├── perf_monitor.conf      # 既定設定（しきい値・収集間隔など）
-├── render_report.py       # python3 製の HTML レポート生成器（共通）
-└── chart.umd.min.js       # 同梱 Chart.js（レポートに inline 埋め込み。オフライン動作用）
+└── render_report.py       # python3 製の HTML レポート生成器（共通）
 ```
 
 ---
@@ -28,10 +27,10 @@ tools/perf-monitor/
 > PowerShell ネイティブの簡易レンダラーにフォールバックします。
 > セキュリティで python3 が制限されている環境でも `report` が動作します。
 >
-> **グラフはインターネット接続不要**: 両レンダラーとも Chart.js を CDN からではなく
-> 同梱の `chart.umd.min.js` を HTML に直接埋め込んで出力します。踏み台サーバーなど
-> インターネットに出られない環境でもグラフが正しく表示されます（`chart.umd.min.js` が
-> 見つからない場合のみ CDN にフォールバックします）。
+> **グラフは外部ライブラリ・インターネット接続不要**: 両レンダラーとも折れ線グラフを
+> JavaScript ライブラリ(Chart.js 等)に頼らず、純粋な SVG として静的に描画します。
+> ブラウザの JS 実行がポリシーで制限されている環境や、ファイル配布の都合でライブラリ
+> 本体が欠落した場合でも、SVG は HTML の一部としてそのまま描画されるため影響を受けません。
 
 ---
 

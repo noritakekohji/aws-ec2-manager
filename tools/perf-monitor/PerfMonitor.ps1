@@ -521,8 +521,8 @@ function Invoke-Report {
 # ════════════════════════════════════════════════════════════
 # PowerShell ネイティブ HTML レポート生成
 #   python3 が使えない環境向けのフォールバック。
-#   Chart.js (CDN) を使ってブラウザで描画するため
-#   ネットワーク接続があれば python3 版と同等のグラフが得られる。
+#   グラフは JavaScript ライブラリに頼らず純粋な SVG で静的描画するため、
+#   JS 実行環境やファイル配布の問題に一切左右されない。
 # ════════════════════════════════════════════════════════════
 function New-PerfHtmlReport {
     param(
@@ -533,17 +533,6 @@ function New-PerfHtmlReport {
         [string]$To   = ''
     )
     $enc = [System.Text.UTF8Encoding]::new($false)
-
-    # 同梱 Chart.js を inline 埋め込み（オフライン環境でもグラフを描画するため CDN より優先）。
-    # 見つからない場合のみ CDN にフォールバックする。
-    $chartJsLocalPath = Join-Path $ScriptDir 'chart.umd.min.js'
-    if (Test-Path -LiteralPath $chartJsLocalPath) {
-        $chartJsContent = Get-Content -LiteralPath $chartJsLocalPath -Raw -Encoding UTF8
-        $chartJsTag = "<script>`n$chartJsContent`n</script>"
-    } else {
-        Write-Log 'WARN' "同梱 Chart.js が見つかりません（$chartJsLocalPath）。CDN にフォールバックします。オフライン環境ではグラフが表示されない可能性があります。"
-        $chartJsTag = '<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>'
-    }
 
     # データ読み込み
     $allRecords = @(
@@ -601,21 +590,23 @@ function New-PerfHtmlReport {
         }
     }
 
-    function To-JsValue($v) {
-        if ($null -eq $v) { return 'null' }
-        # 数値であることを確認できれば数値、それ以外は文字列化（JSON 用にダブルクオート）
-        if ($v -is [bool])                       { return ([bool]$v).ToString().ToLower() }
-        if ($v -is [int] -or $v -is [long] -or $v -is [double] -or $v -is [decimal]) { return "$v" }
-        return "`"$v`""
-    }
-
-    function To-JsArr([string]$Key) {
+    function Get-ChartVals([string]$Key) {
         # グラフ用データは間引き後の chartRecords を使う（統計・アラートは records=全件のまま）
-        $parts = $chartRecords | ForEach-Object { To-JsValue $_.$Key }
-        return '[' + ($parts -join ',') + ']'
+        # null を含む nullable double 配列として返す（欠測点は折れ線で繋がずスキップする）
+        return @($chartRecords | ForEach-Object {
+            $v = $_.$Key
+            if ($null -eq $v) { $null } else { [double]$v }
+        })
     }
 
-    function JsStr([string]$s) { return "`"" + ($s -replace '\\','\\\\' -replace '"','\"') + "`"" }
+    $Ic = [System.Globalization.CultureInfo]::InvariantCulture
+    function Fmt1([double]$v) { return $v.ToString('F1', $Ic) }
+
+    # data.jsonl 由来の文字列(ts のパース失敗時など)を SVG テキストノードへ
+    # そのまま埋め込むと HTML インジェクションになりうるためエスケープする。
+    function ConvertTo-SvgText([string]$s) {
+        return ($s -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;')
+    }
 
     function Measure-Stats([string]$Key) {
         $vals = @($records | Where-Object { $null -ne $_.$Key } | ForEach-Object { [double]$_.$Key })
@@ -701,67 +692,109 @@ function New-PerfHtmlReport {
         (Build-Card 'しきい値超過'       "$alertCount 回"                        $alertColor)
     )
 
-    # ── Chart.js 生成 ────────────────────────────────────────────
-    # 共通ラベル JS 配列（間引き後の chartRecords を使う）
-    $labelsJs = '[' + (($chartRecords | ForEach-Object { JsStr (Get-TsLabel $_.ts) }) -join ',') + ']'
-    $nChartSam = $chartRecords.Count
+    # ── SVG チャート生成 ──────────────────────────────────────────
+    # JavaScript ライブラリに頼らず純粋な SVG で静的描画する（間引き後の chartRecords を使う）。
+    $labelTexts = @($chartRecords | ForEach-Object { Get-TsLabel $_.ts })
+    $nChartSam  = $chartRecords.Count
+    $SvgW = 880; $MLeft = 46; $MRight = 12; $MTop = 10; $MBottom = 22
+    $PlotW = $SvgW - $MLeft - $MRight
 
     function Make-Chart {
         param(
             [string]$ChartId,
             [string]$Title,
-            [array]$Datasets,    # @{ Label; Data; Color; Fill }
+            [array]$Datasets,    # @{ Label; Data (nullable double[]); Color; Fill }
             [string]$YLabel = '',
             [double]$Threshold = 0,
             [string]$ThresholdLabel = '',
             [Nullable[double]]$YMax = $null,
             [int]$Height = 220
         )
-        $dsJson = New-Object System.Collections.Generic.List[string]
+        $plotH = $Height - $MTop - $MBottom
+        $n = $nChartSam
+
+        $allVals = New-Object System.Collections.Generic.List[double]
         foreach ($d in $Datasets) {
-            $dataJs = $d.Data
-            $fillJs = if ($d.Fill) { "'origin'" } else { 'false' }
-            $dsJson.Add(@"
-{label:$(JsStr $d.Label),data:$dataJs,borderColor:'$($d.Color)',backgroundColor:'$($d.Color)26',borderWidth:1.5,pointRadius:0,tension:0.3,fill:$fillJs,spanGaps:true}
-"@)
+            foreach ($v in $d.Data) { if ($null -ne $v) { $allVals.Add([double]$v) } }
         }
+        if ($Threshold -gt 0) { $allVals.Add($Threshold) }
+        $computedMax = if ($allVals.Count -gt 0) { ($allVals | Measure-Object -Maximum).Maximum * 1.1 } else { 1.0 }
+        $yHi = if ($null -ne $YMax) { $YMax } else { $computedMax }
+        if ($yHi -le 0) { $yHi = 1.0 }
+
+        function XAt([int]$i) {
+            if ($n -le 1) { return $MLeft + $PlotW / 2 }
+            return $MLeft + $i * ($PlotW / ($n - 1))
+        }
+        function YAt([double]$v) {
+            return $MTop + $plotH - ($v / $yHi) * $plotH
+        }
+        $y0 = YAt 0
+
+        # 横方向グリッド線・Y軸ラベル(5分割)
+        $gridSvg = New-Object System.Collections.Generic.List[string]
+        for ($i = 0; $i -lt 5; $i++) {
+            $v = $yHi * $i / 4
+            $gy = YAt $v
+            $gridSvg.Add("<line x1=`"$MLeft`" y1=`"$(Fmt1 $gy)`" x2=`"$($SvgW-$MRight)`" y2=`"$(Fmt1 $gy)`" stroke=`"#f1f5f9`" stroke-width=`"1`"/>")
+            $gridSvg.Add("<text x=`"$($MLeft-6)`" y=`"$(Fmt1 ($gy+3))`" text-anchor=`"end`" font-size=`"10`" fill=`"#64748b`">$([math]::Round($v))$YLabel</text>")
+        }
+
+        # X軸ラベル(最大12個。間引いて重なりを防ぐ)
+        $xLabelSvg = New-Object System.Collections.Generic.List[string]
+        $xStep = if ($n -gt 12) { [int][math]::Max(1, [math]::Ceiling($n / 12.0)) } else { 1 }
+        for ($i = 0; $i -lt $n; $i += $xStep) {
+            $xLabelSvg.Add("<text x=`"$(Fmt1 (XAt $i))`" y=`"$($Height-6)`" text-anchor=`"middle`" font-size=`"10`" fill=`"#64748b`">$(ConvertTo-SvgText $labelTexts[$i])</text>")
+        }
+
+        # データセット(折れ線 + 塗りつぶし)
+        $datasetSvg = New-Object System.Collections.Generic.List[string]
+        $legendItems = New-Object System.Collections.Generic.List[object]
+        foreach ($d in $Datasets) {
+            $pts = New-Object System.Collections.Generic.List[string]
+            $firstX = $null; $lastX = $null
+            for ($i = 0; $i -lt $d.Data.Count; $i++) {
+                $v = $d.Data[$i]
+                if ($null -ne $v) {
+                    $x = XAt $i; $y = YAt ([double]$v)
+                    if ($null -eq $firstX) { $firstX = $x }
+                    $lastX = $x
+                    $pts.Add("$(Fmt1 $x),$(Fmt1 $y)")
+                }
+            }
+            if ($pts.Count -gt 0) {
+                $ptsStr = $pts -join ' '
+                if ($d.Fill) {
+                    $polyStr = "$ptsStr $(Fmt1 $lastX),$(Fmt1 $y0) $(Fmt1 $firstX),$(Fmt1 $y0)"
+                    $datasetSvg.Add("<polygon points=`"$polyStr`" fill=`"$($d.Color)`" fill-opacity=`"0.15`" stroke=`"none`"/>")
+                }
+                $datasetSvg.Add("<polyline points=`"$ptsStr`" fill=`"none`" stroke=`"$($d.Color)`" stroke-width=`"1.5`"/>")
+            }
+            $legendItems.Add([PSCustomObject]@{ Color = $d.Color; Label = $d.Label; Dashed = $false })
+        }
+
+        # しきい値ライン
         if ($Threshold -gt 0) {
-            $thrData = '[' + ((1..$nChartSam | ForEach-Object { $Threshold }) -join ',') + ']'
+            $ty = YAt $Threshold
             $thrLabel = if ($ThresholdLabel) { $ThresholdLabel } else { "しきい値 ($Threshold)" }
-            $dsJson.Add("{label:$(JsStr $thrLabel),data:$thrData,borderColor:'#ef4444',borderWidth:1.5,borderDash:[6,4],pointRadius:0,fill:false,spanGaps:true}")
+            $datasetSvg.Add("<line x1=`"$MLeft`" y1=`"$(Fmt1 $ty)`" x2=`"$($SvgW-$MRight)`" y2=`"$(Fmt1 $ty)`" stroke=`"#ef4444`" stroke-width=`"1.5`" stroke-dasharray=`"6,4`"/>")
+            $legendItems.Add([PSCustomObject]@{ Color = '#ef4444'; Label = $thrLabel; Dashed = $true })
         }
-        $datasetsJs = $dsJson -join ','
-        $yMaxOpt = if ($null -ne $YMax) { "max: $YMax," } else { '' }
-        $titleDisplay = if ($YLabel) { 'true' } else { 'false' }
-        $yLabelJs = JsStr $YLabel
+
+        $legendHtml = ($legendItems | ForEach-Object {
+            $dashCls = if ($_.Dashed) { ' legend-dash' } else { '' }
+            "<span class=`"legend-item$dashCls`"><span class=`"legend-swatch`" style=`"background:$($_.Color)`"></span>$($_.Label)</span>"
+        }) -join ''
+
+        $svg = "<svg viewBox=`"0 0 $SvgW $Height`" preserveAspectRatio=`"none`" style=`"width:100%;height:${Height}px`" role=`"img`" aria-label=`"$Title`">" +
+               ($gridSvg -join '') + ($xLabelSvg -join '') + ($datasetSvg -join '') + '</svg>'
+
         return @"
 <div class="chart-box">
   <div class="chart-title">$Title</div>
-  <canvas id="$ChartId" height="$Height"></canvas>
+  <div class="chart-legend">$legendHtml</div>
+  $svg
 </div>
-<script>
-(function(){
-  var ctx = document.getElementById('$ChartId').getContext('2d');
-  new Chart(ctx, {
-    type: 'line',
-    data: { labels: $labelsJs, datasets: [$datasetsJs] },
-    options: {
-      responsive: true, animation: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
-        tooltip: { callbacks: { label: function(c){ return c.dataset.label + ': ' + (c.parsed.y == null ? '-' : c.parsed.y) + ' $YLabel'; } } }
-      },
-      scales: {
-        x: { ticks: { maxTicksLimit: 12, font: { size: 10 } }, grid: { color: '#f1f5f9' } },
-        y: { beginAtZero: true, $yMaxOpt
-             title: { display: $titleDisplay, text: $yLabelJs, font: { size: 11 } },
-             ticks: { font: { size: 10 } }, grid: { color: '#f1f5f9' } }
-      }
-    }
-  });
-})();
-</script>
 "@
     }
 
@@ -774,45 +807,45 @@ function New-PerfHtmlReport {
     $chartsHtml = ''
     # 1. CPU
     $chartsHtml += Make-Chart -ChartId 'chartCpu' -Title 'CPU 使用率' `
-        -Datasets @(@{Label='CPU (%)'; Data=(To-JsArr 'cpu_pct'); Color='#3b82f6'; Fill=$true}) `
+        -Datasets @(@{Label='CPU (%)'; Data=(Get-ChartVals 'cpu_pct'); Color='#3b82f6'; Fill=$true}) `
         -YLabel '%' -Threshold $thrCpu -ThresholdLabel "しきい値 ($thrCpu%)" -YMax 100
     # 2. メモリ使用率
     $chartsHtml += Make-Chart -ChartId 'chartMem' -Title 'メモリ使用率' `
         -Datasets @(
-            @{Label='Memory (%)'; Data=(To-JsArr 'mem_used_pct'); Color='#8b5cf6'; Fill=$true},
-            @{Label='Swap (%)';   Data=(To-JsArr 'swap_used_pct'); Color='#c084fc'; Fill=$false}
+            @{Label='Memory (%)'; Data=(Get-ChartVals 'mem_used_pct'); Color='#8b5cf6'; Fill=$true},
+            @{Label='Swap (%)';   Data=(Get-ChartVals 'swap_used_pct'); Color='#c084fc'; Fill=$false}
         ) `
         -YLabel '%' -Threshold $thrMem -ThresholdLabel "しきい値 ($thrMem%)" -YMax 100
     # 3. メモリ容量 (GB)
     $yMaxMem = if ($st['mem_total_gb']) { [double]$st['mem_total_gb'].max } else { $null }
     $chartsHtml += Make-Chart -ChartId 'chartMemGB' -Title 'メモリ容量 (GB)' `
         -Datasets @(
-            @{Label='使用 (GB)';     Data=(To-JsArr 'mem_used_gb'); Color='#7c3aed'; Fill=$true},
-            @{Label='空き (GB)';     Data=(To-JsArr 'mem_free_gb'); Color='#a78bfa'; Fill=$false},
-            @{Label='スワップ (GB)'; Data=(To-JsArr 'swap_used_gb'); Color='#c084fc'; Fill=$false}
+            @{Label='使用 (GB)';     Data=(Get-ChartVals 'mem_used_gb'); Color='#7c3aed'; Fill=$true},
+            @{Label='空き (GB)';     Data=(Get-ChartVals 'mem_free_gb'); Color='#a78bfa'; Fill=$false},
+            @{Label='スワップ (GB)'; Data=(Get-ChartVals 'swap_used_gb'); Color='#c084fc'; Fill=$false}
         ) `
         -YLabel 'GB' -Threshold 0 -YMax $yMaxMem
     # 4. ディスク I/O
     $chartsHtml += Make-Chart -ChartId 'chartDisk' -Title 'ディスク I/O' `
         -Datasets @(
-            @{Label='Read (MB/s)';  Data=(To-JsArr 'disk_read_mbps');  Color='#f59e0b'; Fill=$false},
-            @{Label='Write (MB/s)'; Data=(To-JsArr 'disk_write_mbps'); Color='#f97316'; Fill=$false}
+            @{Label='Read (MB/s)';  Data=(Get-ChartVals 'disk_read_mbps');  Color='#f59e0b'; Fill=$false},
+            @{Label='Write (MB/s)'; Data=(Get-ChartVals 'disk_write_mbps'); Color='#f97316'; Fill=$false}
         ) `
         -YLabel 'MB/s' -Threshold ([math]::Max($thrDr,$thrDw)) -ThresholdLabel 'しきい値'
     # 5. ネットワーク
     $chartsHtml += Make-Chart -ChartId 'chartNet' -Title 'ネットワークスループット' `
         -Datasets @(
-            @{Label='Rx (Mbps)'; Data=(To-JsArr 'net_rx_mbps'); Color='#06b6d4'; Fill=$false},
-            @{Label='Tx (Mbps)'; Data=(To-JsArr 'net_tx_mbps'); Color='#0891b2'; Fill=$false}
+            @{Label='Rx (Mbps)'; Data=(Get-ChartVals 'net_rx_mbps'); Color='#06b6d4'; Fill=$false},
+            @{Label='Tx (Mbps)'; Data=(Get-ChartVals 'net_tx_mbps'); Color='#0891b2'; Fill=$false}
         ) `
         -YLabel 'Mbps' -Threshold ([math]::Max($thrRx,$thrTx)) -ThresholdLabel 'しきい値'
     # 6. ロードアベレージ（Linux のみ）
     if ($isLinux) {
         $chartsHtml += Make-Chart -ChartId 'chartLoad' -Title 'ロードアベレージ' `
             -Datasets @(
-                @{Label='Load 1min';  Data=(To-JsArr 'load_avg_1');  Color='#22c55e'; Fill=$false},
-                @{Label='Load 5min';  Data=(To-JsArr 'load_avg_5');  Color='#4ade80'; Fill=$false},
-                @{Label='Load 15min'; Data=(To-JsArr 'load_avg_15'); Color='#86efac'; Fill=$false}
+                @{Label='Load 1min';  Data=(Get-ChartVals 'load_avg_1');  Color='#22c55e'; Fill=$false},
+                @{Label='Load 5min';  Data=(Get-ChartVals 'load_avg_5');  Color='#4ade80'; Fill=$false},
+                @{Label='Load 15min'; Data=(Get-ChartVals 'load_avg_15'); Color='#86efac'; Fill=$false}
             ) `
             -YLabel '' -Threshold $thrLoad -ThresholdLabel "しきい値 ($thrLoad)"
     }
@@ -820,7 +853,7 @@ function New-PerfHtmlReport {
     $hasProc = @($records | Where-Object { $null -ne $_.proc_count }).Count -gt 0
     if ($hasProc) {
         $chartsHtml += Make-Chart -ChartId 'chartProc' -Title 'プロセス数' `
-            -Datasets @(@{Label='Processes'; Data=(To-JsArr 'proc_count'); Color='#64748b'; Fill=$false}) `
+            -Datasets @(@{Label='Processes'; Data=(Get-ChartVals 'proc_count'); Color='#64748b'; Fill=$false}) `
             -YLabel ''
     }
 
@@ -924,7 +957,6 @@ function New-PerfHtmlReport {
 <head>
 <meta charset="UTF-8">
 <title>Performance Monitor Report</title>
-$chartJsTag
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;background:#f0f2f5;color:#222}
@@ -942,7 +974,11 @@ body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;background:#f0f2f5;c
 .card-value{font-size:14px;font-weight:700;color:#1e293b}
 .charts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(480px,1fr));gap:16px}
 .chart-box{background:#fff;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
-.chart-title{font-size:13px;font-weight:600;color:#1e293b;margin-bottom:10px}
+.chart-title{font-size:13px;font-weight:600;color:#1e293b;margin-bottom:6px}
+.chart-legend{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:8px}
+.legend-item{display:inline-flex;align-items:center;font-size:11px;color:#475569}
+.legend-swatch{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:5px}
+.legend-dash .legend-swatch{border-radius:0;height:2px;margin-top:5px;align-self:flex-start}
 table{width:100%;border-collapse:collapse;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.1)}
 th{background:#f1f5f9;padding:8px 12px;text-align:left;font-weight:600;color:#475569;font-size:12px;border-bottom:2px solid #e2e8f0}
 td{padding:7px 12px;border-bottom:1px solid #f1f5f9;font-size:12px}

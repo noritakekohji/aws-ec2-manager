@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-07-22
+
+### Changed
+- **perf-monitor レポートのグラフ描画方式を Chart.js から純粋な SVG に変更**。`render_report.py` / `PerfMonitor.ps1` の両方で、折れ線グラフ(塗りつぶし・しきい値ライン・凡例含む)を JavaScript 実行に一切頼らない静的 SVG マークアップとして生成するように書き換えた。会社PCなど JS 実行がセキュリティポリシーで制限される環境や、同梱ライブラリ(`chart.umd.min.js`)が何らかの理由でファイルパス解決に失敗し CDN フォールバックに落ちてオフライン環境で読み込めないケースでも、確実にグラフが表示される
+- 同梱していた `tools/perf-monitor/chart.umd.min.js`(Chart.js v4.5.1)を削除。外部ライブラリ依存が完全になくなったため不要
+
+### Added
+- LocalToolsLauncher の tool-catalog.yaml パラメータに `tooltip` フィールドを追加し、GUI 上でラベル/入力欄にホバーすると説明が表示されるように対応。perf-monitor の `report` 用範囲指定パラメータ(`from`/`to`)に ISO 8601 形式の入力例をツールチップとして表示
+
 ## [2.7.0] - 2026-07-21
 
 ### Added

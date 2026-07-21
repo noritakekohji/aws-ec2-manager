@@ -191,6 +191,7 @@ function Read-ToolCatalog {
                 Value = ''
                 Required = $false
                 Options = ''
+                Tooltip = ''
             }
             $paramSubKeyIndent = $listIndent + 2
             continue
@@ -245,6 +246,7 @@ function Read-ToolCatalog {
                     'value' { $currentParam.Value = $value }
                     'required' { $currentParam.Required = ($value -eq 'true') }
                     'options' { $currentParam.Options = $value }
+                    'tooltip' { $currentParam.Tooltip = $value }
                 }
                 continue
             }
@@ -834,11 +836,14 @@ function Set-ParameterDefaults {
         $label = New-Object System.Windows.Controls.TextBlock
         $label.Text = [string]$p.Label
         $label.Style = $window.FindResource('FieldLabel')
+        $rowTip = [string]$p.Tooltip
+        if ($rowTip) { $label.ToolTip = $rowTip }
         [System.Windows.Controls.Grid]::SetColumn($label, 0)
         [void]$row.Children.Add($label)
 
         $box = New-Object System.Windows.Controls.TextBox
         $box.Text = $initial
+        if ($rowTip) { $box.ToolTip = $rowTip }
         [System.Windows.Controls.Grid]::SetColumn($box, 1)
         $box.Add_TextChanged({ Update-CommandPreview })
         [void]$row.Children.Add($box)
@@ -932,10 +937,13 @@ function Set-ParameterDefaults {
             $lbl.Text = [string]$p.Label
             $lbl.Style = $window.FindResource('FieldLabel')
             $lbl.Margin = '0,0,6,0'
+            $tip = [string]$p.Tooltip
+            if ($tip) { $lbl.ToolTip = $tip }
             [void]$cell.Children.Add($lbl)
             if ([string]$p.Type -eq 'select') {
                 $box = New-Object System.Windows.Controls.ComboBox
                 $box.Width = [double]$cfld.BoxWidth
+                if ($tip) { $box.ToolTip = $tip }
                 $opts = @(([string]$p.Options) -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
                 $box.ItemsSource = $opts
                 $defaultVal = [string]$p.Default
@@ -950,6 +958,7 @@ function Set-ParameterDefaults {
             } else {
                 $box = New-Object System.Windows.Controls.TextBox
                 $box.Width = [double]$cfld.BoxWidth
+                if ($tip) { $box.ToolTip = $tip }
                 $box.Text = Expand-LauncherValue -Value ([string]$p.Default) -Tool $Tool -RunDir $sampleRun
                 $box.Add_TextChanged({ Update-CommandPreview })
                 [void]$cell.Children.Add($box)

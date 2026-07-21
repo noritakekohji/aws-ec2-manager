@@ -19,16 +19,16 @@ render_report.py  -  perf_monitor の JSON Lines データから HTML レポー�
     PERF_THR_LOAD     ロードアベレージ1分しきい値
 """
 from __future__ import annotations
-import json, math, os, sys, statistics
+import html, json, math, os, sys, statistics
 from pathlib import Path
 from datetime import datetime
 
 # グラフに描画する最大点数。超えた場合は等間隔で間引く（統計・アラートには影響しない）。
 MAX_CHART_POINTS = 2000
 
-# 同梱 Chart.js（オフライン環境でもグラフを描画するため CDN ではなくローカル埋め込みを優先）
-CHART_JS_LOCAL = Path(__file__).resolve().parent / 'chart.umd.min.js'
-CHART_JS_CDN_URL = 'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js'
+# SVG グラフの描画領域(viewBox 座標系。CSS で width:100% にして横方向は追従させる)
+SVG_WIDTH  = 880
+SVG_MARGIN = {'left': 46, 'right': 12, 'top': 10, 'bottom': 22}
 
 # ─────────────────────────────────────────────────────────────
 # しきい値読み込み
@@ -117,16 +117,6 @@ def decimate(records: list[dict], max_points: int) -> list[dict]:
     step = math.ceil(n / max_points)
     return records[::step]
 
-def chart_js_script_tag() -> str:
-    """同梱 chart.umd.min.js があれば inline 埋め込み、なければ CDN にフォールバック。"""
-    try:
-        content = CHART_JS_LOCAL.read_text(encoding='utf-8')
-        return f'<script>\n{content}\n</script>'
-    except OSError:
-        print(f'[WARN] 同梱 Chart.js が見つかりません（{CHART_JS_LOCAL}）。CDN にフォールバックします。'
-              'オフライン環境ではグラフが表示されない可能性があります。', file=sys.stderr)
-        return f'<script src="{CHART_JS_CDN_URL}"></script>'
-
 def ts_label(ts_str: str) -> str:
     """ISO timestamp → 表示用短縮文字列"""
     try:
@@ -144,7 +134,8 @@ def duration_str(sec: float) -> str:
     return f"{s}秒"
 
 # ─────────────────────────────────────────────────────────────
-# Chart.js データセット生成
+# SVG チャート生成（JavaScript 不使用。静的マークアップとして描画されるため
+# JS 実行環境やライブラリ配布の問題に一切左右されない）
 # ─────────────────────────────────────────────────────────────
 def make_chart(
     chart_id: str,
@@ -157,88 +148,87 @@ def make_chart(
     y_max: float | None = None,
     height: int = 220,
 ) -> str:
-    """Chart.js 折れ線グラフ HTML を返す"""
+    """静的 SVG 折れ線グラフの HTML を返す"""
+    m = SVG_MARGIN
+    w, h = SVG_WIDTH, height
+    plot_w = w - m['left'] - m['right']
+    plot_h = h - m['top'] - m['bottom']
 
-    ds_json_parts = []
-    for ds in datasets:
-        # null 値は JS の null へ
-        data_js = json.dumps([None if v is None else v for v in ds['data']])
-        fill_js = 'false'
-        if ds.get('fill'):
-            fill_js = "'origin'"
-        ds_json_parts.append(f"""{{
-            label: {json.dumps(ds['label'])},
-            data: {data_js},
-            borderColor: '{ds['color']}',
-            backgroundColor: '{ds['color']}26',
-            borderWidth: 1.5,
-            pointRadius: 0,
-            tension: 0.3,
-            fill: {fill_js},
-            spanGaps: true
-        }}""")
-
-    # しきい値ライン
+    n = len(labels)
+    all_vals = [v for ds in datasets for v in ds['data'] if v is not None]
     if threshold > 0:
-        thr_data = [threshold] * len(labels)
-        thr_label = threshold_label or f'しきい値 ({threshold})'
-        ds_json_parts.append(f"""{{
-            label: {json.dumps(thr_label)},
-            data: {json.dumps(thr_data)},
-            borderColor: '#ef4444',
-            borderWidth: 1.5,
-            borderDash: [6,4],
-            pointRadius: 0,
-            fill: false,
-            spanGaps: true
-        }}""")
+        all_vals.append(threshold)
+    computed_max = max(all_vals) * 1.1 if all_vals else 1.0
+    y_hi = y_max if y_max is not None else computed_max
+    y_hi = y_hi if y_hi > 0 else 1.0
 
-    datasets_js = ',\n'.join(ds_json_parts)
-    labels_js   = json.dumps(labels)
-    y_label_js  = json.dumps(y_label)
-    y_max_opt   = f'max: {y_max},' if y_max is not None else ''
+    def x_at(i: int) -> float:
+        if n <= 1:
+            return m['left'] + plot_w / 2
+        return m['left'] + i * (plot_w / (n - 1))
+
+    def y_at(v: float) -> float:
+        return m['top'] + plot_h - (v / y_hi) * plot_h
+
+    y0 = y_at(0)
+
+    # ── 横方向グリッド線・Y軸ラベル(5分割) ──
+    grid_svg = []
+    for i in range(5):
+        v = y_hi * i / 4
+        gy = y_at(v)
+        grid_svg.append(f'<line x1="{m["left"]}" y1="{gy:.1f}" x2="{w - m["right"]}" y2="{gy:.1f}" '
+                         f'stroke="#f1f5f9" stroke-width="1"/>')
+        grid_svg.append(f'<text x="{m["left"] - 6}" y="{gy + 3:.1f}" text-anchor="end" '
+                         f'font-size="10" fill="#64748b">{v:.0f}{y_label}</text>')
+
+    # ── X軸ラベル(最大12個。間引いて重なりを防ぐ) ──
+    x_label_svg = []
+    x_step = max(1, math.ceil(n / 12)) if n > 12 else 1
+    for i in range(0, n, x_step):
+        x_label_svg.append(f'<text x="{x_at(i):.1f}" y="{h - 6}" text-anchor="middle" '
+                            f'font-size="10" fill="#64748b">{html.escape(labels[i])}</text>')
+
+    # ── データセット(折れ線 + 塗りつぶし) ──
+    dataset_svg = []
+    legend_items = []
+    for ds in datasets:
+        pts = [(x_at(i), y_at(v)) for i, v in enumerate(ds['data']) if v is not None]
+        if pts:
+            pts_str = ' '.join(f'{x:.1f},{y:.1f}' for x, y in pts)
+            if ds.get('fill'):
+                poly_str = pts_str + f' {pts[-1][0]:.1f},{y0:.1f} {pts[0][0]:.1f},{y0:.1f}'
+                dataset_svg.append(f'<polygon points="{poly_str}" fill="{ds["color"]}" fill-opacity="0.15" stroke="none"/>')
+            dataset_svg.append(f'<polyline points="{pts_str}" fill="none" stroke="{ds["color"]}" stroke-width="1.5"/>')
+        legend_items.append((ds['color'], ds['label'], False))
+
+    # ── しきい値ライン ──
+    if threshold > 0:
+        ty = y_at(threshold)
+        thr_label = threshold_label or f'しきい値 ({threshold})'
+        dataset_svg.append(f'<line x1="{m["left"]}" y1="{ty:.1f}" x2="{w - m["right"]}" y2="{ty:.1f}" '
+                            f'stroke="#ef4444" stroke-width="1.5" stroke-dasharray="6,4"/>')
+        legend_items.append(('#ef4444', thr_label, True))
+
+    legend_html = ''.join(
+        f'<span class="legend-item{" legend-dash" if dashed else ""}">'
+        f'<span class="legend-swatch" style="background:{color}"></span>{label}</span>'
+        for color, label, dashed in legend_items
+    )
+
+    svg = (
+        f'<svg viewBox="0 0 {w} {h}" preserveAspectRatio="none" style="width:100%;height:{h}px" '
+        f'role="img" aria-label="{title}">'
+        + ''.join(grid_svg) + ''.join(x_label_svg) + ''.join(dataset_svg) +
+        '</svg>'
+    )
 
     return f"""
 <div class="chart-box">
   <div class="chart-title">{title}</div>
-  <canvas id="{chart_id}" height="{height}"></canvas>
-</div>
-<script>
-(function(){{
-  const ctx = document.getElementById('{chart_id}').getContext('2d');
-  new Chart(ctx, {{
-    type: 'line',
-    data: {{
-      labels: {labels_js},
-      datasets: [{datasets_js}]
-    }},
-    options: {{
-      responsive: true,
-      animation: false,
-      interaction: {{ mode: 'index', intersect: false }},
-      plugins: {{
-        legend: {{ position: 'top', labels: {{ boxWidth: 12, font: {{ size: 11 }} }} }},
-        tooltip: {{ callbacks: {{
-          label: ctx => ctx.dataset.label + ': ' + (ctx.parsed.y ?? '-') + ' {y_label}'
-        }} }}
-      }},
-      scales: {{
-        x: {{
-          ticks: {{ maxTicksLimit: 12, font: {{ size: 10 }} }},
-          grid: {{ color: '#f1f5f9' }}
-        }},
-        y: {{
-          beginAtZero: true,
-          {y_max_opt}
-          title: {{ display: {('true' if y_label else 'false')}, text: {y_label_js}, font: {{ size: 11 }} }},
-          ticks: {{ font: {{ size: 10 }} }},
-          grid: {{ color: '#f1f5f9' }}
-        }}
-      }}
-    }}
-  }});
-}})();
-</script>"""
+  <div class="chart-legend">{legend_html}</div>
+  {svg}
+</div>"""
 
 # ─────────────────────────────────────────────────────────────
 # アラート検出
@@ -491,7 +481,6 @@ def render(data_path: str, output_path: str, from_str: str | None = None, to_str
 <head>
 <meta charset="UTF-8">
 <title>Performance Monitor Report</title>
-{chart_js_script_tag()}
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;background:#f0f2f5;color:#222}}
@@ -511,7 +500,11 @@ body{{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;background:#f0f2f5;
 .card-value{{font-size:14px;font-weight:700;color:#1e293b}}
 .charts-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(480px,1fr));gap:16px}}
 .chart-box{{background:#fff;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.1)}}
-.chart-title{{font-size:13px;font-weight:600;color:#1e293b;margin-bottom:10px}}
+.chart-title{{font-size:13px;font-weight:600;color:#1e293b;margin-bottom:6px}}
+.chart-legend{{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:8px}}
+.legend-item{{display:inline-flex;align-items:center;font-size:11px;color:#475569}}
+.legend-swatch{{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:5px}}
+.legend-dash .legend-swatch{{border-radius:0;height:2px;margin-top:5px;align-self:flex-start}}
 table{{width:100%;border-collapse:collapse;background:#fff;border-radius:8px;
     overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.1)}}
 th{{background:#f1f5f9;padding:8px 12px;text-align:left;font-weight:600;

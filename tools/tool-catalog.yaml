@@ -251,6 +251,7 @@ tools:
         argument: -From
         linuxArgument: -f
         default: ""
+        tooltip: "report コマンド専用。ISO 8601 形式で指定(例: 2026-05-18T10:15:00)。空欄なら先頭から"
       - key: to
         label: 範囲終了(report用)
         type: text
@@ -258,6 +259,7 @@ tools:
         argument: -To
         linuxArgument: -t
         default: ""
+        tooltip: "report コマンド専用。ISO 8601 形式で指定(例: 2026-05-18T10:30:00)。空欄なら末尾まで"
       - key: outputDir
         label: 出力先
         type: hidden
