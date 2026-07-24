@@ -41,3 +41,20 @@ function Read-ShareList([string]$Path) {
     }
     return , @($result)
 }
+
+function Get-TransferEval([string]$Expected, [bool]$Success) {
+    switch ($Expected) {
+        'ok'    { if ($Success) { return 'OK' } else { return 'NG' } }
+        'ng'    { if ($Success) { return 'NG' } else { return 'OK' } }
+        default { if ($Success) { return 'OK' } else { return 'WARN' } }
+    }
+}
+
+function Get-TransferSpeed([long]$Bytes, [double]$Seconds) {
+    if ($Seconds -le 0) { return 0.0 }
+    return [math]::Round(($Bytes / 1MB) / $Seconds, 2)
+}
+
+function Test-HashMatch([string]$A, [string]$B) {
+    return ($A.ToUpperInvariant() -eq $B.ToUpperInvariant())
+}

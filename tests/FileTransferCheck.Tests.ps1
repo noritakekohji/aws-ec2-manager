@@ -45,4 +45,21 @@ Describe 'file-transfer-check pure logic' {
             (Read-ShareList $f)[0].description | Should -Be '\\srv\s'
         }
     }
+
+    Context 'Get-TransferEval' {
+        It 'expected=ok & success -> OK'   { Get-TransferEval 'ok' $true  | Should -Be 'OK' }
+        It 'expected=ok & fail -> NG'      { Get-TransferEval 'ok' $false | Should -Be 'NG' }
+        It 'expected=ng & fail -> OK'      { Get-TransferEval 'ng' $false | Should -Be 'OK' }
+        It 'expected=ng & success -> NG'   { Get-TransferEval 'ng' $true  | Should -Be 'NG' }
+        It 'expected=- & success -> OK'    { Get-TransferEval '-'  $true  | Should -Be 'OK' }
+        It 'expected=- & fail -> WARN'     { Get-TransferEval '-'  $false | Should -Be 'WARN' }
+    }
+    Context 'Get-TransferSpeed' {
+        It 'computes MB/s' { Get-TransferSpeed ([long](10 * 1MB)) 2.0 | Should -Be 5.0 }
+        It 'returns 0 for non-positive seconds' { Get-TransferSpeed 1048576 0 | Should -Be 0.0 }
+    }
+    Context 'Test-HashMatch' {
+        It 'matches ignoring case' { Test-HashMatch 'ABCD' 'abcd' | Should -BeTrue }
+        It 'detects mismatch'      { Test-HashMatch 'ABCD' 'ef01' | Should -BeFalse }
+    }
 }
