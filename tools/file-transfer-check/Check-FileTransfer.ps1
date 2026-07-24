@@ -58,3 +58,78 @@ function Get-TransferSpeed([long]$Bytes, [double]$Seconds) {
 function Test-HashMatch([string]$A, [string]$B) {
     return ($A.ToUpperInvariant() -eq $B.ToUpperInvariant())
 }
+
+$script:CredCache = @{}
+
+function Get-CachedCredential([string]$Username) {
+    if (-not $Username) { return $null }
+    if ($script:CredCache.ContainsKey($Username)) { return $script:CredCache[$Username] }
+    $sec  = Read-Host -Prompt "パスワードを入力してください ($Username)" -AsSecureString
+    $cred = New-Object System.Management.Automation.PSCredential($Username, $sec)
+    $script:CredCache[$Username] = $cred
+    return $cred
+}
+
+function Invoke-SmbRoundTrip {
+    param(
+        [string]$Share,
+        [System.Management.Automation.PSCredential]$Credential,
+        [int]$SizeMB,
+        [int]$TimeoutSec
+    )
+    $res = [ordered]@{
+        connected = $false; uploadOk = $false; downloadOk = $false; verifyOk = $false
+        upMbps = 0.0; downMbps = 0.0; cleanupWarn = $false; message = ''
+    }
+    $driveName = $null; $localSrc = $null; $localDst = $null; $remoteFile = $null
+    try {
+        if ($Credential) {
+            $driveName = 'FTC' + ([guid]::NewGuid().ToString('N').Substring(0, 6))
+            New-PSDrive -Name $driveName -PSProvider FileSystem -Root $Share -Credential $Credential -ErrorAction Stop | Out-Null
+            $root = "$($driveName):\"
+        } else {
+            if (-not (Test-Path -LiteralPath $Share)) { throw "共有にアクセスできません: $Share" }
+            $root = $Share
+        }
+        $res.connected = $true
+
+        $localSrc = [System.IO.Path]::GetTempFileName()
+        $bytes = New-Object byte[] ($SizeMB * 1MB)
+        (New-Object Random).NextBytes($bytes)
+        [System.IO.File]::WriteAllBytes($localSrc, $bytes)
+        $srcHash = (Get-FileHash -LiteralPath $localSrc -Algorithm SHA256).Hash
+
+        $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+        $rand  = [guid]::NewGuid().ToString('N').Substring(0, 8)
+        $remoteFile = Join-Path $root ("conntest_${stamp}_${rand}.tmp")
+
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        Copy-Item -LiteralPath $localSrc -Destination $remoteFile -Force -ErrorAction Stop
+        $sw.Stop()
+        $res.uploadOk = $true
+        $res.upMbps   = Get-TransferSpeed -Bytes $bytes.LongLength -Seconds $sw.Elapsed.TotalSeconds
+
+        $localDst = [System.IO.Path]::GetTempFileName()
+        $sw.Restart()
+        Copy-Item -LiteralPath $remoteFile -Destination $localDst -Force -ErrorAction Stop
+        $sw.Stop()
+        $res.downloadOk = $true
+        $res.downMbps   = Get-TransferSpeed -Bytes $bytes.LongLength -Seconds $sw.Elapsed.TotalSeconds
+
+        $dstHash = (Get-FileHash -LiteralPath $localDst -Algorithm SHA256).Hash
+        $res.verifyOk = Test-HashMatch $srcHash $dstHash
+        if (-not $res.verifyOk) { $res.message = 'ハッシュ不一致' }
+    } catch {
+        $res.message = $_.Exception.Message
+    } finally {
+        if ($remoteFile) {
+            try {
+                if (Test-Path -LiteralPath $remoteFile) { Remove-Item -LiteralPath $remoteFile -Force -ErrorAction Stop }
+            } catch { $res.cleanupWarn = $true }
+        }
+        if ($localSrc -and (Test-Path -LiteralPath $localSrc)) { Remove-Item -LiteralPath $localSrc -Force -ErrorAction SilentlyContinue }
+        if ($localDst -and (Test-Path -LiteralPath $localDst)) { Remove-Item -LiteralPath $localDst -Force -ErrorAction SilentlyContinue }
+        if ($driveName) { Remove-PSDrive -Name $driveName -Force -ErrorAction SilentlyContinue }
+    }
+    return $res
+}
