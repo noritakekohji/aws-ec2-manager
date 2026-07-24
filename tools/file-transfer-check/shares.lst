@@ -1,0 +1,7 @@
+# file-transfer-check 蟇ｾ雎｡蜈ｱ譛峨Μ繧ｹ繝・# 蠖｢蠑・ <share-unc>, <username>, <expected>, <description>
+#   share-unc  : \\server\share 縺ｾ縺溘・ \\server\share\subdir
+#   username   : 遨ｺ谺・繝ｭ繧ｰ繧､繝ｳ繝ｦ繝ｼ繧ｶ繝ｼ(邨ｱ蜷郁ｪ崎ｨｼ) / DOMAIN\user=蟆ら畑繝ｦ繝ｼ繧ｶ繝ｼ(螳溯｡梧凾縺ｫPW蜈･蜉・
+#   expected   : ok(霆｢騾√〒縺阪ｋ縺ｯ縺・ / ng(縺ｧ縺阪↑縺・・縺・ / -(隧穂ｾ｡縺励↑縺・
+#   description: 隱ｬ譏・莉ｻ諢・
+
+\\filesv01\upload,            , ok, 讌ｭ蜍吶ヵ繧｡繧､繝ｫ蜿励￠貂｡縺怜・譛・\\filesv01\readonly, svc_check, ng, 隱ｭ蜿門ｰら畑縺ｮ縺ｯ縺・譖ｸ霎ｼ螟ｱ謨励ｒ譛溷ｾ・
