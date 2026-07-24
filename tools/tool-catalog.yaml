@@ -351,7 +351,7 @@ tools:
   - id: file-transfer-check
     name: File Transfer Check
     description: SMB 共有への往復転送で疎通・整合性・速度を確認
-    menu: true
+    menu: false
     windowsPath: file-transfer-check/Check-FileTransfer.ps1
     linuxPath: file-transfer-check/check_file_transfer.sh
     defaultArgs: -ShareList "{ToolDir}/shares.lst"

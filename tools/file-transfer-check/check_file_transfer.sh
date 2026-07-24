@@ -156,7 +156,11 @@ run_share() {
   fi
 
   local cls="warn"; [ "$verdict" = "OK" ] && cls="ok"; [ "$verdict" = "NG" ] && cls="ng"
-  ROWS="${ROWS}<tr class='${cls}'><td>$(html_escape "$share")</td><td>$(html_escape "$desc")</td><td>$(html_escape "$user")</td><td>${up_mbps}</td><td>${dn_mbps}</td><td>$([ "$vf_ok" -eq 1 ] && echo OK || echo '-')</td><td>${verdict}</td><td>$(html_escape "$msg")</td></tr>"
+  local verify_cell="-"
+  if [ "$up_ok" -eq 1 ] && [ "$dn_ok" -eq 1 ]; then
+    if [ "$vf_ok" -eq 1 ]; then verify_cell="OK"; else verify_cell="NG"; fi
+  fi
+  ROWS="${ROWS}<tr class='${cls}'><td>$(html_escape "$share")</td><td>$(html_escape "$desc")</td><td>$(html_escape "$user")</td><td>${up_mbps}</td><td>${dn_mbps}</td><td>${verify_cell}</td><td>${verdict}</td><td>$(html_escape "$msg")</td></tr>"
 }
 
 # Parse list and iterate
