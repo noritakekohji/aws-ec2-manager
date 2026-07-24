@@ -347,3 +347,47 @@ tools:
         linuxArgument: --html
         value: "{ArtifactsDir}/server-snapshot.html"
         default: false
+
+  - id: file-transfer-check
+    name: File Transfer Check
+    description: SMB 共有への往復転送で疎通・整合性・速度を確認
+    menu: true
+    windowsPath: file-transfer-check/Check-FileTransfer.ps1
+    linuxPath: file-transfer-check/check_file_transfer.sh
+    defaultArgs: -ShareList "{ToolDir}/shares.lst"
+    configFiles:
+      - label: shares.lst
+        path: file-transfer-check/shares.lst
+        paramKey: shareList
+    parameters:
+      - key: shareList
+        label: 共有リスト
+        type: text
+        argument: -ShareList
+        linuxArgument: -l
+        default: "{ToolDir}/shares.lst"
+      - key: sizeMB
+        label: テストサイズMB
+        type: number
+        argument: -SizeMB
+        linuxArgument: -s
+        default: 10
+      - key: timeoutSec
+        label: タイムアウト秒
+        type: number
+        argument: -TimeoutSec
+        linuxArgument: -t
+        default: 60
+      - key: html
+        label: HTML レポート
+        type: checkbox
+        argument: -HtmlReport
+        linuxArgument: -o
+        value: "{ArtifactsDir}/file-transfer-check.html"
+        default: true
+      - key: failOnly
+        label: 失敗のみ
+        type: checkbox
+        argument: -FailOnly
+        linuxArgument: -f
+        default: false
