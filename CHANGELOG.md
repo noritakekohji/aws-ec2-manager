@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`tools/file-transfer-check`**: SMB 共有への往復ファイル転送で疎通・整合性(SHA-256)・スループット(MB/s)を確認するスタンドアロンツールを追加。お客様端末で直接実行し(SSM を介さない)、サーバへのファイル転送可否を end-to-end で確認する。Windows(起動用 bat + PowerShell)/ Linux(smbclient)対応、統合認証・専用ユーザーの両対応でパスワードは実行時に非エコー入力(平文保存・ログ出力なし)。`shares.lst` で複数共有を一括確認し、`-HtmlReport` で HTML レポート出力。Windows の bat は SET ブロックの既定値でダブルクリック実行、またはコマンドライン引数で上書き可能。`tool-catalog.yaml` にも登録
+
 ## [2.8.1] - 2026-07-22
 
 ### Fixed
