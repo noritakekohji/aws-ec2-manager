@@ -140,7 +140,7 @@ function Format-ShareResult($item, $rt, [string]$eval) {
     $auth = if ($item.username) { $item.username } else { 'integrated (current user)' }
     $lines.Add("  Auth    : $auth")
     if ($rt.uploadOk) {
-        $lines.Add(("  Upload  : OK   {0} MB, {1} MB/s" -f $rt.upMbps, $rt.upMbps))
+        $lines.Add(("  Upload  : OK   {0} MB/s" -f $rt.upMbps))
     } else {
         $lines.Add("  Upload  : NG   $($rt.message)")
     }
