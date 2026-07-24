@@ -21,11 +21,14 @@ done
 
 command -v smbclient >/dev/null 2>&1 || { echo "[ERROR] smbclient が見つかりません"; exit 10; }
 command -v sha256sum >/dev/null 2>&1 || { echo "[ERROR] sha256sum が見つかりません"; exit 10; }
+command -v dd >/dev/null 2>&1 || { echo "[ERROR] dd が見つかりません"; exit 10; }
 [ -f "$LIST" ] || { echo "[ERROR] 共有リストが見つかりません: $LIST"; exit 2; }
 
 declare -A CRED_CACHE
 OK=0; NG=0; WARN=0
 ROWS=""
+CURRENT_AUTHFILE=""
+trap 'rm -f "${CURRENT_AUTHFILE:-}" 2>/dev/null' EXIT INT TERM
 
 # UNC(\\srv\share\sub or //srv/share/sub) -> service + relpath
 normalize_share() {
@@ -37,6 +40,8 @@ normalize_share() {
   if [ "$s" != "$share" ]; then rel="${s#*/}"; fi
   echo "//${host}/${share}|${rel}"
 }
+
+html_escape() { printf '%s' "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'; }
 
 get_password() {
   local user="$1"
@@ -69,12 +74,13 @@ run_share() {
       echo "  Result  : WARN  Linux では username 指定が必要 (統合認証不可)"
       echo ""
       WARN=$((WARN+1))
-      ROWS="${ROWS}<tr class='warn'><td>${share}</td><td>${desc}</td><td></td><td>-</td><td>-</td><td>-</td><td>WARN</td><td>username 必要</td></tr>"
+      ROWS="${ROWS}<tr class='warn'><td>$(html_escape "$share")</td><td>$(html_escape "$desc")</td><td></td><td>-</td><td>-</td><td>-</td><td>WARN</td><td>username 必要</td></tr>"
       return
     fi
   else
     local pw; pw="$(get_password "$user")"
     authfile="$(mktemp)"; chmod 600 "$authfile"
+    CURRENT_AUTHFILE="$authfile"
     printf 'username=%s\npassword=%s\n' "$user" "$pw" > "$authfile"
     auth_args=(-A "$authfile")
   fi
@@ -118,38 +124,39 @@ run_share() {
       -c "${cdcmd}del \"$remote\"" >/dev/null 2>&1 || cleanup_warn=1
 
   [ -n "${authfile:-}" ] && rm -f "$authfile"
+  CURRENT_AUTHFILE=""
   rm -f "$tmp_src" "$tmp_dst"
 
   # Evaluate
   local success=0
   [ "$up_ok" -eq 1 ] && [ "$dn_ok" -eq 1 ] && [ "$vf_ok" -eq 1 ] && success=1
-  local eval
+  local verdict
   case "$expected" in
-    ok) [ "$success" -eq 1 ] && eval="OK" || eval="NG" ;;
-    ng) [ "$success" -eq 1 ] && eval="NG" || eval="OK" ;;
-    *)  [ "$success" -eq 1 ] && eval="OK" || eval="WARN" ;;
+    ok) [ "$success" -eq 1 ] && verdict="OK" || verdict="NG" ;;
+    ng) [ "$success" -eq 1 ] && verdict="NG" || verdict="OK" ;;
+    *)  [ "$success" -eq 1 ] && verdict="OK" || verdict="WARN" ;;
   esac
-  [ "$cleanup_warn" -eq 1 ] && [ "$eval" = "OK" ] && eval="WARN"
+  [ "$cleanup_warn" -eq 1 ] && [ "$verdict" = "OK" ] && verdict="WARN"
 
   local up_mbps="0" dn_mbps="0"
   [ "$up_ok" -eq 1 ] && up_mbps="$(awk "BEGIN{if($up_sec>0)printf \"%.2f\", $SIZE_MB/$up_sec; else print 0}")"
   [ "$dn_ok" -eq 1 ] && dn_mbps="$(awk "BEGIN{if($dn_sec>0)printf \"%.2f\", $SIZE_MB/$dn_sec; else print 0}")"
 
-  case "$eval" in OK) OK=$((OK+1));; NG) NG=$((NG+1));; WARN) WARN=$((WARN+1));; esac
+  case "$verdict" in OK) OK=$((OK+1));; NG) NG=$((NG+1));; WARN) WARN=$((WARN+1));; esac
 
-  if [ "$FAIL_ONLY" -eq 0 ] || [ "$eval" != "OK" ]; then
+  if [ "$FAIL_ONLY" -eq 0 ] || [ "$verdict" != "OK" ]; then
     echo "[SHARE] $share  ($desc)"
     echo "  Auth    : ${user:-integrated}"
     [ "$up_ok" -eq 1 ] && echo "  Upload  : OK   ${up_mbps} MB/s" || echo "  Upload  : NG   $msg"
     [ "$dn_ok" -eq 1 ] && echo "  Download: OK   ${dn_mbps} MB/s"
     [ "$up_ok" -eq 1 ] && [ "$dn_ok" -eq 1 ] && { [ "$vf_ok" -eq 1 ] && echo "  Verify  : OK   (SHA-256 一致)" || echo "  Verify  : NG   (SHA-256 不一致)"; }
     [ "$cleanup_warn" -eq 1 ] && echo "  Cleanup : WARN 削除失敗"
-    echo "  Result  : $eval   expected=$expected"
+    echo "  Result  : $verdict   expected=$expected"
     echo ""
   fi
 
-  local cls="warn"; [ "$eval" = "OK" ] && cls="ok"; [ "$eval" = "NG" ] && cls="ng"
-  ROWS="${ROWS}<tr class='${cls}'><td>${share}</td><td>${desc}</td><td>${user}</td><td>${up_mbps}</td><td>${dn_mbps}</td><td>$([ "$vf_ok" -eq 1 ] && echo OK || echo '-')</td><td>${eval}</td><td>${msg}</td></tr>"
+  local cls="warn"; [ "$verdict" = "OK" ] && cls="ok"; [ "$verdict" = "NG" ] && cls="ng"
+  ROWS="${ROWS}<tr class='${cls}'><td>$(html_escape "$share")</td><td>$(html_escape "$desc")</td><td>$(html_escape "$user")</td><td>${up_mbps}</td><td>${dn_mbps}</td><td>$([ "$vf_ok" -eq 1 ] && echo OK || echo '-')</td><td>${verdict}</td><td>$(html_escape "$msg")</td></tr>"
 }
 
 # Parse list and iterate
