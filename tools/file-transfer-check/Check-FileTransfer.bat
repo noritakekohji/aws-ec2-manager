@@ -16,29 +16,36 @@ set "HTML_REPORT="
 set "FAIL_ONLY="
 :: ======================================================
 
-if not exist "!SHARE_LIST!" (
-    echo [ERROR] Share list not found: !SHARE_LIST!
-    echo Usage: %~nx0 [extra PowerShell args...]
-    pause
-    exit /b 2
+if "%~1"=="" (
+    rem --- 引数なし（ダブルクリック等）: 上の SET ブロックの既定値を使う ---
+    if not exist "!SHARE_LIST!" (
+        echo [ERROR] Share list not found: !SHARE_LIST!
+        echo Usage: %~nx0 [PowerShell args...]
+        pause
+        exit /b 2
+    )
+    set "PSARGS=-ShareList "!SHARE_LIST!" -SizeMB !SIZE_MB! -TimeoutSec !TIMEOUT_SEC!"
+    if not "!HTML_REPORT!"=="" set "PSARGS=!PSARGS! -HtmlReport "!HTML_REPORT!""
+    if /I "!FAIL_ONLY!"=="on"  set "PSARGS=!PSARGS! -FailOnly"
+) else (
+    rem --- 引数あり: コマンドライン引数を優先。-ShareList 未指定なら既定を補う ---
+    set "EXTRA=%*"
+    set "STRIPPED=!EXTRA:-ShareList=!"
+    if "!STRIPPED!"=="!EXTRA!" (
+        set "PSARGS=-ShareList "!SHARE_LIST!" !EXTRA!"
+    ) else (
+        set "PSARGS=!EXTRA!"
+    )
 )
-
-set "PSARGS=-ShareList "!SHARE_LIST!" -SizeMB !SIZE_MB! -TimeoutSec !TIMEOUT_SEC!"
-if not "!HTML_REPORT!"=="" set "PSARGS=!PSARGS! -HtmlReport "!HTML_REPORT!""
-if /I "!FAIL_ONLY!"=="on"  set "PSARGS=!PSARGS! -FailOnly"
 
 for /f %%t in ('powershell -NoLogo -Command "Get-Date -Format yyyyMMdd-HHmmss"') do set "TIMESTAMP=%%t"
 set "OPS_LOG_FILE=%~dpn0_!TIMESTAMP!.log"
 
-echo Share list : !SHARE_LIST!
-echo Test size  : !SIZE_MB! MB
-echo.
 echo Running...
 echo.
 
-:: bat の既定値 + コマンドライン引数(%*)で上書き可能
 powershell.exe -ExecutionPolicy Bypass -NoLogo ^
-    -File "%~dp0Check-FileTransfer.ps1" !PSARGS! %*
+    -File "%~dp0Check-FileTransfer.ps1" !PSARGS!
 
 echo.
 pause
