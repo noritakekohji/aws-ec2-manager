@@ -62,4 +62,17 @@ Describe 'file-transfer-check pure logic' {
         It 'matches ignoring case' { Test-HashMatch 'ABCD' 'abcd' | Should -BeTrue }
         It 'detects mismatch'      { Test-HashMatch 'ABCD' 'ef01' | Should -BeFalse }
     }
+
+    Context 'New-HtmlReport' {
+        It 'renders share and result but never a password' {
+            $rows = @(
+                @{ share='\\srv\share'; username='svc_user'; eval='OK'; upMbps=8.3; downMbps=11.1;
+                   verify='OK'; message=''; description='業務共有' }
+            )
+            $html = New-HtmlReport $rows @{ generated='2026-07-24 10:00:00'; sizeMB=10 }
+            $html | Should -Match '\\\\srv\\share'
+            $html | Should -Match 'OK'
+            $html | Should -Not -Match 'password'
+        }
+    }
 }

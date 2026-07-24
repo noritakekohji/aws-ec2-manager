@@ -133,3 +133,116 @@ function Invoke-SmbRoundTrip {
     }
     return $res
 }
+
+function Format-ShareResult($item, $rt, [string]$eval) {
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines.Add("[SHARE] $($item.share)  ($($item.description))")
+    $auth = if ($item.username) { $item.username } else { 'integrated (current user)' }
+    $lines.Add("  Auth    : $auth")
+    if ($rt.uploadOk) {
+        $lines.Add(("  Upload  : OK   {0} MB, {1} MB/s" -f $rt.upMbps, $rt.upMbps))
+    } else {
+        $lines.Add("  Upload  : NG   $($rt.message)")
+    }
+    if ($rt.downloadOk) {
+        $lines.Add(("  Download: OK   {0} MB/s" -f $rt.downMbps))
+    } elseif ($rt.uploadOk) {
+        $lines.Add("  Download: NG   $($rt.message)")
+    }
+    if ($rt.uploadOk -and $rt.downloadOk) {
+        $v = if ($rt.verifyOk) { 'OK   (SHA-256 一致)' } else { 'NG   (SHA-256 不一致)' }
+        $lines.Add("  Verify  : $v")
+    }
+    if ($rt.cleanupWarn) { $lines.Add("  Cleanup : WARN リモート一時ファイルの削除に失敗") }
+    $lines.Add("  Result  : $eval   expected=$($item.expected)")
+    $lines.Add('')
+    return $lines.ToArray()
+}
+
+function New-HtmlReport($rows, $meta) {
+    function HE([string]$s) {
+        if ($null -eq $s) { return '' }
+        return ($s -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;')
+    }
+    $body = foreach ($r in $rows) {
+        $cls = switch ($r.eval) { 'OK' { 'ok' } 'NG' { 'ng' } default { 'warn' } }
+        "<tr class='$cls'><td>$(HE $r.share)</td><td>$(HE $r.description)</td>" +
+        "<td>$(HE $r.username)</td><td>$($r.upMbps)</td><td>$($r.downMbps)</td>" +
+        "<td>$(HE $r.verify)</td><td>$(HE $r.eval)</td><td>$(HE $r.message)</td></tr>"
+    }
+    return @"
+<!DOCTYPE html><html lang='ja'><head><meta charset='utf-8'>
+<title>File Transfer Check</title>
+<style>
+body{font-family:Segoe UI,Meiryo,sans-serif;margin:20px}
+table{border-collapse:collapse;width:100%}
+th,td{border:1px solid #ccc;padding:6px 10px;text-align:left}
+th{background:#f0f0f0}
+tr.ok td:last-child,tr.ok td:nth-child(7){color:#0a0}
+tr.ng{background:#fdecec}
+tr.warn{background:#fff7e0}
+</style></head><body>
+<h1>File Transfer Check</h1>
+<p>生成: $(HE $meta.generated) / テストサイズ: $($meta.sizeMB) MB</p>
+<table><thead><tr><th>共有</th><th>説明</th><th>ユーザー</th>
+<th>上り MB/s</th><th>下り MB/s</th><th>整合性</th><th>判定</th><th>備考</th></tr></thead>
+<tbody>
+$($body -join "`n")
+</tbody></table></body></html>
+"@
+}
+
+function Invoke-Main {
+    param(
+        [string]$ShareList, [int]$SizeMB, [int]$TimeoutSec,
+        [string]$HtmlReport, [switch]$FailOnly
+    )
+    if ($env:OPS_LOG_FILE) {
+        Start-Transcript -Path $env:OPS_LOG_FILE -Force -Append -ErrorAction SilentlyContinue | Out-Null
+    }
+    if (-not $ShareList -or -not (Test-Path -LiteralPath $ShareList)) {
+        Write-Host "[ERROR] 共有リストが見つかりません: $ShareList" -ForegroundColor Red
+        return 2
+    }
+    $items = Read-ShareList $ShareList
+    $rows  = [System.Collections.Generic.List[hashtable]]::new()
+    $okCount = 0; $ngCount = 0; $warnCount = 0
+
+    foreach ($item in $items) {
+        $cred = Get-CachedCredential $item.username
+        $rt   = Invoke-SmbRoundTrip -Share $item.share -Credential $cred -SizeMB $SizeMB -TimeoutSec $TimeoutSec
+        $success = ($rt.uploadOk -and $rt.downloadOk -and $rt.verifyOk)
+        $eval    = Get-TransferEval $item.expected $success
+        if ($rt.cleanupWarn -and $eval -eq 'OK') { $eval = 'WARN' }
+
+        switch ($eval) { 'OK' { $okCount++ } 'NG' { $ngCount++ } 'WARN' { $warnCount++ } }
+
+        if (-not ($FailOnly -and $eval -eq 'OK')) {
+            Format-ShareResult $item $rt $eval | ForEach-Object { Write-Host $_ }
+        }
+        $verify = if ($rt.uploadOk -and $rt.downloadOk) { if ($rt.verifyOk) { 'OK' } else { 'NG' } } else { '-' }
+        $rows.Add(@{
+            share = $item.share; description = $item.description; username = $item.username
+            upMbps = $rt.upMbps; downMbps = $rt.downMbps; verify = $verify
+            eval = $eval; message = $rt.message
+        })
+    }
+
+    Write-Host ('-' * 50)
+    Write-Host ("  Shares: {0}   OK: {1}   NG: {2}   Warning: {3}" -f $items.Count, $okCount, $ngCount, $warnCount)
+
+    if ($HtmlReport) {
+        $meta = @{ generated = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'); sizeMB = $SizeMB }
+        $htmlDir = Split-Path -Parent $HtmlReport
+        if ($htmlDir -and -not (Test-Path -LiteralPath $htmlDir)) { New-Item -ItemType Directory -Path $htmlDir -Force | Out-Null }
+        New-HtmlReport $rows.ToArray() $meta | Set-Content -LiteralPath $HtmlReport -Encoding UTF8
+        Write-Host "  HTML: $HtmlReport"
+    }
+
+    if ($env:OPS_LOG_FILE) { Stop-Transcript -ErrorAction SilentlyContinue | Out-Null }
+    if (($ngCount + $warnCount) -gt 0) { return 1 } else { return 0 }
+}
+
+if (-not $env:FTC_SKIP_MAIN) {
+    exit (Invoke-Main -ShareList $ShareList -SizeMB $SizeMB -TimeoutSec $TimeoutSec -HtmlReport $HtmlReport -FailOnly:$FailOnly)
+}
