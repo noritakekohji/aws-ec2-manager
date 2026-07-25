@@ -74,6 +74,18 @@ chmod +x check_file_transfer.sh   # 初回のみ
 | 2 | リストファイルが無い |
 | 10 | 前提コマンドが無い |
 
+## お客様向け手順書 (PowerPoint)
+
+非技術者のお客様に配布する実施手順書を生成できます。
+
+```bash
+node source/build-file-transfer-check-deck.js
+```
+
+出力: `output/file-transfer-check-手順.pptx` (全12ページ)。
+`output/` は `.gitignore` 対象のため、必要なときに上記コマンドで生成してください。
+内容を変更する場合は `source/build-file-transfer-check-deck.js` を編集します。
+
 ## 手動結合テスト手順
 
 実 SMB 共有が必要なため自動テストはありません。検証環境で以下を確認します。
