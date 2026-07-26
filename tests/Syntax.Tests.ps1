@@ -8,6 +8,7 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $appScriptFiles = @(
     Get-ChildItem -LiteralPath $repoRoot -File
     Get-ChildItem -LiteralPath (Join-Path $repoRoot 'src') -File -ErrorAction SilentlyContinue
+    Get-ChildItem -LiteralPath (Join-Path $repoRoot 'tools\env-doc') -File -Recurse -ErrorAction SilentlyContinue
 ) | Where-Object { $_.Extension -in @('.ps1', '.psm1') }
 $scriptFiles = @($appScriptFiles) + @(
     Get-ChildItem -LiteralPath (Join-Path $repoRoot 'tests') -File -ErrorAction SilentlyContinue |
