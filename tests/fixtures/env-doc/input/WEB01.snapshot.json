@@ -1,14 +1,255 @@
 {
-  "meta": { "hostname": "WEB01", "os_type": "windows", "collected_at": "2026-07-20T10:00:00+09:00", "categories": ["os", "network", "services", "remote_access", "middleware"] },
-  "os": { "hostname": "WEB01", "os_name": "Windows Server 2022", "os_version": "10.0.20348", "architecture": "64-bit", "timezone": "Tokyo Standard Time", "cpu_model": "Sample CPU", "cpu_cores": 4, "total_memory_gb": 16.0, "last_boot": "2026-07-19 03:00:00", "hardware": { "virtualization": "virtual" } },
-  "network": { "ip_addresses": [{ "interface": "Ethernet", "address": "10.0.1.11" }], "dns_servers": ["10.0.0.2"], "proxy": { "enabled": false }, "ntp": { "servers": ["ntp.example.internal"] } },
-  "services": [{ "name": "W3SVC", "status": "Running", "start_mode": "Auto", "service_type": "Own Process", "start_name": "LocalSystem", "path_name": "C:\\Windows\\system32\\svchost.exe -k iissvcs", "description": "サンプル Web サービス" }],
-  "remote_access": {
-    "rdp": { "enabled": true, "nla_enabled": true, "port_number": "3389", "security_layer": "2", "min_encryption_level": "3" },
-    "remote_assistance": { "registry_config": { "fAllowToGetHelp": "0" } },
-    "services": [{ "name": "TermService", "display_name": "Remote Desktop Services", "status": "running", "start_type": "manual", "start_name": "NT Authority\\NetworkService", "path_name": "C:\\Windows\\System32\\svchost.exe" }],
-    "ssh": { "config_files": {} },
-    "firewall_rules": [{ "name": "RemoteDesktop-UserMode-In-TCP", "display_name": "リモート デスクトップ", "direction": "Inbound", "action": "Allow", "profile": "Domain" }]
+  "meta": {
+    "hostname": "WEB01",
+    "os_type": "windows",
+    "collected_at": "2026-07-20T10:00:00+09:00",
+    "categories": ["os", "network", "services", "remote_access", "packages", "environment", "security", "patches", "tuning", "scheduled", "middleware"]
   },
-  "middleware": { "tomcat": [{ "name": "tomcat-1", "catalina_base": "C:\\tomcat", "version": "9.0.85", "java_version": "17.0.9", "state": "running", "connector_ports": [8080], "config_files": {} }] }
+  "os": {
+    "hostname": "WEB01",
+    "domain": "sample.internal",
+    "os_name": "Microsoft Windows Server 2022 Standard",
+    "os_version": "10.0.20348",
+    "os_build": "20348",
+    "architecture": "64-bit",
+    "timezone": "Tokyo Standard Time",
+    "locale": "ja-JP",
+    "install_date": "2026-01-15",
+    "last_boot": "2026-07-19 03:00:00",
+    "cpu_model": "Sample vCPU @ 2.50GHz",
+    "cpu_sockets": 1,
+    "cpu_cores": 2,
+    "cpu_logical_procs": 4,
+    "cpu_speed_mhz": 2500,
+    "total_memory_gb": 16.0,
+    "free_memory_gb": 9.5,
+    "used_memory_gb": 6.5,
+    "hardware": {
+      "manufacturer": "Sample Vendor",
+      "model": "Sample Virtual Machine",
+      "bios_version": "1.0",
+      "serial": "SAMPLE-0000-0001",
+      "virtualization": "virtual"
+    },
+    "locale_detail": { "system_locale": "ja-JP", "code_page": "932", "culture": "ja-JP" },
+    "reboot_pending": { "pending": false, "reasons": [] }
+  },
+  "network": {
+    "interfaces": [
+      { "name": "Ethernet", "address": "10.0.1.11", "prefix": 24 }
+    ],
+    "routes": [
+      { "destination": "0.0.0.0/0", "gateway": "10.0.1.1", "interface": "Ethernet" },
+      { "destination": "10.0.1.0/24", "gateway": "0.0.0.0", "interface": "Ethernet" }
+    ],
+    "dns_servers": [
+      { "interface": "Ethernet", "servers": ["10.0.0.2", "10.0.0.3"] }
+    ],
+    "hosts": [
+      { "ip": "127.0.0.1", "hostnames": ["localhost"] }
+    ],
+    "proxy": { "enabled": false, "server": "" },
+    "time_sync": {
+      "servers": ["ntp.sample.internal"],
+      "synchronized": true,
+      "_volatile": { "last_sync": "" }
+    }
+  },
+  "services": [
+    {
+      "name": "W3SVC",
+      "display_name": "World Wide Web Publishing Service",
+      "status": "running",
+      "start_type": "automatic",
+      "service_type": "Own Process",
+      "start_name": "LocalSystem",
+      "path_name": "C:\\Windows\\system32\\svchost.exe -k iissvcs",
+      "description": "サンプル Web サービス"
+    },
+    {
+      "name": "sshd",
+      "display_name": "OpenSSH SSH Server",
+      "status": "stopped",
+      "start_type": "manual",
+      "service_type": "Own Process",
+      "start_name": "LocalSystem",
+      "path_name": "C:\\Windows\\System32\\OpenSSH\\sshd.exe",
+      "description": "サンプル SSH サービス",
+      "config_files": {
+        "C:\\ProgramData\\ssh\\sshd_config": {
+          "content": "",
+          "masked": false,
+          "size_bytes": 0,
+          "sha256": "",
+          "readable": false,
+          "reason": "permission_denied"
+        }
+      }
+    }
+  ],
+  "remote_access": {
+    "rdp": {
+      "enabled": true,
+      "deny_ts_connections": "0",
+      "nla_enabled": true,
+      "user_authentication": "1",
+      "port_number": "3389",
+      "security_layer": "2",
+      "min_encryption_level": "3",
+      "registry_terminal_server": { "fDenyTSConnections": "0" },
+      "registry_rdp_tcp": {
+        "UserAuthentication": "1",
+        "PortNumber": "3389",
+        "SecurityLayer": "2",
+        "MinEncryptionLevel": "3"
+      }
+    },
+    "remote_assistance": {
+      "registry_config": { "fAllowToGetHelp": "0" }
+    },
+    "services": [
+      {
+        "name": "TermService",
+        "display_name": "Remote Desktop Services",
+        "status": "running",
+        "start_type": "manual",
+        "start_name": "NT Authority\\NetworkService",
+        "path_name": "C:\\Windows\\System32\\svchost.exe -k NetworkService"
+      },
+      {
+        "name": "sshd",
+        "display_name": "OpenSSH SSH Server",
+        "status": "stopped",
+        "start_type": "manual",
+        "start_name": "LocalSystem",
+        "path_name": "C:\\Windows\\System32\\OpenSSH\\sshd.exe"
+      }
+    ],
+    "ssh": {
+      "config_files": {
+        "C:\\ProgramData\\ssh\\sshd_config": {
+          "content": "",
+          "masked": false,
+          "size_bytes": 0,
+          "sha256": "",
+          "readable": false,
+          "reason": "permission_denied"
+        }
+      }
+    },
+    "firewall_rules": [
+      {
+        "name": "RemoteDesktop-UserMode-In-TCP",
+        "display_name": "リモート デスクトップ - ユーザー モード (TCP 受信)",
+        "direction": "Inbound",
+        "action": "Allow",
+        "profile": "Domain, Private"
+      },
+      {
+        "name": "OpenSSH-Server-In-TCP",
+        "display_name": "OpenSSH SSH Server (sshd)",
+        "direction": "Inbound",
+        "action": "Allow",
+        "profile": "Domain"
+      }
+    ]
+  },
+  "packages": [
+    { "name": "Sample App", "version": "1.2.3", "vendor": "Example Inc." },
+    { "name": "Sample Runtime", "version": "8.0.1", "vendor": "Example Inc." }
+  ],
+  "environment": {
+    "machine": {
+      "SAMPLE_HOME": "C:\\Sample",
+      "Path": "C:\\Windows;C:\\Windows\\system32;C:\\Sample\\bin"
+    },
+    "user": {
+      "TEMP": "C:\\Users\\sample\\AppData\\Local\\Temp"
+    }
+  },
+  "security": {
+    "firewall_profiles": [
+      { "name": "Domain", "enabled": true, "inbound_action": "Block", "outbound_action": "Allow" },
+      { "name": "Private", "enabled": true, "inbound_action": "Block", "outbound_action": "Allow" },
+      { "name": "Public", "enabled": true, "inbound_action": "Block", "outbound_action": "Allow" }
+    ],
+    "firewall_rules": [
+      {
+        "name": "RemoteDesktop-UserMode-In-TCP",
+        "display_name": "リモート デスクトップ - ユーザー モード (TCP 受信)",
+        "direction": "Inbound",
+        "action": "Allow",
+        "profile": "Domain, Private"
+      },
+      {
+        "name": "OpenSSH-Server-In-TCP",
+        "display_name": "OpenSSH SSH Server (sshd)",
+        "direction": "Inbound",
+        "action": "Allow",
+        "profile": "Domain"
+      }
+    ],
+    "defender": {
+      "enabled": true,
+      "realtime_protection": true,
+      "signature_version": "1.0.0.0",
+      "signature_age_days": 1
+    },
+    "uac": { "EnableLUA": 1, "ConsentPromptBehaviorAdmin": 5 }
+  },
+  "patches": [
+    { "id": "KB5000001", "description": "Security Update", "installed_on": "2026-07-01" },
+    { "id": "KB5000002", "description": "Update", "installed_on": "2026-06-10" }
+  ],
+  "tuning": {
+    "pagefile": [
+      { "path": "C:\\pagefile.sys", "initial_mb": 4096, "maximum_mb": 8192 }
+    ],
+    "registry": {
+      "TcpTimedWaitDelay": "30",
+      "MaxUserPort": "65534"
+    },
+    "power_scheme": "Power Scheme GUID: 00000000-0000-0000-0000-000000000000  (High performance)"
+  },
+  "scheduled": {
+    "scheduled_tasks": [
+      { "name": "SampleMaintenance", "path": "\\Sample\\", "state": "Ready" },
+      { "name": "SampleBackup", "path": "\\Sample\\", "state": "Ready" }
+    ],
+    "startup": [
+      { "name": "SampleAgent", "command": "C:\\Sample\\bin\\agent.exe", "scope": "machine" }
+    ]
+  },
+  "middleware": {
+    "tomcat": [
+      {
+        "name": "tomcat-1",
+        "catalina_base": "C:\\tomcat",
+        "version": "Apache Tomcat/9.0.85",
+        "java_version": "17.0.9",
+        "jvm_opts": "",
+        "state": "",
+        "pid": 0,
+        "connector_ports": [8080, 8443],
+        "config_files": {
+          "C:\\tomcat\\conf\\server.xml": {
+            "content": "<Server port=\"8005\"><!-- sample --></Server>",
+            "masked": false,
+            "size_bytes": 48,
+            "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+            "readable": true,
+            "reason": ""
+          },
+          "C:\\tomcat\\conf\\catalina.properties": {
+            "content": "sample.key=***\n",
+            "masked": true,
+            "size_bytes": 16,
+            "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+            "readable": true,
+            "reason": ""
+          }
+        }
+      }
+    ]
+  }
 }

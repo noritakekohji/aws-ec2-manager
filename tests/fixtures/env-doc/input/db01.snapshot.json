@@ -1,16 +1,256 @@
 {
-  "meta": { "hostname": "db01", "os_type": "linux", "collected_at": "2026-07-20T10:10:00+09:00", "categories": ["os", "network", "services", "remote_access"] },
-  "os": { "hostname": "db01", "os_name": "Red Hat Enterprise Linux", "os_version": "9.4", "architecture": "x86_64", "timezone": "Asia/Tokyo", "cpu_model": "Sample CPU", "cpu_cores": 8, "total_memory_gb": 32.0, "last_boot": "2026-07-18 22:00:00", "hardware": { "virtualization": "virtual" } },
-  "network": { "ip_addresses": [{ "interface": "eth0", "address": "10.0.2.21" }], "dns_servers": ["10.0.0.2"], "proxy": { "enabled": false }, "ntp": { "servers": ["ntp.example.internal"] } },
-  "services": [{ "name": "postgresql", "status": "active", "start_mode": "enabled", "fragment_path": "/usr/lib/systemd/system/postgresql.service", "exec_start": "/usr/bin/postmaster -D /var/lib/pgsql/data", "user": "postgres", "group": "postgres", "unit_file_state": "enabled" }],
+  "meta": {
+    "hostname": "db01",
+    "os_type": "linux",
+    "collected_at": "2026-07-20T10:10:00+0900",
+    "categories": ["os", "network", "services", "remote_access", "environment", "security", "patches", "tuning", "scheduled", "filelist"]
+  },
+  "os": {
+    "hostname": "db01.sample.internal",
+    "domain": "",
+    "os_name": "Sample Enterprise Linux 9.4 (Sample)",
+    "os_version": "9.4",
+    "os_build": "5.14.0-000.el9.x86_64",
+    "architecture": "x86_64",
+    "timezone": "Asia/Tokyo",
+    "locale": "ja_JP.UTF-8",
+    "last_boot": "2026-07-18 22:00",
+    "cpu_model": "Sample vCPU @ 2.50GHz",
+    "cpu_sockets": 1,
+    "cpu_cores": 4,
+    "cpu_logical_procs": 8,
+    "cpu_speed_mhz": 2500,
+    "total_memory_gb": 32.0,
+    "free_memory_gb": 24.5,
+    "used_memory_gb": 7.5,
+    "swap_total_gb": 4.0,
+    "swap_free_gb": 4.0,
+    "hardware": {
+      "manufacturer": "Sample Vendor",
+      "model": "Sample Virtual Machine",
+      "bios_version": "1.0",
+      "bios_date": "01/01/2026",
+      "virtualization": "kvm"
+    },
+    "locale_detail": { "lang": "ja_JP.UTF-8", "lc_all": "" },
+    "reboot_pending": { "pending": false, "reasons": [] }
+  },
+  "network": {
+    "interfaces": [
+      { "name": "eth0", "address": "10.0.2.21", "prefix": 24 }
+    ],
+    "routes": [
+      { "destination": "default", "gateway": "10.0.2.1", "interface": "eth0" },
+      { "destination": "10.0.2.0/24", "gateway": "", "interface": "eth0" }
+    ],
+    "dns_servers": [
+      { "interface": "system", "servers": ["10.0.0.2", "10.0.0.3"] }
+    ],
+    "hosts": [
+      { "ip": "127.0.0.1", "hostnames": ["localhost", "localhost.localdomain"] }
+    ],
+    "proxy": { "http_proxy": "", "https_proxy": "", "no_proxy": "" },
+    "time_sync": {
+      "servers": ["ntp.sample.internal"],
+      "synchronized": true,
+      "_volatile": { "last_offset": "+0.000000001 seconds" }
+    }
+  },
+  "services": [
+    {
+      "name": "postgresql",
+      "display_name": "postgresql",
+      "status": "running",
+      "start_type": "enabled",
+      "description": "PostgreSQL database server",
+      "unit_file_state": "enabled",
+      "fragment_path": "/usr/lib/systemd/system/postgresql.service",
+      "exec_start": "{ path=/usr/bin/postmaster ; argv[]=/usr/bin/postmaster -D /var/lib/pgsql/data }",
+      "user": "postgres",
+      "group": "postgres",
+      "service_type": "notify",
+      "restart": "no",
+      "load_state": "loaded",
+      "active_state": "active",
+      "sub_state": "running"
+    },
+    {
+      "name": "sshd",
+      "display_name": "sshd",
+      "status": "running",
+      "start_type": "enabled",
+      "description": "OpenSSH server daemon",
+      "unit_file_state": "enabled",
+      "fragment_path": "/usr/lib/systemd/system/sshd.service",
+      "exec_start": "{ path=/usr/sbin/sshd ; argv[]=/usr/sbin/sshd -D $OPTIONS }",
+      "user": "",
+      "group": "",
+      "service_type": "notify",
+      "restart": "on-failure",
+      "load_state": "loaded",
+      "active_state": "active",
+      "sub_state": "running",
+      "config_files": {
+        "/etc/ssh/sshd_config": {
+          "content": "Port 22\nPermitRootLogin no\n",
+          "masked": false,
+          "size_bytes": 30,
+          "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+          "readable": true,
+          "reason": ""
+        },
+        "/etc/ssh/ssh_config": {
+          "content": "Host *\n    SendEnv LANG LC_*\n",
+          "masked": false,
+          "size_bytes": 28,
+          "sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "readable": true,
+          "reason": ""
+        }
+      }
+    }
+  ],
   "remote_access": {
     "ssh": {
-      "services": [{ "name": "sshd.service", "status": "active", "start_type": "enabled" }],
+      "services": [
+        {
+          "name": "sshd",
+          "status": "running",
+          "start_type": "enabled",
+          "description": "OpenSSH server daemon",
+          "fragment_path": "/usr/lib/systemd/system/sshd.service",
+          "exec_start": "{ path=/usr/sbin/sshd ; argv[]=/usr/sbin/sshd -D $OPTIONS }",
+          "user": "",
+          "group": "",
+          "service_type": "notify",
+          "restart": "on-failure"
+        }
+      ],
       "config_files": {
-        "/etc/ssh/sshd_config": { "content": "Port 22\nPermitRootLogin no\n", "masked": false, "size_bytes": 30, "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "readable": true, "reason": "" }
+        "/etc/ssh/sshd_config": {
+          "content": "Port 22\nPermitRootLogin no\n",
+          "masked": false,
+          "size_bytes": 30,
+          "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+          "readable": true,
+          "reason": ""
+        },
+        "/etc/ssh/ssh_config": {
+          "content": "Host *\n    SendEnv LANG LC_*\n",
+          "masked": false,
+          "size_bytes": 28,
+          "sha256": "4444444444444444444444444444444444444444444444444444444444444444",
+          "readable": true,
+          "reason": ""
+        }
       }
     },
     "rdp": { "services": [], "config_files": {} },
     "vnc": { "services": [], "config_files": {} }
-  }
+  },
+  "environment": {
+    "machine": {
+      "LANG": "ja_JP.UTF-8",
+      "SAMPLE_DATA": "/var/lib/sample"
+    }
+  },
+  "security": {
+    "firewall": { "type": "firewalld", "state": "running" },
+    "firewall_rules": [
+      { "name": "ssh", "direction": "Inbound", "action": "Allow", "profile": "public" },
+      { "name": "postgresql", "direction": "Inbound", "action": "Allow", "profile": "public" }
+    ],
+    "selinux": "enforcing",
+    "apparmor": { "active": "inactive" }
+  },
+  "patches": [
+    { "name": "sample-lib-1.0.0-1.el9.x86_64", "version": "", "installed_on": "Wed 01 Jul 2026 09:00:00 AM JST" },
+    { "name": "sample-tool-2.1.0-3.el9.x86_64", "version": "", "installed_on": "Tue 10 Jun 2026 09:00:00 AM JST" }
+  ],
+  "tuning": {
+    "sysctl": {
+      "net.core.somaxconn": "4096",
+      "net.ipv4.tcp_tw_reuse": "2",
+      "vm.swappiness": "10",
+      "vm.dirty_ratio": "20",
+      "kernel.shmmax": "18446744073692774399",
+      "fs.file-max": "9223372036854775807",
+      "fs.nr_open": "1048576"
+    },
+    "limits": { "nofile": 1024, "nproc": 63443 },
+    "cpu_governor": ["performance"],
+    "thp_enabled": "never",
+    "thp_defrag": "never",
+    "cpu_mitigations": {
+      "meltdown": "Not affected",
+      "spectre_v1": "Mitigation: usercopy/swapgs barriers and __user pointer sanitization"
+    }
+  },
+  "scheduled": {
+    "cron": [
+      { "source": "/etc/crontab", "entry": "SHELL=/bin/bash" },
+      { "source": "/etc/cron.d/sample", "entry": "0 3 * * * root /opt/sample/bin/nightly.sh" }
+    ],
+    "systemd_timers": [
+      { "unit": "logrotate.service", "raw": "Mon 2026-07-27 00:00:00 JST 13h left n/a n/a logrotate.timer logrotate.service" }
+    ]
+  },
+  "filelist": [
+    {
+      "key": "app-config",
+      "path": "/opt/sample/conf",
+      "os_matched": true,
+      "exists": true,
+      "depth": "unlimited",
+      "hash_enabled": false,
+      "excluded": ["*.log"],
+      "entries": [
+        {
+          "rel_path": "app.conf",
+          "type": "file",
+          "size": 1024,
+          "mtime": "2026-07-01T01:00:00Z",
+          "mode": "0644",
+          "uid": 1001,
+          "gid": 1001,
+          "owner": "sample",
+          "group": "sample",
+          "acl": null,
+          "sha256": null,
+          "link_target": null
+        },
+        {
+          "rel_path": "sub",
+          "type": "dir",
+          "size": null,
+          "mtime": "2026-07-01T01:00:00Z",
+          "mode": "0755",
+          "uid": 1001,
+          "gid": 1001,
+          "owner": "sample",
+          "group": "sample",
+          "acl": null,
+          "sha256": null,
+          "link_target": null
+        },
+        {
+          "rel_path": "sub/extra.conf",
+          "type": "file",
+          "size": 256,
+          "mtime": "2026-07-02T02:00:00Z",
+          "mode": "0640",
+          "uid": 1001,
+          "gid": 1001,
+          "owner": "sample",
+          "group": "sample",
+          "acl": null,
+          "sha256": null,
+          "link_target": null
+        }
+      ],
+      "entry_count": 3,
+      "truncated": false,
+      "errors": []
+    }
+  ]
 }
