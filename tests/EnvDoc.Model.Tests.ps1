@@ -42,3 +42,69 @@ Describe 'EnvDoc Model - 入力読み込み' {
         }
     }
 }
+
+Describe 'EnvDoc Model - モデル構築' {
+    BeforeAll {
+        . (Join-Path $PSScriptRoot '..\tools\env-doc\lib\YamlLite.ps1')
+        . (Join-Path $PSScriptRoot '..\tools\env-doc\lib\Model.ps1')
+        $fixtures = (Resolve-Path (Join-Path $PSScriptRoot 'fixtures\env-doc')).Path
+        $script:SystemDef = ConvertFrom-YamlLite -Path (Join-Path $fixtures 'system.yaml')
+        $script:Inputs    = Read-EnvDocInput -InputDir (Join-Path $fixtures 'input')
+        $script:Model     = Build-EnvDocModel -SystemDef $script:SystemDef -Inputs $script:Inputs
+    }
+
+    It 'システムのメタ情報を取り込む' {
+        $script:Model.System.Id   | Should -Be 'sample-sys'
+        $script:Model.System.Name | Should -Be 'サンプルシステム'
+    }
+
+    It 'YAML の順序どおりにサーバを並べる' {
+        @($script:Model.Servers | ForEach-Object { $_.Hostname }) |
+            Should -Be @('WEB01', 'WEB02', 'db01', 'MISSING01')
+    }
+
+    It 'YAML の役割を取り込む' {
+        ($script:Model.Servers | Where-Object { $_.Hostname -eq 'db01' }).Role | Should -Be 'DB サーバ'
+    }
+
+    It 'snapshot から os_type を取り込む' {
+        ($script:Model.Servers | Where-Object { $_.Hostname -eq 'WEB01' }).OsType | Should -Be 'windows'
+        ($script:Model.Servers | Where-Object { $_.Hostname -eq 'db01' }).OsType  | Should -Be 'linux'
+    }
+
+    It 'snapshot が無いサーバを HasSnapshot=$false にして警告する' {
+        $missing = $script:Model.Servers | Where-Object { $_.Hostname -eq 'MISSING01' }
+        $missing.HasSnapshot | Should -BeFalse
+        @($script:Model.Meta.Warnings | Where-Object { $_ -like '*MISSING01*' }).Count | Should -Be 1
+    }
+
+    It 'show_configs / show_environment の既定を $false にする' {
+        $s = $script:Model.Servers | Where-Object { $_.Hostname -eq 'WEB01' }
+        $s.ShowConfigs     | Should -BeFalse
+        $s.ShowEnvironment | Should -BeFalse
+    }
+
+    It 'Test-EnvDocCategory が未収集カテゴリを見分ける' {
+        $web = $script:Model.Servers | Where-Object { $_.Hostname -eq 'WEB01' }
+        $db  = $script:Model.Servers | Where-Object { $_.Hostname -eq 'db01' }
+        Test-EnvDocCategory -Server $web -Category 'middleware' | Should -BeTrue
+        Test-EnvDocCategory -Server $db  -Category 'middleware' | Should -BeFalse
+    }
+
+    It 'snapshot にあるが YAML に無いサーバを警告付きで追加する' {
+        $def = ConvertFrom-YamlLiteText -Text "system:`n  id: x`n  name: X`nservers:`n  - hostname: WEB01"
+        $m = Build-EnvDocModel -SystemDef $def -Inputs $script:Inputs
+        @($m.Servers | ForEach-Object { $_.Hostname }) | Should -Contain 'db01'
+        @($m.Meta.Warnings | Where-Object { $_ -like '*db01*' }).Count | Should -BeGreaterThan 0
+    }
+
+    It 'system.id が不正なら throw する' {
+        $def = ConvertFrom-YamlLiteText -Text "system:`n  id: 'bad/id'`n  name: X"
+        { Build-EnvDocModel -SystemDef $def -Inputs $script:Inputs } | Should -Throw -ExpectedMessage '*system.id*'
+    }
+
+    It 'system.name が無ければ throw する' {
+        $def = ConvertFrom-YamlLiteText -Text "system:`n  id: ok"
+        { Build-EnvDocModel -SystemDef $def -Inputs $script:Inputs } | Should -Throw -ExpectedMessage '*system.name*'
+    }
+}
