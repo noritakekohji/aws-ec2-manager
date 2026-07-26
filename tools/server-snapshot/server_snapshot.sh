@@ -19,8 +19,9 @@
 #   list     List stored snapshots in current directory
 #
 # Options:
-#   -c <cats>     Categories: all, os, network, services, packages,
-#                 users, filesystem, environment, security (default: all)
+#   -c <cats>     Categories: all, os, network, services, remote_access,
+#                 packages, users, filesystem, environment, security,
+#                 patches, tuning, scheduled, middleware, filelist (default: all)
 #   -o <file>     Output snapshot path (default: auto-named)
 #   -l <label>    Label embedded in filename (e.g. deploy-v1.2.3)
 #   -b <file>     Before snapshot for "after" mode
@@ -128,7 +129,7 @@ collect_snapshot() {
     fi
 
     # Resolve categories
-    local all_cats="os network services packages users filesystem environment security patches tuning scheduled middleware filelist"
+    local all_cats="os network services remote_access packages users filesystem environment security patches tuning scheduled middleware filelist"
     local resolved
     if [[ "$snap_cats" == "all" ]]; then
         resolved="$all_cats"
@@ -308,8 +309,47 @@ def collect_network():
     return {'interfaces': interfaces, 'routes': routes, 'dns_servers': dns_servers,
             'hosts': hosts, 'proxy': proxy, 'time_sync': ts}
 
+def _systemctl_show(unit):
+    props = [
+        'Description', 'FragmentPath', 'ExecStart', 'User', 'Group', 'Type',
+        'Restart', 'LoadState', 'ActiveState', 'SubState', 'UnitFileState',
+    ]
+    info = {}
+    try:
+        r = subprocess.run(
+            ['systemctl', 'show', unit, '--no-pager'] + ['--property=' + p for p in props],
+            capture_output=True, text=True, timeout=5, stdin=subprocess.DEVNULL)
+        if r.returncode != 0:
+            return info
+        for line in r.stdout.splitlines():
+            if '=' not in line:
+                continue
+            k, v = line.split('=', 1)
+            info[k] = v
+    except Exception:
+        pass
+    return info
+
+def _service_config_files(name, conf):
+    root = os.environ.get('_OPS_SERVICE_CONFIG_ROOT', '')
+    lower = (name or '').lower()
+    paths = []
+    if lower in ('ssh', 'sshd'):
+        if root:
+            paths.extend([os.path.join(root, 'sshd_config'), os.path.join(root, 'ssh_config')])
+        else:
+            paths.extend(['/etc/ssh/sshd_config', '/etc/ssh/ssh_config'])
+    if lower in ('smb', 'smbd', 'nmb', 'nmbd', 'winbind', 'samba', 'samba-ad-dc'):
+        paths.append(os.path.join(root, 'smb.conf') if root else '/etc/samba/smb.conf')
+    files = {}
+    for p in paths:
+        if os.path.isfile(p):
+            files[p] = _mw_read_file(p, conf['mask_patterns'], conf['max_file_kb'])
+    return files
+
 def collect_services():
     services = []
+    conf = _mw_load_conf()
     out = run('systemctl list-units --type=service --all --no-pager --no-legend 2>/dev/null', '')
     for line in out.splitlines():
         line = line.strip()
@@ -319,8 +359,75 @@ def collect_services():
         name = parts[0].replace('.service', '')
         sub  = parts[2] if len(parts) > 2 else ''
         enabled = run(f'systemctl is-enabled {parts[0]} 2>/dev/null', 'unknown')
-        services.append({'name': name, 'display_name': name, 'status': sub, 'start_type': enabled})
+        show = _systemctl_show(parts[0])
+        entry = {
+            'name': name,
+            'display_name': name,
+            'status': sub,
+            'start_type': enabled,
+            'description': show.get('Description', ''),
+            'unit_file_state': show.get('UnitFileState', ''),
+            'fragment_path': show.get('FragmentPath', ''),
+            'exec_start': show.get('ExecStart', ''),
+            'user': show.get('User', ''),
+            'group': show.get('Group', ''),
+            'service_type': show.get('Type', ''),
+            'restart': show.get('Restart', ''),
+            'load_state': show.get('LoadState', ''),
+            'active_state': show.get('ActiveState', ''),
+            'sub_state': show.get('SubState', ''),
+        }
+        cfg_files = _service_config_files(name, conf)
+        if cfg_files:
+            entry['config_files'] = cfg_files
+        services.append(entry)
     return sorted(services, key=lambda x: x['name'])
+
+def _service_summary(unit_names):
+    out = []
+    for unit in unit_names:
+        show = _systemctl_show(unit)
+        if not show:
+            continue
+        name = unit.replace('.service', '')
+        out.append({
+            'name': name,
+            'status': show.get('SubState', '') or show.get('ActiveState', ''),
+            'start_type': show.get('UnitFileState', ''),
+            'description': show.get('Description', ''),
+            'fragment_path': show.get('FragmentPath', ''),
+            'exec_start': show.get('ExecStart', ''),
+            'user': show.get('User', ''),
+            'group': show.get('Group', ''),
+            'service_type': show.get('Type', ''),
+            'restart': show.get('Restart', ''),
+        })
+    return out
+
+def collect_remote_access():
+    conf = _mw_load_conf()
+    xrdp_files = {}
+    for p in ('/etc/xrdp/xrdp.ini', '/etc/xrdp/sesman.ini'):
+        if os.path.isfile(p):
+            xrdp_files[p] = _mw_read_file(p, conf['mask_patterns'], conf['max_file_kb'])
+    vnc_files = {}
+    for p in ('/etc/tigervnc/vncserver.users', '/etc/vnc.conf'):
+        if os.path.isfile(p):
+            vnc_files[p] = _mw_read_file(p, conf['mask_patterns'], conf['max_file_kb'])
+    return {
+        'ssh': {
+            'services': _service_summary(['ssh.service', 'sshd.service']),
+            'config_files': _service_config_files('sshd', conf),
+        },
+        'rdp': {
+            'services': _service_summary(['xrdp.service', 'xrdp-sesman.service']),
+            'config_files': xrdp_files,
+        },
+        'vnc': {
+            'services': _service_summary(['vncserver.service', 'x11vnc.service']),
+            'config_files': vnc_files,
+        },
+    }
 
 def collect_packages():
     pkgs = []
@@ -1023,6 +1130,7 @@ def collect_filelist():
 
 CAT_MAP = {
     'os': collect_os, 'network': collect_network, 'services': collect_services,
+    'remote_access': collect_remote_access,
     'packages': collect_packages, 'users': collect_users, 'filesystem': collect_filesystem,
     'environment': collect_environment, 'security': collect_security,
     'patches': collect_patches, 'tuning': collect_tuning, 'scheduled': collect_scheduled,

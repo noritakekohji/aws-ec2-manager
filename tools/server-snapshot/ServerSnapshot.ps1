@@ -36,7 +36,7 @@ Set-StrictMode -Version Latest
 
 # Normalize -Category: accept comma-separated values (e.g. "os,network" from the
 # .bat wrapper) the same way the Bash tool does, then validate against the known set.
-$validCategories = @('all','os','network','services','packages','users','filesystem','environment','security','patches','tuning','scheduled','middleware','filelist')
+$validCategories = @('all','os','network','services','remote_access','packages','users','filesystem','environment','security','patches','tuning','scheduled','middleware','filelist')
 $Category = @($Category | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ } | Select-Object -Unique)
 if (-not $Category) { $Category = @('all') }
 foreach ($c in $Category) {
@@ -193,19 +193,165 @@ function Get-NetworkInfo {
     @{ interfaces = $interfaces; routes = $routes; dns_servers = $dns; hosts = $hosts; proxy = $proxy; time_sync = $timeSync }
 }
 
+function Get-ServiceMaskPatterns {
+    @('password','passwd','pwd','secret','key','credential','token','connectionstring','privatekey')
+}
+
+function Get-ServiceConfigFiles {
+    param([string]$Name)
+    $files = [ordered]@{}
+    $lower = "$Name".ToLower()
+    $sshRoot = if ($env:_OPS_SERVICE_CONFIG_ROOT) { $env:_OPS_SERVICE_CONFIG_ROOT } else { 'C:\ProgramData\ssh' }
+    $paths = @()
+    if ($lower -eq 'sshd' -or $lower -eq 'ssh-agent') {
+        $paths += (Join-Path $sshRoot 'sshd_config')
+        $paths += (Join-Path $sshRoot 'ssh_config')
+    }
+    foreach ($p in $paths) {
+        if (Test-Path -LiteralPath $p) {
+            $files["$p"] = Read-MwConfigFile -Path $p -MaskPatterns (Get-ServiceMaskPatterns) -MaxFileKb 256
+        }
+    }
+    return $files
+}
+
+function Get-ServiceRegistryConfig {
+    param([string]$Name)
+    $lower = "$Name".ToLower()
+    $regPath = ''
+    if ($lower -eq 'lanmanserver') {
+        $regPath = 'HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters'
+    } elseif ($lower -eq 'lanmanworkstation') {
+        $regPath = 'HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters'
+    }
+    if (-not $regPath) { return @{} }
+
+    $values = [ordered]@{}
+    $item = Get-ItemProperty -Path $regPath -ErrorAction SilentlyContinue
+    if (-not $item) { return $values }
+    foreach ($prop in $item.PSObject.Properties) {
+        if ($prop.Name -like 'PS*') { continue }
+        if ($prop.Name -imatch 'password|passwd|pwd|secret|key|credential|token') {
+            $values[$prop.Name] = '***'
+        } elseif ($prop.Value -is [array]) {
+            $values[$prop.Name] = @($prop.Value | ForEach-Object { "$_" })
+        } else {
+            $values[$prop.Name] = "$($prop.Value)"
+        }
+    }
+    return $values
+}
+
 function Get-ServicesInfo {
     Write-Host "  Collecting: services ..."
     @(Safe-Exec -Label 'services' -Block {
+        $svcConfig = @{}
+        Get-CimInstance Win32_Service -ErrorAction SilentlyContinue | ForEach-Object {
+            $svcConfig[$_.Name] = $_
+        }
         Get-Service -ErrorAction SilentlyContinue |
             ForEach-Object {
-                @{
+                $cfg = if ($svcConfig.ContainsKey($_.Name)) { $svcConfig[$_.Name] } else { $null }
+                $entry = [ordered]@{
                     name         = $_.Name
                     display_name = $_.DisplayName
                     status       = $_.Status.ToString().ToLower()
                     start_type   = $_.StartType.ToString().ToLower()
+                    service_type = if ($cfg) { "$($cfg.ServiceType)" } else { '' }
+                    start_name   = if ($cfg) { "$($cfg.StartName)" } else { '' }
+                    path_name    = if ($cfg) { "$($cfg.PathName)" } else { '' }
+                    description  = if ($cfg) { "$($cfg.Description)" } else { '' }
                 }
+                $configFiles = Get-ServiceConfigFiles -Name $_.Name
+                if ($configFiles.Count) { $entry['config_files'] = $configFiles }
+                $registryConfig = Get-ServiceRegistryConfig -Name $_.Name
+                if ($registryConfig.Count) { $entry['registry_config'] = $registryConfig }
+                $entry
             } | Sort-Object { $_['name'] }
     })
+}
+
+function Get-RegistryValueMap {
+    param([string]$Path)
+    $values = [ordered]@{}
+    $item = Get-ItemProperty -Path $Path -ErrorAction SilentlyContinue
+    if (-not $item) { return $values }
+    foreach ($prop in $item.PSObject.Properties) {
+        if ($prop.Name -like 'PS*') { continue }
+        if ($prop.Name -imatch 'password|passwd|pwd|secret|key|credential|token') {
+            $values[$prop.Name] = '***'
+        } elseif ($prop.Value -is [array]) {
+            $values[$prop.Name] = @($prop.Value | ForEach-Object { "$_" })
+        } else {
+            $values[$prop.Name] = "$($prop.Value)"
+        }
+    }
+    return $values
+}
+
+function Get-RemoteAccessServiceState {
+    param([string[]]$Names)
+    $result = @()
+    foreach ($name in $Names) {
+        $svc = Get-Service -Name $name -ErrorAction SilentlyContinue
+        if (-not $svc) { continue }
+        $cfg = Get-CimInstance Win32_Service -Filter ("Name='{0}'" -f $name.Replace("'","''")) -ErrorAction SilentlyContinue
+        $result += [ordered]@{
+            name         = $svc.Name
+            display_name = $svc.DisplayName
+            status       = $svc.Status.ToString().ToLower()
+            start_type   = $svc.StartType.ToString().ToLower()
+            start_name   = if ($cfg) { "$($cfg.StartName)" } else { '' }
+            path_name    = if ($cfg) { "$($cfg.PathName)" } else { '' }
+        }
+    }
+    return @($result)
+}
+
+function Get-RemoteAccessInfo {
+    Write-Host '  Collecting: remote_access ...'
+    $rdpBase = 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server'
+    $rdpTcp  = 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp'
+    $raPath  = 'HKLM:\SYSTEM\CurrentControlSet\Control\Remote Assistance'
+    $rdpBaseValues = Get-RegistryValueMap -Path $rdpBase
+    $rdpTcpValues  = Get-RegistryValueMap -Path $rdpTcp
+    $fDeny = $null
+    if ($rdpBaseValues.Contains('fDenyTSConnections')) { $fDeny = "$($rdpBaseValues['fDenyTSConnections'])" }
+    $nla = $null
+    if ($rdpTcpValues.Contains('UserAuthentication')) { $nla = "$($rdpTcpValues['UserAuthentication'])" }
+
+    $firewallRules = @(Safe-Exec -Label 'remote_access.firewall' -Block {
+        Get-NetFirewallRule -Enabled True -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match 'RemoteDesktop|RDP|OpenSSH|SSH' -or $_.DisplayName -match 'Remote Desktop|リモート デスクトップ|OpenSSH|SSH' } |
+            ForEach-Object {
+                @{ name = $_.Name; display_name = $_.DisplayName; direction = $_.Direction.ToString(); action = $_.Action.ToString(); profile = $_.Profile.ToString() }
+            } | Sort-Object { $_['name'] }
+    })
+
+    [ordered]@{
+        rdp = [ordered]@{
+            enabled                = if ($null -ne $fDeny) { $fDeny -eq '0' } else { $null }
+            deny_ts_connections    = $fDeny
+            nla_enabled            = if ($null -ne $nla) { $nla -eq '1' } else { $null }
+            user_authentication    = $nla
+            port_number            = if ($rdpTcpValues.Contains('PortNumber')) { "$($rdpTcpValues['PortNumber'])" } else { '' }
+            security_layer         = if ($rdpTcpValues.Contains('SecurityLayer')) { "$($rdpTcpValues['SecurityLayer'])" } else { '' }
+            min_encryption_level   = if ($rdpTcpValues.Contains('MinEncryptionLevel')) { "$($rdpTcpValues['MinEncryptionLevel'])" } else { '' }
+            registry_terminal_server = $rdpBaseValues
+            registry_rdp_tcp       = $rdpTcpValues
+        }
+        remote_assistance = [ordered]@{
+            registry_config = Get-RegistryValueMap -Path $raPath
+        }
+        services = @(Get-RemoteAccessServiceState -Names @(
+            'TermService', 'SessionEnv', 'UmRdpService', 'Tssdis', 'RemoteAccess',
+            'RasMan', 'SstpSvc', 'sshd', 'ssh-agent'
+        ))
+        ssh = [ordered]@{
+            config_files = Get-ServiceConfigFiles -Name 'sshd'
+        }
+        firewall_rules = $firewallRules
+    }
 }
 
 function Get-PackagesInfo {
@@ -650,7 +796,18 @@ function Read-FilelistConf {
 
         if ($section -eq 'target' -and $null -ne $current) {
             switch ($key) {
-                'path'    { $current.path = $val }
+                'path'    {
+                    $pathVal = $val.Trim()
+                    if ($pathVal.Length -ge 2) {
+                        $first = $pathVal.Substring(0, 1)
+                        $last = $pathVal.Substring($pathVal.Length - 1, 1)
+                        if (($first -eq '"' -and $last -eq '"') -or ($first -eq "'" -and $last -eq "'")) {
+                            $pathVal = $pathVal.Substring(1, $pathVal.Length - 2).Trim()
+                        }
+                    }
+                    if ($pathVal -match '^[A-Za-z]:$') { $pathVal = "$pathVal\" }
+                    $current.path = $pathVal
+                }
                 'os'      {
                     $v = $val.ToLower()
                     if ($v -eq 'windows' -or $v -eq 'linux' -or $v -eq 'both') { $current.os = $v }
@@ -976,7 +1133,7 @@ function Invoke-Collect {
         [string]$SnapLabel
     )
     # Resolve categories
-    $allCategories = @('os','network','services','packages','users','filesystem','environment','security','patches','tuning','scheduled','middleware','filelist')
+    $allCategories = @('os','network','services','remote_access','packages','users','filesystem','environment','security','patches','tuning','scheduled','middleware','filelist')
     $resolved = if ($Categories -contains 'all') { $allCategories } else {
         $Categories | Where-Object { $allCategories -contains $_ }
     }
@@ -1010,6 +1167,7 @@ function Invoke-Collect {
             'os'          { Get-OsInfo }
             'network'     { Get-NetworkInfo }
             'services'    { Get-ServicesInfo }
+            'remote_access' { Get-RemoteAccessInfo }
             'packages'    { Get-PackagesInfo }
             'users'       { Get-UsersInfo }
             'filesystem'  { Get-FilesystemInfo }
@@ -1184,7 +1342,25 @@ function Compare-Network($b, $a) {
 function Compare-Services($b, $a) {
     $bl = @(As-Array $b | ForEach-Object { Obj-To-Dict $_ })
     $al = @(As-Array $a | ForEach-Object { Obj-To-Dict $_ })
-    Compare-List $bl $al 'name' @('status','start_type') 'services'
+    Compare-List $bl $al 'name' @('status','start_type','service_type','start_name','path_name','description') 'services'
+}
+
+function Compare-RemoteAccess($b, $a) {
+    $results = [System.Collections.Generic.List[CategoryResult]]::new()
+    foreach ($key in @('rdp','remote_assistance','ssh')) {
+        $bd = Obj-To-Dict (Get-Prop $b $key)
+        $ad = Obj-To-Dict (Get-Prop $a $key)
+        if ($null -eq $bd) { $bd = @{} }
+        if ($null -eq $ad) { $ad = @{} }
+        $results.Add((Compare-Dict $bd $ad "remote_access/$key"))
+    }
+    $bs = @(As-Array (Get-Prop $b 'services') | ForEach-Object { Obj-To-Dict $_ })
+    $as = @(As-Array (Get-Prop $a 'services') | ForEach-Object { Obj-To-Dict $_ })
+    $results.Add((Compare-List $bs $as 'name' @('status','start_type','start_name','path_name') 'remote_access/services'))
+    $bf = @(As-Array (Get-Prop $b 'firewall_rules') | ForEach-Object { Obj-To-Dict $_ })
+    $af = @(As-Array (Get-Prop $a 'firewall_rules') | ForEach-Object { Obj-To-Dict $_ })
+    $results.Add((Compare-List $bf $af 'name' @('direction','action','profile') 'remote_access/firewall_rules'))
+    return $results
 }
 
 function Compare-Packages($b, $a) {
@@ -1567,7 +1743,7 @@ function Invoke-Compare {
     $bMeta = Obj-To-Dict ($bData['meta'])
     $aMeta = Obj-To-Dict ($aData['meta'])
 
-    $allCats   = @('os','network','services','packages','users','filesystem','environment','security','patches','tuning','scheduled','middleware','filelist')
+    $allCats   = @('os','network','services','remote_access','packages','users','filesystem','environment','security','patches','tuning','scheduled','middleware','filelist')
     $availCats = $allCats | Where-Object { $bData.ContainsKey($_) -and $aData.ContainsKey($_) }
     $compareCats = if ($Categories -contains 'all') { $availCats } else {
         $Categories | Where-Object { $availCats -contains $_ }
@@ -1582,6 +1758,7 @@ function Invoke-Compare {
             'os'          { @(Compare-Os          $bCat $aCat) }
             'network'     { @(Compare-Network     $bCat $aCat) }
             'services'    { @(Compare-Services    $bCat $aCat) }
+            'remote_access' { @(Compare-RemoteAccess $bCat $aCat) }
             'packages'    { @(Compare-Packages    $bCat $aCat) }
             'users'       { @(Compare-Users       $bCat $aCat) }
             'filesystem'  { @(Compare-Filesystem  $bCat $aCat) }

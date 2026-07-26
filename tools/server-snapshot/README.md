@@ -112,7 +112,8 @@ tools/server-snapshot/
 |---|---|
 | `os`          | OS バージョン、ホスト名、カーネル、CPU、メモリ、タイムゾーン、HW/仮想化、ロケール詳細、再起動保留 |
 | `network`     | IP アドレス、ルーティング、DNS、hosts、プロキシ設定、時刻同期（NTP） |
-| `services`    | サービス一覧（状態・起動設定） |
+| `services`    | サービス一覧（状態・起動設定・実行パス・実行ユーザー・代表的なサービス設定） |
+| `remote_access` | リモートアクセス設定（RDP/RDS・OpenSSH・xrdp/VNC、関連サービス・設定ファイル・FW ルール） |
 | `packages`    | インストール済みパッケージとバージョン |
 | `users`       | ローカルユーザー・グループ |
 | `filesystem`  | ドライブ / マウントポイントの使用状況、マウントオプション |
@@ -135,6 +136,35 @@ tools/server-snapshot/
 # Linux: 新カテゴリ指定例
 ./server_snapshot.sh collect -c tuning,patches,scheduled
 ```
+
+---
+
+## `services` カテゴリ
+
+OS サービスの状態に加えて、サービス管理側の設定情報を収集します。
+
+- Windows: `Win32_Service` 由来の `service_type` / `start_name` / `path_name` / `description`
+- Linux: systemd の `FragmentPath` / `ExecStart` / `User` / `Group` / `Restart` / `UnitFileState`
+- OpenSSH: Windows は `C:\ProgramData\ssh\sshd_config`、Linux は `/etc/ssh/sshd_config` / `/etc/ssh/ssh_config`
+- SMB/Samba: Windows は `LanmanServer` / `LanmanWorkstation` の `Parameters` レジストリ、Linux は `/etc/samba/smb.conf`
+
+設定ファイル本文は `config_files` に保存されます。`middleware` と同じマスク処理を通し、
+`password` / `secret` / `token` などの既知キーは `***` に置換します。
+
+---
+
+## `remote_access` カテゴリ
+
+リモート接続に関わる OS 設定をまとめて収集します。
+
+- Windows RDP/RDS: RDP 有効/無効、NLA、RDP ポート、`RDP-Tcp` の暗号化/セキュリティ設定、Terminal Services 系サービス
+- Windows Remote Assistance: `Remote Assistance` レジストリ設定
+- Windows OpenSSH: `sshd` / `ssh-agent` サービスと `C:\ProgramData\ssh\sshd_config`
+- Linux SSH: `ssh` / `sshd` systemd unit と `/etc/ssh/sshd_config` / `/etc/ssh/ssh_config`
+- Linux RDP/VNC: `xrdp` / `xrdp-sesman` / VNC 系サービスと `/etc/xrdp/*.ini` などの代表設定
+- 関連 Firewall ルール: Windows では Remote Desktop / OpenSSH / SSH に一致する有効ルール
+
+設定ファイル本文は `config_files` に保存され、既知の秘密情報キーは `***` にマスクされます。
 
 ---
 

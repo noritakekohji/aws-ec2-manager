@@ -95,7 +95,24 @@ def cat_os(b, a):
 
 def cat_services(b, a):
     return compare_list(b.get('services', []), a.get('services', []),
-                        'name', ['status', 'start_type'])
+                        'name', ['status', 'start_type', 'service_type',
+                                 'start_name', 'path_name', 'description',
+                                 'unit_file_state', 'fragment_path', 'exec_start',
+                                 'user', 'group', 'restart', 'load_state',
+                                 'active_state', 'sub_state'])
+
+def cat_remote_access(b, a):
+    out = []
+    br = b.get('remote_access') or {}
+    ar = a.get('remote_access') or {}
+    for key in ('rdp', 'remote_assistance', 'ssh', 'vnc'):
+        for state, item_key, bv, av in compare_dicts(br.get(key) or {}, ar.get(key) or {}):
+            out.append((state, f'{key}.{item_key}', bv, av))
+    out += compare_list(br.get('services', []), ar.get('services', []),
+                        'name', ['status', 'start_type', 'start_name', 'path_name'])
+    out += compare_list(br.get('firewall_rules', []), ar.get('firewall_rules', []),
+                        'name', ['direction', 'action', 'profile'])
+    return out
 
 def cat_packages(b, a):
     return compare_list(b.get('packages', []), a.get('packages', []),
@@ -270,6 +287,7 @@ def cat_filelist(b, a):
 CATEGORIES = [
     ('os',          cat_os),
     ('services',    cat_services),
+    ('remote_access', cat_remote_access),
     ('packages',    cat_packages),
     ('users',       cat_users),
     ('filesystem',  cat_filesystem),

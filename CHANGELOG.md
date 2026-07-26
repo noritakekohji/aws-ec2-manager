@@ -7,7 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `server-snapshot` の `filelist.conf` で、Windows ドライブ直下を `path = D:` や
+  `path = "D:\"` のように指定した場合でも `D:\` として扱うようにし、引用符が
+  `Test-Path -LiteralPath` に渡って対象なしになる問題を防止。
+
 ### Added
+- **`server-snapshot remote_access` カテゴリを追加**。Windows は RDP/RDS
+  (RDP 有効/無効、NLA、ポート、`RDP-Tcp` レジストリ、Terminal Services 系サービス)、
+  Remote Assistance、OpenSSH、関連 Firewall ルールを収集。Linux は SSH / xrdp /
+  VNC 系 systemd unit と代表設定ファイルを収集する。
+- **`server-snapshot services` にサービス設定情報の収集を追加**。Windows は `Win32_Service`
+  の実行パス・実行ユーザー・説明に加え、OpenSSH の `sshd_config` と SMB
+  (`LanmanServer` / `LanmanWorkstation`) の `Parameters` レジストリを収集。Linux は
+  systemd の `FragmentPath` / `ExecStart` / `User` / `Group` 等と、OpenSSH
+  (`/etc/ssh/sshd_config`) / Samba (`/etc/samba/smb.conf`) の設定ファイルを収集。
+  設定ファイル本文は既存のマスク処理を通して保存する。
 - **file-transfer-check のお客様向け実施手順書(PowerPoint)を追加**。`output/file-transfer-check-手順.pptx`(全11ページ、Windows 環境向け)と生成スクリプト `source/build-file-transfer-check-deck.js`(pptxgenjs)。非技術者のお客様がフォルダのコピー → bat のダブルクリック → 結果送付までを実施できる構成。`.gitignore` に `!output/*.pptx` の例外を追加し、資料成果物を追跡対象にした
 
 ## [2.9.0] - 2026-07-25

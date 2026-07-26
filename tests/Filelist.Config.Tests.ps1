@@ -120,6 +120,22 @@ hash    = true      # compute sha256
         Remove-Item -LiteralPath $f -Force
     }
 
+    It 'normalizes quoted Windows drive roots' {
+        $f = [System.IO.Path]::GetTempFileName()
+        Set-Content -LiteralPath $f -Value @'
+[target:d1]
+path = "D:"
+
+[target:d2]
+path = 'E:\'
+'@
+        $env:_OPS_FILELIST_CONF = $f
+        $conf = Read-FilelistConf
+        ($conf.targets | Where-Object { $_.key -eq 'd1' }).path | Should -Be 'D:\'
+        ($conf.targets | Where-Object { $_.key -eq 'd2' }).path | Should -Be 'E:\'
+        Remove-Item -LiteralPath $f -Force
+    }
+
     It 'parses [limits] max_entries_per_target' {
         $f = [System.IO.Path]::GetTempFileName()
         Set-Content -LiteralPath $f -Value @'
