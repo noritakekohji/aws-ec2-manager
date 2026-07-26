@@ -186,6 +186,52 @@ snapshot の JSON は、カテゴリによって形が大きく異なる。中�
 
 共通軸が作れないため、**横断表ではなく OS 別サブ表**として描画する。
 
+#### 0〜1 件のカテゴリは配列にならない（最重要）
+
+`ServerSnapshot.ps1` は `$result[$cat] = switch ($cat) { ... }` でカテゴリ値を詰めている。
+PowerShell の配列アンロールにより、**要素 0 件のカテゴリは `null`、1 件のカテゴリは単一オブジェクト**
+として JSON 化される（`filelist` だけが `,@()` で保護されている）。
+
+そのため env-doc 側は、snapshot 由来の配列を `.Count` する前・`foreach` に渡す前に
+**必ず `@()` でラップする**。これを怠ると、サービスが 1 個しかないサーバで件数が壊れる。
+Linux 側（Python の `json.dump`）にこの問題はない。
+
+#### 実際のフィールド名が直感と食い違うもの
+
+設計時に想定した名前と実装が異なっていた箇所。実装を正とする。
+
+| 想定しがちな名前 | 実際 |
+|---|---|
+| `network.ip_addresses` | `network.interfaces`（要素は `{name, address, prefix}`） |
+| `network.dns_servers` = 文字列配列 | `[{interface, servers:[...]}]` の入れ子 |
+| `network.ntp` | `network.time_sync` |
+| `services[].start_mode` | `services[].start_type`（Windows は小文字化された値） |
+| `packages[].publisher` | `packages[].vendor` |
+| `tuning.power_plan` | `tuning.power_scheme` |
+| `tuning.pagefile.size_mb` | `tuning.pagefile` は配列 `[{path, initial_mb, maximum_mb}]` |
+
+#### 構造そのものが OS で違うもの
+
+| カテゴリ | Windows | Linux |
+|---|---|---|
+| `environment` | `{machine:{}, user:{}}` の 2 段 | `{machine:{}}` のみ（`user` キーなし） |
+| `scheduled` | `{scheduled_tasks:[], startup:[]}` のオブジェクト | `{cron:[], systemd_timers:[]}` のオブジェクト |
+| `security` ファイアウォール | `security.firewall_profiles[]` = `{name, enabled, ...}` | `security.firewall` = `{type, state}`。**firewalld / iptables が無ければキーごと欠落** |
+| `security` アクセス制御 | `security.uac` = `{EnableLUA:<int>, ...}`（PascalCase・0/1） | `security.apparmor` = `{}` / `{available, summary}` / `{active}` の 3 形 |
+| `tuning` | `power_scheme` / `pagefile[]` | `thp_enabled` / `cpu_governor`（**文字列配列**） |
+
+`environment` と `scheduled` は「配列だと思って `.Count` を取ると常に 1 になる」ため、
+特に事故を起こしやすい。
+
+#### 収集側が未実装の予約フィールド
+
+値が空でも「未収集」ではなく「収集側が未実装」であるため、`-` と表示する。
+
+- `middleware.<hana|sap|tomcat>[].state` — 常に `''`
+- `middleware.<hana|sap>[].ports` — 常に `[]`
+
+ポートが実際に入るのは `sqlserver` の `port`（スカラ）と `tomcat` の `connector_ports`（配列）だけ。
+
 ## 5. 出力
 
 ### サイト構成
