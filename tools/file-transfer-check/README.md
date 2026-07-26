@@ -76,15 +76,18 @@ chmod +x check_file_transfer.sh   # 初回のみ
 
 ## お客様向け手順書 (PowerPoint)
 
-非技術者のお客様に配布する実施手順書を生成できます。
+非技術者のお客様に配布する実施手順書をリポジトリに同梱しています。
+
+- 成果物: `output/file-transfer-check-手順.pptx` (全11ページ、Windows 環境向け)
+- 生成元: `source/build-file-transfer-check-deck.js` (pptxgenjs)
+
+内容を変更する場合は生成スクリプトを編集し、次のコマンドで再生成してコミットします。
 
 ```bash
 node source/build-file-transfer-check-deck.js
 ```
 
-出力: `output/file-transfer-check-手順.pptx` (全12ページ)。
-`output/` は `.gitignore` 対象のため、必要なときに上記コマンドで生成してください。
-内容を変更する場合は `source/build-file-transfer-check-deck.js` を編集します。
+> お客様端末が Linux の場合は、この手順書ではカバーしていません(上記「Linux」節を参照)。
 
 ## 手動結合テスト手順
 

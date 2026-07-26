@@ -335,7 +335,7 @@ function console_(slide, x, y, w, h, lines) {
 // =====================================================================
 {
   const s = pres.addSlide();
-  stepHeading(s, 2, '実行する（Windows）', 'ファイルをダブルクリックするだけです');
+  stepHeading(s, 2, '実行する', 'ファイルをダブルクリックするだけです');
 
   s.addText(
     [
@@ -486,56 +486,7 @@ function console_(slide, x, y, w, h, lines) {
 }
 
 // =====================================================================
-// 9. Linux の場合
-// =====================================================================
-{
-  const s = pres.addSlide();
-  heading(s, 'Linux 端末で実施する場合', '手順の考え方は Windows と同じです。実行方法だけが異なります');
-
-  console_(s, 0.6, 2.05, 7.0, 2.2, [
-    { text: '$ chmod +x check_file_transfer.sh', options: { breakLine: true, color: '7FD1C4' } },
-    { text: '$ ./check_file_transfer.sh -l shares.lst -s 10', options: { breakLine: true, color: '7FD1C4' } },
-    { text: '', options: { breakLine: true } },
-    { text: '[SHARE] //filesv01/upload  (業務共有)', options: { color: WHITE } },
-  ]);
-
-  s.addShape(pres.ShapeType.roundRect, {
-    x: 7.9, y: 2.05, w: 4.8, h: 2.2, rectRadius: 0.1,
-    fill: { color: WHITE }, line: { color: 'CFE2E5', width: 1 }, shadow: cardShadow(),
-  });
-  s.addText('必要なコマンド', {
-    x: 8.2, y: 2.32, w: 4.2, h: 0.32,
-    fontFace: JP, fontSize: 13, bold: true, color: TEAL, margin: 0,
-  });
-  s.addText('smbclient  /  sha256sum  /  dd', {
-    x: 8.2, y: 2.82, w: 4.2, h: 0.35,
-    fontFace: MONO, fontSize: 12.5, color: INK, margin: 0,
-  });
-  s.addText('未導入の場合は実行時に\nその旨が表示されます', {
-    x: 8.2, y: 3.32, w: 4.2, h: 0.65,
-    fontFace: JP, fontSize: 11.5, color: MUTED, lineSpacing: 18, margin: 0,
-  });
-
-  s.addShape(pres.ShapeType.roundRect, {
-    x: 0.6, y: 4.65, w: 12.1, h: 1.45, rectRadius: 0.1, fill: { color: 'FDF3E0' },
-  });
-  s.addText([
-    { text: 'Linux をお使いの場合のご注意', options: { bold: true, breakLine: true, color: AMBER } },
-    { text: 'Windows のようなログインユーザーでの自動接続は使えないことがあります。その場合は接続用のユーザー名を指定していただく必要がありますので、ご担当者にご確認ください。', options: { color: INK } },
-  ], {
-    x: 0.95, y: 4.65, w: 11.4, h: 1.45,
-    fontFace: JP, fontSize: 13, lineSpacing: 22, valign: 'middle', margin: 0,
-  });
-
-  s.addText('※ 確認する内容・結果の見方（OK / NG / WARNING）は Windows と同じです。', {
-    x: 0.6, y: 6.35, w: 12.1, h: 0.4,
-    fontFace: JP, fontSize: 12.5, color: MUTED, margin: 0,
-  });
-  s.addNotes('Linux の統合認証は Kerberos チケットが必要。非ドメイン端末では username 指定。');
-}
-
-// =====================================================================
-// 10. うまくいかないときは
+// 9. うまくいかないときは
 // =====================================================================
 {
   const s = pres.addSlide();
@@ -581,7 +532,7 @@ function console_(slide, x, y, w, h, lines) {
 }
 
 // =====================================================================
-// 11. 安全性について
+// 10. 安全性について
 // =====================================================================
 {
   const s = pres.addSlide();
@@ -619,7 +570,7 @@ function console_(slide, x, y, w, h, lines) {
 }
 
 // =====================================================================
-// 12. まとめ
+// 11. まとめ
 // =====================================================================
 {
   const s = pres.addSlide();

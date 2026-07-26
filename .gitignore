@@ -9,6 +9,10 @@ coverage.xml
 Output/
 publish/
 
+# ただし output/ の資料成果物(お客様配布用 PowerPoint 等)は追跡する
+!output/
+!output/*.pptx
+
 # PSScriptAnalyzer キャッシュ
 .psscriptanalyzer/
 

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **file-transfer-check のお客様向け実施手順書(PowerPoint)を追加**。`output/file-transfer-check-手順.pptx`(全11ページ、Windows 環境向け)と生成スクリプト `source/build-file-transfer-check-deck.js`(pptxgenjs)。非技術者のお客様がフォルダのコピー → bat のダブルクリック → 結果送付までを実施できる構成。`.gitignore` に `!output/*.pptx` の例外を追加し、資料成果物を追跡対象にした
+
 ## [2.9.0] - 2026-07-25
 
 ### Added
