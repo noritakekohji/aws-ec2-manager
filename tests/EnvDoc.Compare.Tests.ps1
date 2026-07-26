@@ -44,6 +44,11 @@ Describe 'EnvDoc Compare' {
             $g[0].Name       | Should -Be 'ペア'
             @($g[0].MemberKeys) | Should -Be @('web01', 'db01')
         }
+        It '空の compare_groups は自動グループ化にフォールバックしない' {
+            $def = ConvertFrom-YamlLiteText -Text 'compare_groups: []'
+            $g = Get-EnvDocCompareGroup -Model $script:Model -SystemDef $def
+            @($g).Count | Should -Be 0
+        }
         It '存在しないホストを明示指定から除外する' {
             $def = ConvertFrom-YamlLiteText -Text "compare_groups:`n  - name: X`n    servers: [WEB01, NOPE]"
             $g = Get-EnvDocCompareGroup -Model $script:Model -SystemDef $def

@@ -12,12 +12,13 @@ function Get-EnvDocCompareGroup {
     $byKey = @{}
     foreach ($s in $Model.Servers) { $byKey[$s.Key] = $s }
 
-    # compare_groups が書かれていれば、自動グループ化は行わず明示指定のみを使う
+    # compare_groups が書かれていれば、自動グループ化は行わず明示指定のみを使う。
+    # 空配列 (compare_groups: []) は「比較しない」という明示的な意思表示として扱い、
+    # 自動グループ化にフォールバックしない(暗黙に差し替わると判定根拠が読み手に分からなくなる)
+    $hasExplicit = ($null -ne $SystemDef -and $SystemDef.Contains('compare_groups'))
     $explicit = $null
-    if ($null -ne $SystemDef -and $SystemDef.Contains('compare_groups')) {
-        $explicit = $SystemDef['compare_groups']
-    }
-    if ($null -ne $explicit -and @($explicit).Count -gt 0) {
+    if ($hasExplicit) { $explicit = $SystemDef['compare_groups'] }
+    if ($hasExplicit) {
         $groups = New-Object System.Collections.ArrayList
         foreach ($g in @($explicit)) {
             $name = [string]$g['name']
