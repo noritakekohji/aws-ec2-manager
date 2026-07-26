@@ -32,7 +32,7 @@
 ### スコープ内
 
 - システム単位（複数サーバ）の環境定義書生成
-- `server-snapshot` の全 13 カテゴリの掲載
+- `server-snapshot` の全 14 カテゴリの掲載
 - `aws-instance-audit` の AWS 構成情報の掲載
 - Windows / Linux 混在システムへの対応
 - 比較グループ内での設定不一致ハイライト
@@ -137,6 +137,55 @@ compare_groups:                           # 任意。省略時は os_type × rol
 | `'…'` / `"…"` クォート | 複数ドキュメント区切り `---` |
 | `[a, b]` インラインシーケンス | タグ（`!!str` 等） |
 
+### 入力 JSON の構造上の注意
+
+snapshot の JSON は、カテゴリによって形が大きく異なる。中間モデル構築時に吸収すべき点を挙げる。
+
+#### `config_files` はパスをキーにしたマップ
+
+配列ではない。3 箇所に現れる。
+
+```json
+"config_files": {
+  "C:\\ProgramData\\ssh\\sshd_config": {
+    "content": "...", "masked": false, "size_bytes": 1234,
+    "sha256": "...", "readable": true, "reason": ""
+  }
+}
+```
+
+| 出現箇所 | 備考 |
+|---|---|
+| `middleware.<product>[].config_files` | ただし `sap` のみキー名が `profiles` |
+| `services[].config_files` | sshd_config / ssh_config / smb.conf |
+| `remote_access.<ssh\|rdp\|vnc>.config_files` | |
+
+`readable = false` のときは `reason`（`not_found` / `permission_denied`）を、
+`reason = too_large` のときは本文なしで `sha256` とサイズのみを表示する。
+
+#### ミドルウェアのフィールド名は製品ごとに異なる
+
+汎用の `instance` / `version` / `ports` は存在しない。`ServerSnapshot.ps1` の比較仕様
+（`Compare-Middleware` の `$specs`）に合わせる。
+
+| 製品 | 識別子 | 主要フィールド | ポート | 設定ファイル |
+|---|---|---|---|---|
+| `hana` | `sid` | `version` / `instance_no` / `state` | `ports`（配列） | `config_files` |
+| `sap` | `sid` + `instance` | `kernel_version` / `type` / `state` | `ports`（配列） | **`profiles`** |
+| `sqlserver` | `instance_name` | `version` / `edition` / `state` | `port`（スカラ） | `config_files` |
+| `tomcat` | `name` + `catalina_base` | `version` / `java_version` / `state` | `connector_ports`（配列） | `config_files` |
+
+製品キー自体、検出されなければ `middleware` から**省かれる**（空配列ではなくキーごと無い）。
+
+#### `remote_access` は OS で構造が異なる
+
+| OS | トップレベルキー |
+|---|---|
+| Windows | `rdp`（`enabled` / `nla_enabled` / `port_number` / `security_layer` / `min_encryption_level` / レジストリ値）、`remote_assistance`、`services[]`、`ssh.config_files`、`firewall_rules[]` |
+| Linux | `ssh` / `rdp` / `vnc`（各 `services[]` + `config_files`） |
+
+共通軸が作れないため、**横断表ではなく OS 別サブ表**として描画する。
+
 ## 5. 出力
 
 ### サイト構成
@@ -145,7 +194,7 @@ compare_groups:                           # 任意。省略時は os_type × rol
 output/<system-id>/
 ├── index.html                      システム概要・サーバ一覧・生成メタ
 ├── aws.html                        AWS 構成（横断）
-├── network.html                    ネットワーク（横断）
+├── network.html                    ネットワーク + リモートアクセス（横断）
 ├── middleware.html                 ミドルウェア（横断）
 ├── os-baseline.html                OS・ハードウェア・チューニング・パッチ（横断）
 ├── servers/
@@ -208,7 +257,8 @@ IP アドレス / DNS / NTP / プロキシ / ファイルシステム使用率
 | カテゴリ | Linux | Windows |
 |---|---|---|
 | `packages` | rpm / dpkg | インストール済みプログラム |
-| `services` | systemd unit | Windows サービス |
+| `services` | systemd unit（`FragmentPath` / `ExecStart` / `User`） | Windows サービス（`service_type` / `start_name` / `path_name`） |
+| `remote_access` | `ssh` / `rdp`(xrdp) / `vnc` | `rdp` / `remote_assistance` / `ssh` / `firewall_rules` |
 | `security` | AppArmor / firewalld | UAC / Windows ファイアウォール |
 | `tuning` | sysctl / THP / CPU ガバナー | ページファイル / 電源プラン |
 | `patches` | rpm / dpkg 更新履歴 | HotFix |
@@ -328,6 +378,10 @@ EnvDoc.ps1 -InputDir <path> -SystemFile <path> -OutputDir <path> [-Force]
 - パスワード等のマスクは `server-snapshot` 側の既存マスクに乗る。本ツールで再マスクはしない
 - `environment`（環境変数）と設定ファイル全文は **既定で非掲載**。
   `system.yaml` の `show_environment` / `show_configs` を `true` にしたサーバのみ掲載する
+- `show_configs` の対象は `middleware`（`config_files` / `sap` は `profiles`）だけでなく、
+  **`services[].config_files` と `remote_access.*.config_files` も含む**。
+  sshd_config や smb.conf はミドルウェアではないが機密濃度は同等であり、
+  opt-in の外に漏れないようにする
 - HTML 出力時はすべての値を HTML エスケープする（`<` `>` `&` `"` `'`）。
   snapshot 由来の値がそのままマークアップとして解釈されることを防ぐ
 - テストフィクスチャは実データを使わず、ダミー値で作成する
