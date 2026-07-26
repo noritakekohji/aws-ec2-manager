@@ -93,7 +93,8 @@ function Test-EnvDocHostname {
     param([string]$Name)
 
     if ([string]::IsNullOrWhiteSpace($Name)) { return $false }
-    if ($Name -notmatch '^[A-Za-z0-9._-]+$') { return $false }
+    # .NET の '$' は末尾の改行の直前にもマッチするため、終端は '\z' を使う
+    if ($Name -notmatch '^[A-Za-z0-9._-]+\z') { return $false }
     if ($Name.Contains('..')) { return $false }
     if ($Name -eq '.') { return $false }
     return $true

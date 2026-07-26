@@ -114,6 +114,7 @@ Describe 'EnvDoc Model - モデル構築' {
         Test-EnvDocHostname -Name 'a\b'               | Should -BeFalse
         Test-EnvDocHostname -Name '..'                | Should -BeFalse
         Test-EnvDocHostname -Name ''                  | Should -BeFalse
+        Test-EnvDocHostname -Name "web01`n"           | Should -BeFalse
     }
 
     It 'system.id が不正なら throw する' {
