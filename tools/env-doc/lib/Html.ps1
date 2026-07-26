@@ -108,6 +108,8 @@ function Write-HtmlFile {
     [System.IO.File]::WriteAllText($Path, $Content, (New-Object System.Text.UTF8Encoding($false)))
 }
 
+# 戻り値は「エスケープ済みの HTML 断片」。'未収集' は span を含むため、
+# 呼び出し側で ConvertTo-HtmlText を通してはいけない（通すとタグが見えてしまう）
 function Format-EnvDocMissing {
     param([bool]$Collected, [int]$Count)
 

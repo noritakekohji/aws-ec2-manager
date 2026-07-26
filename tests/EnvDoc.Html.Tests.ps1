@@ -28,6 +28,25 @@ Describe 'EnvDoc Html' {
         }
     }
 
+    Context 'New-HtmlCell' {
+        It 'リンクなしならエスケープ済みテキストを返す' {
+            New-HtmlCell -Text 'a&b' | Should -Be 'a&amp;b'
+        }
+        It 'リンクありなら href もエスケープする' {
+            New-HtmlCell -Text 'a&b' -Link 'x"y' | Should -Be '<a href="x&quot;y">a&amp;b</a>'
+        }
+        It '空リンクをリンクとして扱わない' {
+            New-HtmlCell -Text 'x' -Link '' | Should -Be 'x'
+        }
+    }
+
+    Context 'New-HtmlSection' {
+        It '見出しをエスケープして本文をそのまま埋める' {
+            New-HtmlSection -Title 'a&b' -Body '<p>x</p>' |
+                Should -Be '<section><h2>a&amp;b</h2><p>x</p></section>'
+        }
+    }
+
     Context 'New-HtmlTable' {
         It 'ヘッダと行を出力する' {
             $t = New-HtmlTable -Headers @('項目', '値') -Rows @(@{ Cells = @('OS', 'RHEL'); Mismatch = $false })
@@ -57,6 +76,11 @@ Describe 'EnvDoc Html' {
             $p = New-HtmlPage -Title 't' -SystemName 'S' -RelRoot '..' -Body ''
             $p | Should -BeLike '*href="../index.html"*'
             $p | Should -BeLike '*href="../assets/style.css"*'
+        }
+        It 'ルート直下(.)でも相対リンクを組み立てる' {
+            $p = New-HtmlPage -Title 't' -SystemName 'S' -RelRoot '.' -Body ''
+            $p | Should -BeLike '*href="./index.html"*'
+            $p | Should -BeLike '*href="./assets/style.css"*'
         }
         It '絶対 URL を含まない' {
             $p = New-HtmlPage -Title 't' -SystemName 'S' -RelRoot '.' -Body ''
