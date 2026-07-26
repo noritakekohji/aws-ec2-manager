@@ -87,6 +87,18 @@ function Read-EnvDocInput {
     return $result
 }
 
+# hostname は servers/<hostname>.html としてファイルパスに埋まる。
+# FQDN を許すため '.' は通すが、パス区切りと '..' は必ず弾く。
+function Test-EnvDocHostname {
+    param([string]$Name)
+
+    if ([string]::IsNullOrWhiteSpace($Name)) { return $false }
+    if ($Name -notmatch '^[A-Za-z0-9._-]+$') { return $false }
+    if ($Name.Contains('..')) { return $false }
+    if ($Name -eq '.') { return $false }
+    return $true
+}
+
 function Test-EnvDocCategory {
     param([Parameter(Mandatory)]$Server, [Parameter(Mandatory)][string]$Category)
 
@@ -173,6 +185,12 @@ function Build-EnvDocModel {
             $warnings += 'servers に hostname の無い項目があります。スキップします'
             continue
         }
+        # hostname は servers/<hostname>.html としてファイルパスに埋まるため、
+        # ここで必ず検証する。素通しするとパストラバーサルで出力先の外に書ける
+        if (-not (Test-EnvDocHostname -Name $hostName)) {
+            $warnings += "$hostName : hostname に使えない文字が含まれています。スキップします"
+            continue
+        }
         $key = $hostName.ToLowerInvariant()
         if ($seen.ContainsKey($key)) {
             $warnings += "system.yaml でホスト $hostName が重複しています。最初の定義を使います"
@@ -192,6 +210,11 @@ function Build-EnvDocModel {
         if ($seen.ContainsKey($key)) { continue }
         $snap = $Inputs.Snapshots[$key]
         $hostName = [string](Get-JsonValue -Object $snap -Path 'meta.hostname' -Default $key)
+        # snapshot 由来のホスト名も同じくファイルパスに埋まるため検証する
+        if (-not (Test-EnvDocHostname -Name $hostName)) {
+            $warnings += "$hostName : snapshot の meta.hostname に使えない文字が含まれています。スキップします"
+            continue
+        }
         $warnings += "$hostName : snapshot がありますが system.yaml に定義されていません(役割未設定で掲載します)"
         [void]$servers.Add((New-EnvDocServerEntry -Hostname $hostName -Definition $null -Snapshot $snap))
     }

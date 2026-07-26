@@ -98,6 +98,24 @@ Describe 'EnvDoc Model - モデル構築' {
         @($m.Meta.Warnings | Where-Object { $_ -like '*db01*' }).Count | Should -BeGreaterThan 0
     }
 
+    It 'パストラバーサルを含む hostname を警告してスキップする' {
+        $def = ConvertFrom-YamlLiteText -Text "system:`n  id: x`n  name: X`nservers:`n  - hostname: '../../evil'"
+        $m = Build-EnvDocModel -SystemDef $def -Inputs $script:Inputs
+        @($m.Servers | Where-Object { $_.Hostname -like '*evil*' }).Count | Should -Be 0
+        @($m.Meta.Warnings | Where-Object { $_ -like '*使えない文字*' }).Count | Should -BeGreaterThan 0
+    }
+
+    It 'Test-EnvDocHostname が FQDN を許し危険な名前を弾く' {
+        Test-EnvDocHostname -Name 'web01'             | Should -BeTrue
+        Test-EnvDocHostname -Name 'web01.example.com' | Should -BeTrue
+        Test-EnvDocHostname -Name 'WEB-01_a'          | Should -BeTrue
+        Test-EnvDocHostname -Name '../../evil'        | Should -BeFalse
+        Test-EnvDocHostname -Name 'a/b'               | Should -BeFalse
+        Test-EnvDocHostname -Name 'a\b'               | Should -BeFalse
+        Test-EnvDocHostname -Name '..'                | Should -BeFalse
+        Test-EnvDocHostname -Name ''                  | Should -BeFalse
+    }
+
     It 'system.id が不正なら throw する' {
         $def = ConvertFrom-YamlLiteText -Text "system:`n  id: 'bad/id'`n  name: X"
         { Build-EnvDocModel -SystemDef $def -Inputs $script:Inputs } | Should -Throw -ExpectedMessage '*system.id*'
