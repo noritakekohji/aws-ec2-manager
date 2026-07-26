@@ -49,6 +49,18 @@ Describe 'YamlLite' {
             $r = ConvertFrom-YamlLiteText -Text 'servers: []'
             @($r['servers']).Count | Should -Be 0
         }
+        It 'シングルクォート内のカンマで分割しない' {
+            $r = ConvertFrom-YamlLiteText -Text "a: ['x, y', z]"
+            @($r['a']).Count | Should -Be 2
+            $r['a'][0]       | Should -Be 'x, y'
+            $r['a'][1]       | Should -Be 'z'
+        }
+        It 'ダブルクォート内のカンマで分割しない' {
+            $r = ConvertFrom-YamlLiteText -Text 'a: ["x, y", z]'
+            @($r['a']).Count | Should -Be 2
+            $r['a'][0]       | Should -Be 'x, y'
+            $r['a'][1]       | Should -Be 'z'
+        }
     }
 
     Context 'スカラ変換' {
@@ -109,6 +121,18 @@ Describe 'YamlLite' {
         }
         It 'コロンのない行を拒否する' {
             { ConvertFrom-YamlLiteText -Text 'just text' } | Should -Throw -ExpectedMessage '*行 1*'
+        }
+        It 'インラインシーケンスの閉じていないクォートを拒否する' {
+            { ConvertFrom-YamlLiteText -Text "a: ['x, y]" } | Should -Throw -ExpectedMessage '*行 1*'
+        }
+        It 'トップレベルの重複キーを拒否する' {
+            { ConvertFrom-YamlLiteText -Text "a: 1`na: 2" } | Should -Throw -ExpectedMessage '*行 2*'
+        }
+        It 'ネストしたマップの重複キーを拒否する' {
+            { ConvertFrom-YamlLiteText -Text "p:`n  a: 1`n  a: 2" } | Should -Throw -ExpectedMessage '*行 3*'
+        }
+        It 'シーケンス項目内の重複キーを拒否する' {
+            { ConvertFrom-YamlLiteText -Text "s:`n  - a: 1`n    a: 2" } | Should -Throw -ExpectedMessage '*行 3*'
         }
     }
 

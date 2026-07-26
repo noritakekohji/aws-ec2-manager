@@ -22,6 +22,35 @@ function Remove-YamlLiteComment {
     return $Text
 }
 
+function Split-YamlLiteInlineItem {
+    # インラインシーケンス [a, b] の中身をカンマで分割する。
+    # 単純な -split ',' だと 'x, y' のようなクォート内のカンマまで区切ってしまい、
+    # 例外を投げずに静かに誤った要素数を返すため、クォート状態を追跡して分割する。
+    param([string]$Text, [int]$LineNo)
+
+    $items = New-Object System.Collections.ArrayList
+    $buffer = New-Object System.Text.StringBuilder
+    $inSingle = $false
+    $inDouble = $false
+    for ($i = 0; $i -lt $Text.Length; $i++) {
+        $c = $Text[$i]
+        if ($c -eq "'" -and -not $inDouble) { $inSingle = -not $inSingle }
+        elseif ($c -eq '"' -and -not $inSingle) { $inDouble = -not $inDouble }
+        elseif ($c -eq ',' -and -not $inSingle -and -not $inDouble) {
+            [void]$items.Add($buffer.ToString())
+            $buffer = New-Object System.Text.StringBuilder
+            continue
+        }
+        # クォート文字自体も残す(除去は ConvertTo-YamlLiteScalar が行う)
+        [void]$buffer.Append($c)
+    }
+    if ($inSingle -or $inDouble) {
+        throw "行 ${LineNo}: インラインシーケンスのクォートが閉じていません: [$Text]"
+    }
+    [void]$items.Add($buffer.ToString())
+    return , $items.ToArray()
+}
+
 function ConvertTo-YamlLiteScalar {
     param([string]$Text, [int]$LineNo)
 
@@ -39,7 +68,7 @@ function ConvertTo-YamlLiteScalar {
         $inner = $t.Substring(1, $t.Length - 2).Trim()
         if ($inner -eq '') { return , @() }
         $items = @()
-        foreach ($part in ($inner -split ',')) {
+        foreach ($part in (Split-YamlLiteInlineItem -Text $inner -LineNo $LineNo)) {
             $items += , (ConvertTo-YamlLiteScalar -Text $part -LineNo $LineNo)
         }
         return , $items
@@ -113,6 +142,12 @@ function Read-YamlLiteMapEntry {
     $key = $m.Groups[1].Value.Trim()
     $val = $m.Groups[2].Value
 
+    # 重複キーは YAML 仕様でもエラー。黙って後勝ちで上書きすると
+    # typo で片方の値が消えたことに気づけないため、ここで落とす
+    if ($Map.Contains($key)) {
+        throw "行 $($Token.LineNo): キー '$key' が重複しています"
+    }
+
     if ($val.Trim() -ne '') {
         $Map[$key] = ConvertTo-YamlLiteScalar -Text $val -LineNo $Token.LineNo
         return
@@ -128,9 +163,12 @@ function Read-YamlLiteMapEntry {
 }
 
 function Read-YamlLiteMap {
-    param($Tokens, [ref]$Index, [int]$Indent)
+    # -Map を渡すと既存のマップに読み足す。シーケンス項目("- key: value" の続き)で
+    # 別マップを作って後からマージすると重複キー検査を素通りしてしまうため、
+    # 最初から同じマップに書き込ませる
+    param($Tokens, [ref]$Index, [int]$Indent, $Map)
 
-    $map = [ordered]@{}
+    $map = if ($null -eq $Map) { [ordered]@{} } else { $Map }
     while ($Index.Value -lt $Tokens.Count) {
         $tok = $Tokens[$Index.Value]
         if ($tok.Indent -lt $Indent) { break }
@@ -187,8 +225,7 @@ function Read-YamlLiteSequence {
         Read-YamlLiteMapEntry -Token $synthetic -Tokens $Tokens -Index $Index -Indent $itemIndent -Map $map
 
         if ($Index.Value -lt $Tokens.Count -and $Tokens[$Index.Value].Indent -eq $itemIndent) {
-            $more = Read-YamlLiteMap -Tokens $Tokens -Index $Index -Indent $itemIndent
-            foreach ($k in $more.Keys) { $map[$k] = $more[$k] }
+            [void](Read-YamlLiteMap -Tokens $Tokens -Index $Index -Indent $itemIndent -Map $map)
         }
         [void]$list.Add($map)
     }
