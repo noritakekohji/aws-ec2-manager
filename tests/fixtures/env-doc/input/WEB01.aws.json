@@ -1,0 +1,7 @@
+{
+  "meta": { "tool": "aws_instance_audit", "hostname": "WEB01", "collected_at": "2026-07-20T10:00:00+09:00", "region": "ap-northeast-1", "instance_id": "i-0aaa1111bbbb2222c" },
+  "instance": { "instance_id": "i-0aaa1111bbbb2222c", "instance_type": "t3.medium", "ami_id": "ami-0example", "availability_zone": "ap-northeast-1a", "private_ip": "10.0.1.11", "public_ip": "", "vpc_id": "vpc-0example", "subnet_id": "subnet-0aexample", "tags": { "Name": "WEB01", "Env": "prod" } },
+  "iam": { "role_name": "web-instance-role", "role_arn": "arn:aws:iam::000000000000:role/web-instance-role", "attached_policies": [{ "name": "SampleReadOnly", "arn": "arn:aws:iam::aws:policy/SampleReadOnly" }], "inline_policies": ["sample-inline"] },
+  "security_groups": [{ "group_id": "sg-0example", "group_name": "web-sg", "description": "web tier", "ingress": [{ "protocol": "tcp", "from_port": 443, "to_port": 443, "cidrs": ["10.0.0.0/16"], "sg_refs": [] }], "egress": [{ "protocol": "all", "from_port": null, "to_port": null, "cidrs": ["0.0.0.0/0"], "sg_refs": [] }] }],
+  "network": { "vpc": { "vpc_id": "vpc-0example", "cidr": "10.0.0.0/16", "is_default": false }, "subnet": { "subnet_id": "subnet-0aexample", "cidr": "10.0.1.0/24", "az": "ap-northeast-1a" }, "enis": [{ "eni_id": "eni-0example", "private_ip": "10.0.1.11", "groups": ["sg-0example"] }], "route_tables": [{ "route_table_id": "rtb-0example", "routes": [{ "dest": "0.0.0.0/0", "target": "nat-0example" }] }] }
+}

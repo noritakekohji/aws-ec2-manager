@@ -1,0 +1,14 @@
+{
+  "meta": { "hostname": "WEB02", "os_type": "windows", "collected_at": "2026-07-20T10:05:00+09:00", "categories": ["os", "network", "services", "remote_access", "middleware"] },
+  "os": { "hostname": "WEB02", "os_name": "Windows Server 2022", "os_version": "10.0.20348", "architecture": "64-bit", "timezone": "Tokyo Standard Time", "cpu_model": "Sample CPU", "cpu_cores": 4, "total_memory_gb": 16.0, "last_boot": "2026-07-19 03:05:00", "hardware": { "virtualization": "virtual" } },
+  "network": { "ip_addresses": [{ "interface": "Ethernet", "address": "10.0.1.12" }], "dns_servers": ["10.0.0.2"], "proxy": { "enabled": false }, "ntp": { "servers": ["ntp.example.internal"] } },
+  "services": [{ "name": "W3SVC", "status": "Running", "start_mode": "Auto", "service_type": "Own Process", "start_name": "LocalSystem", "path_name": "C:\\Windows\\system32\\svchost.exe -k iissvcs", "description": "サンプル Web サービス" }],
+  "remote_access": {
+    "rdp": { "enabled": true, "nla_enabled": false, "port_number": "3389", "security_layer": "2", "min_encryption_level": "3" },
+    "remote_assistance": { "registry_config": { "fAllowToGetHelp": "0" } },
+    "services": [{ "name": "TermService", "display_name": "Remote Desktop Services", "status": "running", "start_type": "manual", "start_name": "NT Authority\\NetworkService", "path_name": "C:\\Windows\\System32\\svchost.exe" }],
+    "ssh": { "config_files": {} },
+    "firewall_rules": [{ "name": "RemoteDesktop-UserMode-In-TCP", "display_name": "リモート デスクトップ", "direction": "Inbound", "action": "Allow", "profile": "Domain" }]
+  },
+  "middleware": { "tomcat": [{ "name": "tomcat-1", "catalina_base": "C:\\tomcat", "version": "9.0.80", "java_version": "17.0.9", "state": "running", "connector_ports": [8080], "config_files": {} }] }
+}

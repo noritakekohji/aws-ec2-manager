@@ -1,0 +1,17 @@
+system:
+  id: sample-sys
+  name: サンプルシステム
+  owner: インフラ運用課
+  contact: infra-ops@example.com
+  description: テスト用のダミーシステム
+
+servers:
+  - hostname: WEB01
+    role: Web/AP サーバ
+    note: 冗長構成のプライマリ
+  - hostname: WEB02
+    role: Web/AP サーバ
+  - hostname: db01
+    role: DB サーバ
+  - hostname: MISSING01
+    role: 収集漏れ確認用

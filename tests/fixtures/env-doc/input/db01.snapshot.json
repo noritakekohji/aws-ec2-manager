@@ -1,0 +1,16 @@
+{
+  "meta": { "hostname": "db01", "os_type": "linux", "collected_at": "2026-07-20T10:10:00+09:00", "categories": ["os", "network", "services", "remote_access"] },
+  "os": { "hostname": "db01", "os_name": "Red Hat Enterprise Linux", "os_version": "9.4", "architecture": "x86_64", "timezone": "Asia/Tokyo", "cpu_model": "Sample CPU", "cpu_cores": 8, "total_memory_gb": 32.0, "last_boot": "2026-07-18 22:00:00", "hardware": { "virtualization": "virtual" } },
+  "network": { "ip_addresses": [{ "interface": "eth0", "address": "10.0.2.21" }], "dns_servers": ["10.0.0.2"], "proxy": { "enabled": false }, "ntp": { "servers": ["ntp.example.internal"] } },
+  "services": [{ "name": "postgresql", "status": "active", "start_mode": "enabled", "fragment_path": "/usr/lib/systemd/system/postgresql.service", "exec_start": "/usr/bin/postmaster -D /var/lib/pgsql/data", "user": "postgres", "group": "postgres", "unit_file_state": "enabled" }],
+  "remote_access": {
+    "ssh": {
+      "services": [{ "name": "sshd.service", "status": "active", "start_type": "enabled" }],
+      "config_files": {
+        "/etc/ssh/sshd_config": { "content": "Port 22\nPermitRootLogin no\n", "masked": false, "size_bytes": 30, "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "readable": true, "reason": "" }
+      }
+    },
+    "rdp": { "services": [], "config_files": {} },
+    "vnc": { "services": [], "config_files": {} }
+  }
+}
