@@ -157,14 +157,15 @@ Describe 'EnvDoc 統合' {
         It 'network.html を生成する' {
             $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'network.html'), [System.Text.Encoding]::UTF8)
             $html | Should -BeLike '*10.0.1.11*'
-            $html | Should -BeLike '*ntp.example.internal*'
+            $html | Should -BeLike '*ntp.sample.internal*'
             $html | Should -Not -BeLike '*未実装*'
         }
         It 'network.html にリモートアクセスを OS 別サブ表で出す' {
             $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'network.html'), [System.Text.Encoding]::UTF8)
             $html | Should -BeLike '*リモートアクセス - Windows (2 台)*'
             $html | Should -BeLike '*リモートアクセス - Linux (1 台)*'
-            $html | Should -BeLike '*sshd.service: active*'
+            # Linux は unit 名から .service を除去し、status は SubState を入れる
+            $html | Should -BeLike '*sshd: running*'
         }
         It 'NLA の不一致をハイライトする' {
             # WEB01 は nla_enabled=true、WEB02 は false
@@ -193,7 +194,7 @@ Describe 'EnvDoc 統合' {
             $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'os-baseline.html'), [System.Text.Encoding]::UTF8)
             $html | Should -BeLike '*Windows*'
             $html | Should -BeLike '*Linux*'
-            $html | Should -BeLike '*Red Hat Enterprise Linux*'
+            $html | Should -BeLike '*Sample Enterprise Linux*'
         }
         It '揮発値(最終起動)を不一致にしない' {
             # WEB01 と WEB02 は last_boot が異なるが、NoCompare のためハイライトしない

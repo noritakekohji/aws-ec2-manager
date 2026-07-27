@@ -8,7 +8,7 @@
   "os": {
     "hostname": "db01.sample.internal",
     "domain": "",
-    "os_name": "Red Hat Enterprise Linux 9.4 (Plow)",
+    "os_name": "Sample Enterprise Linux 9.4 (Sample)",
     "os_version": "9.4",
     "os_build": "5.14.0-000.el9.x86_64",
     "architecture": "x86_64",
@@ -51,7 +51,7 @@
     ],
     "proxy": { "http_proxy": "", "https_proxy": "", "no_proxy": "" },
     "time_sync": {
-      "servers": ["ntp.example.internal"],
+      "servers": ["ntp.sample.internal"],
       "synchronized": true,
       "_volatile": { "last_offset": "+0.000000001 seconds" }
     }
@@ -114,8 +114,8 @@
     "ssh": {
       "services": [
         {
-          "name": "sshd.service",
-          "status": "active",
+          "name": "sshd",
+          "status": "running",
           "start_type": "enabled",
           "description": "OpenSSH server daemon",
           "fragment_path": "/usr/lib/systemd/system/sshd.service",
