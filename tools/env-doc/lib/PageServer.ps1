@@ -31,6 +31,21 @@ function Write-EnvDocServerPage {
     [void]$basic.Add(@{ Cells = @('収集日時', (ConvertTo-HtmlText -Text $Server.CollectedAt)); Mismatch = $false })
     [void]$body.Append((New-HtmlSection -Title '基本情報' -Body (New-HtmlTable -Headers @('項目', '値') -Rows $basic.ToArray())))
 
+    # AWS 要約(aws.json があるサーバのみ再掲。詳細は aws.html を参照)
+    if ($null -ne $Server.Aws) {
+        $awsRows = New-Object System.Collections.ArrayList
+        [void]$awsRows.Add(@{ Cells = @('インスタンスタイプ', (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $Server.Aws -Path 'instance.instance_type' -Default '-')))); Mismatch = $false })
+        [void]$awsRows.Add(@{ Cells = @('AZ', (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $Server.Aws -Path 'instance.availability_zone' -Default '-')))); Mismatch = $false })
+        [void]$awsRows.Add(@{ Cells = @('Private IP', (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $Server.Aws -Path 'instance.private_ip' -Default '-')))); Mismatch = $false })
+        $sgNames = @(Get-JsonValue -Object $Server.Aws -Path 'security_groups' -Default @() | ForEach-Object { [string](Get-JsonValue -Object $_ -Path 'group_name' -Default '-') })
+        [void]$awsRows.Add(@{ Cells = @('Security Group', (ConvertTo-HtmlText -Text (($sgNames -join ', ')))); Mismatch = $false })
+        # IAM ロールの行だけは New-HtmlCell に生の文字列を渡す。New-HtmlCell は内部で
+        # ConvertTo-HtmlText を通すため、ここで先に ConvertTo-HtmlText すると二重エスケープになる
+        [void]$awsRows.Add(@{ Cells = @('IAM ロール', (New-HtmlCell -Text ([string](Get-JsonValue -Object $Server.Aws -Path 'iam.role_name' -Default '-')) -Link '../aws.html')); Mismatch = $false })
+        $t = New-HtmlTable -Headers @('項目', '値') -Rows $awsRows.ToArray()
+        [void]$body.Append((New-HtmlSection -Title 'AWS 要約' -Body $t))
+    }
+
     # OS / ハードウェア
     if (Test-EnvDocCategory -Server $Server -Category 'os') {
         $pairs = @(

@@ -24,17 +24,18 @@ function New-EnvDocCrossTable {
 
         foreach ($s in $srvArray) {
             if (-not $s.HasSnapshot) {
-                $valuesByKey[$s.Key] = ''
+                # 未収集サーバは比較対象に含めない(登録しないこと自体が「不一致にしない」実装)
                 [void]$cells.Add('<span class="missing">未収集</span>')
                 continue
             }
             # Arg は行ごとの追加引数(不要な行の Getter は param($s) だけを宣言すればよい)
             $v = [string](& $r.Getter $s $r.Arg)
-            $valuesByKey[$s.Key] = $v
             if ($v -eq '__MISSING__') {
+                # このサーバはカテゴリ未収集。比較対象に含めない
                 [void]$cells.Add('<span class="missing">未収集</span>')
             }
             else {
+                $valuesByKey[$s.Key] = $v
                 [void]$cells.Add((ConvertTo-HtmlText -Text $v))
             }
         }

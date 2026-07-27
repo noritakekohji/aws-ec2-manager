@@ -68,10 +68,13 @@ function Test-EnvDocMismatch {
 
         $values = @()
         foreach ($k in $keys) {
-            $v = $null
-            if ($ValuesByKey.ContainsKey($k)) { $v = $ValuesByKey[$k] }
-            # 欠損と空文字は同じ扱いにする(片方が未収集というだけで不一致にしない)
-            $values += [string]$v
+            # ValuesByKey に登録されていないキーは「そのサーバは未収集」を意味する
+            # (呼び出し側が __MISSING__ / HasSnapshot=false を意図的に登録しない設計)。
+            # 欠損を空文字として扱って比較対象に含めると、他サーバの実値と食い違って
+            # 誤って不一致になるため、比較対象自体から除外する
+            if (-not $ValuesByKey.ContainsKey($k)) { continue }
+            # 欠損(この関数内では登録済みだが null)と空文字は同じ扱いにする
+            $values += [string]$ValuesByKey[$k]
         }
         if (@($values | Select-Object -Unique).Count -gt 1) { return $true }
     }

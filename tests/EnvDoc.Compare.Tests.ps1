@@ -80,5 +80,10 @@ Describe 'EnvDoc Compare' {
         It '欠損値と空文字を同じ扱いにする' {
             Test-EnvDocMismatch -ValuesByKey @{ web01 = ''; web02 = $null } -Groups $script:G | Should -BeFalse
         }
+        It '片方が ValuesByKey に登録されていない(未収集)なら不一致にしない' {
+            # __MISSING__ や HasSnapshot=false のサーバは呼び出し側が登録しない設計。
+            # ValuesByKey にキーが無い状態を Test-EnvDocMismatch がどう扱うかを確認する
+            Test-EnvDocMismatch -ValuesByKey @{ web01 = 'a' } -Groups $script:G | Should -BeFalse
+        }
     }
 }

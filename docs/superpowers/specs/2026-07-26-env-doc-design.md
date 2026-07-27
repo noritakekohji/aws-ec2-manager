@@ -255,7 +255,8 @@ output/<system-id>/
 すべて相対リンクのみで構成する。`file://` で開けること、およびディレクトリごと
 GitLab Pages の `public/` に配置して動作することを両立させる。
 
-ナビゲーションは全ページ共通ヘッダに固定リンク（概要 / AWS / ネットワーク / ミドルウェア / OS / サーバ一覧）。
+ナビゲーションは全ページ共通ヘッダに固定リンク（概要 / AWS / ネットワーク / ミドルウェア / OS）。
+サーバ一覧はナビの独立項目ではなく、概要ページ（`index.html`）内に表として掲載する。
 
 ### 横断ページの設計方針
 
@@ -348,30 +349,39 @@ env-doc は最初から責務ごとに分割する。
 
 ### 中間モデル — 核となる設計判断
 
-**レンダラは snapshot JSON を直接参照しない。**
-`Model.ps1` が正規化済みの中間モデルを組み立て、各ページレンダラはそれのみを見る。
+（実装後の追記: 当初はこの節で「レンダラは snapshot JSON を直接参照しない」という
+原則を掲げつつ、後述の実装フェーズでは `Server.Snapshot = $Snapshot` を中間モデルに
+そのまま保持する指示を出しており、計画自体に内部矛盾があった。418 件のテストが通って
+いる実装済みコードを正規化モデルへ書き直すのは割に合わないため、ここでは実装の実態に
+合わせて記述を修正する。）
 
-これにより、
-- snapshot のスキーマが変わった場合、修正箇所は `Model.ps1` に限定される
-- レンダラを実データなしで単体テストできる
-- AWS 情報のリソース単位正規化（SG・IAM の逆引き）をモデル構築時に一度だけ行える
+**レンダラは `Model.ps1` が構築した中間モデルの `Server.Snapshot`（生の snapshot JSON）を、
+共通アクセサ `Get-JsonValue -Path` 経由でのみ読む。** レンダラ側で生 JSON を直接
+`ConvertFrom-Json` することはない（入力読み込みは `Model.ps1` の `Read-EnvDocInput` に閉じている）。
 
-モデルの形状:
+- `Get-JsonValue` がドット区切りパスの安全な参照（`$null` 安全、既定値）を提供するため、
+  レンダラは snapshot のキー欠落やカテゴリ未収集に対して個別の防御コードを書かずに済む
+- 完全な正規化（製品固有フィールドの共通化、OS 差異の吸収）はモデル層ではなく描画時に
+  行っている（例: `PageMiddleware.ps1` の `$script:EnvDocMwProducts` テーブル）。
+  将来モデル層へ正規化を持ち上げる場合の入口は、各レンダラの `Get-JsonValue` 呼び出し箇所である
+- AWS 情報のリソース単位正規化（SG・IAM の逆引き）は `Add-EnvDocAwsModel`（`Model.ps1`）が
+  モデル構築時に一度だけ行う。これは実装どおりで、当初の設計判断と食い違いはない
+
+モデルの形状（実装どおり。`Build-EnvDocModel` / `New-EnvDocServerEntry` の戻り値）:
 
 ```
 $model = @{
   System  = @{ Id; Name; Owner; Contact; Description; Diagram }
   Servers = @( @{
-      Hostname; Role; Note; OsType;
-      Os; Network; Services; Packages; Users; Filesystem; Environment;
-      Security; Patches; Tuning; Scheduled; Middleware; Filelist;
-      Aws;                       # 当該サーバの AWS 要約
-      ShowConfigs; ShowEnvironment;
-      MissingCategories = @()    # 未収集カテゴリ
+      Hostname; Key; Role; Note; ShowConfigs; ShowEnvironment;
+      OsType; Snapshot;          # 生 snapshot JSON。レンダラは Get-JsonValue 経由でのみ読む
+      CollectedAt; Categories;   # meta.categories(-Category all は既知カテゴリ一覧に展開済み)
+      Aws;                       # 当該サーバの aws-instance-audit の生 JSON(無ければ $null)
+      HasSnapshot                # snapshot が無いサーバ(system.yaml のみ定義)は $false
   } )
   Aws     = @{ Instances; Vpcs; Subnets; SecurityGroups; IamRoles; RouteTables }   # 正規化済み
-  Groups  = @( @{ Name; Members = @(); Mismatches = @() } )
-  Meta    = @{ GeneratedAt; ToolVersion; InputFiles = @(); Warnings = @() }
+  Groups  = @( @{ Name; MemberKeys = @() } )   # 比較グループ(Get-EnvDocCompareGroup が設定)
+  Meta    = @{ GeneratedAt; Warnings = @() }
 }
 ```
 
@@ -388,7 +398,7 @@ $model = @{
 |---|---|
 | `-Category` で絞って収集し、そのカテゴリが JSON にない | `未収集`（グレー表示） |
 | 収集したが該当データが 0 件 | `なし` |
-| `aws.json` が無いサーバ | AWS 列は `未収集`。全サーバに無ければ `aws.html` 自体を生成しない |
+| `aws.json` が無いサーバ | AWS 列は `未収集`。AWS データが 1 件も無くても `aws.html` は生成する(ナビゲーションに固定リンクがあるためリンク切れを避ける)。この場合、各セクションが空データ表示になる |
 | `system.yaml` にあるが snapshot が無い | 警告を出して継続。一覧に `未収集` で掲載し、取り漏らしを可視化する |
 | snapshot にあるが `system.yaml` に無い | 警告を出して継続。role 未設定で掲載し、定義漏れを可視化する |
 

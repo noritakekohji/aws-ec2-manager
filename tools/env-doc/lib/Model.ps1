@@ -84,6 +84,10 @@ function Read-EnvDocInput {
         }
     }
 
+    if ($result.Snapshots.Count -eq 0) {
+        throw "入力ディレクトリに有効な snapshot JSON が見つかりません: $InputDir"
+    }
+
     return $result
 }
 
@@ -163,7 +167,8 @@ function Build-EnvDocModel {
     if ($null -eq $sys) { throw "system.yaml に system セクションがありません" }
 
     $sysId = [string]$sys['id']
-    if ($sysId -notmatch '^[A-Za-z0-9_-]+$') {
+    # .NET の '$' は末尾の改行の直前にもマッチするため、終端は '\z' を使う(Test-EnvDocHostname と同じ理由)
+    if ($sysId -notmatch '^[A-Za-z0-9_-]+\z') {
         throw "system.id は半角英数・ハイフン・アンダースコアのみ使えます(現在: '$sysId')"
     }
     $sysName = [string]$sys['name']

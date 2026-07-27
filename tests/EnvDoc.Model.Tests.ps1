@@ -26,6 +26,16 @@ Describe 'EnvDoc Model - 入力読み込み' {
         It '存在しないディレクトリで throw する' {
             { Read-EnvDocInput -InputDir (Join-Path $script:InputDir 'nope') } | Should -Throw
         }
+        It '有効な snapshot が 1 件もなければ throw する' {
+            $emptyDir = Join-Path ([System.IO.Path]::GetTempPath()) ('envdoc-empty-' + [guid]::NewGuid().ToString())
+            New-Item -ItemType Directory -Path $emptyDir -Force | Out-Null
+            try {
+                { Read-EnvDocInput -InputDir $emptyDir } | Should -Throw -ExpectedMessage '*JSON が見つかりません*'
+            }
+            finally {
+                Remove-Item -LiteralPath $emptyDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
     }
 
     Context 'Get-JsonValue' {

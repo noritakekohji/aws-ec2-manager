@@ -115,6 +115,17 @@ Describe 'EnvDoc 統合' {
             $r = Invoke-EnvDocExe -ScriptArgs @('-InputDir', 'Z:\no\such\dir', '-SystemFile', $script:SysFile)
             $r.Code | Should -Be 2
         }
+        It '入力ディレクトリはあるが有効な JSON が無ければ 2 を返す' {
+            $emptyDir = Join-Path ([System.IO.Path]::GetTempPath()) ('envdoc-noinput-' + [guid]::NewGuid().ToString())
+            New-Item -ItemType Directory -Path $emptyDir -Force | Out-Null
+            try {
+                $r = Invoke-EnvDocExe -ScriptArgs @('-InputDir', $emptyDir, '-SystemFile', $script:SysFile)
+                $r.Code | Should -Be 2
+            }
+            finally {
+                Remove-Item -LiteralPath $emptyDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
         It 'system.yaml が無ければ 1 を返す' {
             $r = Invoke-EnvDocExe -ScriptArgs @('-InputDir', $script:InDir, '-SystemFile', 'Z:\no\such.yaml')
             $r.Code | Should -Be 1
@@ -208,6 +219,85 @@ Describe 'EnvDoc 統合' {
             $m = [regex]::Match($html, '<tr class="mismatch"><td>OS バージョン</td>')
             $m.Success | Should -BeFalse
         }
+        It '未収集サーバのいるグループで実データ行を誤って不一致にしない' {
+            # db01 は middleware を収集していない。db01 が middleware.html の比較グループに
+            # 入っていた場合でも、db01 の '未収集' が他サーバの実値と比較されて
+            # 誤って mismatch にならないことを確認する
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'os-baseline.html'), [System.Text.Encoding]::UTF8)
+            # os-baseline.html の共通項目表で、db01(Linux 単独)は他グループに混ざらないため
+            # 直接は再現しないが、network.html のファイアウォール行(Windows 2 台は一致、
+            # db01 は別グループ)で誤ハイライトが出ていないことを確認する
+            $networkHtml = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'network.html'), [System.Text.Encoding]::UTF8)
+            $networkHtml | Should -Not -BeNullOrEmpty
+        }
+
+        Context 'New-EnvDocCrossTable — 未収集サーバの除外(直接検証)' {
+            BeforeAll {
+                # 既存の共有フィクスチャ(WEB01/WEB02/db01)はどちらも全カテゴリ収集済みのため、
+                # 「片方だけ未収集」という本バグの核心シナリオを再現できない。
+                # 共有フィクスチャファイルは変更禁止のため、ここで最小のサーバレコードを
+                # その場で組み立てて New-EnvDocCrossTable / Get-EnvDocCategoryValue を直接検証する。
+                function New-CrossTableTestServer {
+                    param([string]$Name, [bool]$HasSnapshot, [string[]]$Categories, $SnapshotObj)
+                    return @{
+                        Hostname    = $Name
+                        Key         = $Name.ToLowerInvariant()
+                        HasSnapshot = $HasSnapshot
+                        Categories  = $Categories
+                        Snapshot    = $SnapshotObj
+                    }
+                }
+
+                $script:RowsServices = @(
+                    @{ Label = 'サービス状態'; Getter = {
+                        param($s) Get-EnvDocCategoryValue -Server $s -Category 'services' -Getter {
+                            param($x) [string](Get-JsonValue -Object $x.Snapshot -Path 'services_state')
+                        }
+                    }}
+                )
+            }
+
+            It 'カテゴリ未収集(__MISSING__)のサーバを比較対象から除外する' {
+                # A01 は services を収集済みで値は同じ 'running'。A02 は services が
+                # 未収集(Categories に 'services' が無い)。両者を同一グループにしても、
+                # A02 の __MISSING__ が A01 の実値と比較されて mismatch になってはいけない
+                $srvA = New-CrossTableTestServer -Name 'A01' -HasSnapshot $true -Categories @('services') `
+                    -SnapshotObj (ConvertFrom-Json '{"services_state":"running"}')
+                $srvB = New-CrossTableTestServer -Name 'A02' -HasSnapshot $true -Categories @() `
+                    -SnapshotObj (ConvertFrom-Json '{}')
+
+                $model = @{ Groups = @(@{ Name = 'A'; MemberKeys = @('a01', 'a02') }) }
+                $html = New-EnvDocCrossTable -Model $model -Servers @($srvA, $srvB) -Rows $script:RowsServices
+                $html | Should -Not -BeLike '*class="mismatch"*'
+                $html | Should -BeLike '*未収集*'
+            }
+
+            It 'サーバ自体が未収集(HasSnapshot=$false)の場合も比較対象から除外する' {
+                # 明示 compare_groups で HasSnapshot=$false のサーバが混ざるケース。
+                # B02 はそもそも snapshot が無いため、比較列自体を作れない
+                $srvA = New-CrossTableTestServer -Name 'B01' -HasSnapshot $true -Categories @('services') `
+                    -SnapshotObj (ConvertFrom-Json '{"services_state":"running"}')
+                $srvB = New-CrossTableTestServer -Name 'B02' -HasSnapshot $false -Categories @() -SnapshotObj $null
+
+                $model = @{ Groups = @(@{ Name = 'B'; MemberKeys = @('b01', 'b02') }) }
+                $html = New-EnvDocCrossTable -Model $model -Servers @($srvA, $srvB) -Rows $script:RowsServices
+                $html | Should -Not -BeLike '*class="mismatch"*'
+                $html | Should -BeLike '*未収集*'
+            }
+
+            It '実際に値が異なる場合は引き続き不一致として検出する(回帰防止)' {
+                # 上の 2 テストが「常に mismatch=false を返す」ような壊れた実装で
+                # グリーンにならないことを保証する対照テスト
+                $srvA = New-CrossTableTestServer -Name 'C01' -HasSnapshot $true -Categories @('services') `
+                    -SnapshotObj (ConvertFrom-Json '{"services_state":"running"}')
+                $srvB = New-CrossTableTestServer -Name 'C02' -HasSnapshot $true -Categories @('services') `
+                    -SnapshotObj (ConvertFrom-Json '{"services_state":"stopped"}')
+
+                $model = @{ Groups = @(@{ Name = 'C'; MemberKeys = @('c01', 'c02') }) }
+                $html = New-EnvDocCrossTable -Model $model -Servers @($srvA, $srvB) -Rows $script:RowsServices
+                $html | Should -BeLike '*class="mismatch"*'
+            }
+        }
     }
 
     Context 'AWS ページ' {
@@ -237,6 +327,15 @@ Describe 'EnvDoc 統合' {
             $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'aws.html'), [System.Text.Encoding]::UTF8)
             $html | Should -BeLike '*db01*'
             $html | Should -BeLike '*未収集*'
+        }
+        It 'サーバ詳細ページに AWS 要約を再掲する' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\WEB01.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*t3.medium*'
+            $html | Should -BeLike '*web-instance-role*'
+        }
+        It 'AWS 未収集サーバの詳細ページには AWS 要約セクションを出さない' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\db01.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -Not -BeLike '*AWS 要約*'
         }
     }
 
