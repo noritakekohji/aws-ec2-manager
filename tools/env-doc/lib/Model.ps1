@@ -1,5 +1,6 @@
 ﻿# 入力 JSON の読み込みと中間モデルの構築。
-# レンダラは snapshot JSON を直接参照せず、ここで作るモデルのみを見る。
+# レンダラは Server.Snapshot(生 snapshot JSON)を Get-JsonValue 経由でのみ読む。
+# 生 JSON を直接 ConvertFrom-Json するのはここ(Read-EnvDocInput)に閉じている。
 
 function Get-JsonValue {
     param($Object, [string]$Path, $Default = $null)

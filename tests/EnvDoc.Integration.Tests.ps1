@@ -219,18 +219,6 @@ Describe 'EnvDoc 統合' {
             $m = [regex]::Match($html, '<tr class="mismatch"><td>OS バージョン</td>')
             $m.Success | Should -BeFalse
         }
-        It '未収集サーバのいるグループで実データ行を誤って不一致にしない' {
-            # db01 は middleware を収集していない。db01 が middleware.html の比較グループに
-            # 入っていた場合でも、db01 の '未収集' が他サーバの実値と比較されて
-            # 誤って mismatch にならないことを確認する
-            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'os-baseline.html'), [System.Text.Encoding]::UTF8)
-            # os-baseline.html の共通項目表で、db01(Linux 単独)は他グループに混ざらないため
-            # 直接は再現しないが、network.html のファイアウォール行(Windows 2 台は一致、
-            # db01 は別グループ)で誤ハイライトが出ていないことを確認する
-            $networkHtml = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'network.html'), [System.Text.Encoding]::UTF8)
-            $networkHtml | Should -Not -BeNullOrEmpty
-        }
-
         Context 'New-EnvDocCrossTable — 未収集サーバの除外(直接検証)' {
             BeforeAll {
                 # 既存の共有フィクスチャ(WEB01/WEB02/db01)はどちらも全カテゴリ収集済みのため、
