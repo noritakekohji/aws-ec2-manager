@@ -9,6 +9,8 @@ servers:
   - hostname: WEB01
     role: Web/AP サーバ
     note: 冗長構成のプライマリ
+    show_configs: true
+    show_environment: true
   - hostname: WEB02
     role: Web/AP サーバ
   - hostname: db01

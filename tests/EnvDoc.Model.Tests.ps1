@@ -79,7 +79,9 @@ Describe 'EnvDoc Model - モデル構築' {
     }
 
     It 'show_configs / show_environment の既定を $false にする' {
-        $s = $script:Model.Servers | Where-Object { $_.Hostname -eq 'WEB01' }
+        # WEB01 は Task 9 で opt-in (show_configs/show_environment: true) しているため、
+        # 既定値の検証には opt-in していない WEB02 を使う
+        $s = $script:Model.Servers | Where-Object { $_.Hostname -eq 'WEB02' }
         $s.ShowConfigs     | Should -BeFalse
         $s.ShowEnvironment | Should -BeFalse
     }

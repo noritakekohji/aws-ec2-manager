@@ -239,4 +239,50 @@ Describe 'EnvDoc 統合' {
             $html | Should -BeLike '*未収集*'
         }
     }
+
+    Context '全件ページと opt-in' {
+        It 'packages 全件ページを生成する' {
+            $p = Join-Path $script:OutRoot 'servers\WEB01-packages.html'
+            Test-Path -LiteralPath $p | Should -BeTrue
+            $html = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*Sample Runtime*'
+        }
+        It 'packages 未収集なら全件ページを作らない' {
+            Test-Path -LiteralPath (Join-Path $script:OutRoot 'servers\db01-packages.html') | Should -BeFalse
+        }
+        It 'サーバ詳細から全件ページへリンクする' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\WEB01.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*WEB01-packages.html*'
+            $html | Should -BeLike '*2 件*'
+        }
+        It 'show_configs: true なら設定ファイルページを作る' {
+            $p = Join-Path $script:OutRoot 'servers\WEB01-configs.html'
+            Test-Path -LiteralPath $p | Should -BeTrue
+            $html = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*server.xml*'
+            # 設定ファイル本文はエスケープされて出ること
+            $html | Should -BeLike '*&lt;Server port=&quot;8005&quot;*'
+        }
+        It 'services 由来の設定ファイルも掲載する' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\WEB01-configs.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*sshd_config*'
+            # config_files が付くのは sshd / ssh-agent と samba 系のみ
+            $html | Should -BeLike '*service sshd*'
+        }
+        It '読み取り不可のファイルは本文を出さず理由を出す' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\WEB01-configs.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*permission_denied*'
+        }
+        It 'show_configs 未指定なら設定ファイルページを作らない' {
+            Test-Path -LiteralPath (Join-Path $script:OutRoot 'servers\WEB02-configs.html') | Should -BeFalse
+        }
+        It 'show_environment: true なら詳細に環境変数を出す' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\WEB01.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*SAMPLE_HOME*'
+        }
+        It 'show_environment 未指定なら環境変数を出さない' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\WEB02.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -Not -BeLike '*SAMPLE_HOME*'
+        }
+    }
 }
