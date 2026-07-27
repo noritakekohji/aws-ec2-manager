@@ -152,4 +152,60 @@ Describe 'EnvDoc 統合' {
         }
         $broken -join '; ' | Should -Be ''
     }
+
+    Context '横断ページ' {
+        It 'network.html を生成する' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'network.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*10.0.1.11*'
+            $html | Should -BeLike '*ntp.example.internal*'
+            $html | Should -Not -BeLike '*未実装*'
+        }
+        It 'network.html にリモートアクセスを OS 別サブ表で出す' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'network.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*リモートアクセス - Windows (2 台)*'
+            $html | Should -BeLike '*リモートアクセス - Linux (1 台)*'
+            $html | Should -BeLike '*sshd.service: active*'
+        }
+        It 'NLA の不一致をハイライトする' {
+            # WEB01 は nla_enabled=true、WEB02 は false
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'network.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*<tr class="mismatch"><td>NLA</td>*'
+        }
+        It 'middleware.html に Tomcat のバージョン不一致を出す' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'middleware.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*9.0.85*'
+            $html | Should -BeLike '*9.0.80*'
+            $html | Should -BeLike '*class="mismatch"*'
+        }
+        It 'middleware.html で未収集サーバを未収集と表示する' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'middleware.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*未収集*'
+        }
+        It 'スタブが本実装に置き換わっている' {
+            # Task 6 の Write-EnvDocStubPage は本実装への置き換え忘れを検知できないため、
+            # 横断ページに「未実装」が残っていないことをここで担保する
+            foreach ($f in @('network.html', 'middleware.html', 'os-baseline.html')) {
+                $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot $f), [System.Text.Encoding]::UTF8)
+                $html | Should -Not -BeLike '*このページは未実装です*' -Because "$f がスタブのまま"
+            }
+        }
+        It 'os-baseline.html を OS 別サブ表に分ける' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'os-baseline.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*Windows*'
+            $html | Should -BeLike '*Linux*'
+            $html | Should -BeLike '*Red Hat Enterprise Linux*'
+        }
+        It '揮発値(最終起動)を不一致にしない' {
+            # WEB01 と WEB02 は last_boot が異なるが、NoCompare のためハイライトしない
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'os-baseline.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -Not -BeLike '*<tr class="mismatch"><td>最終起動</td>*'
+        }
+        It 'OS が違うだけの行を不一致にしない' {
+            # WEB01/WEB02 は同一グループで os_version が同じ。db01 は別グループ。
+            # 共通軸表で os_version 行が mismatch にならないこと
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'os-baseline.html'), [System.Text.Encoding]::UTF8)
+            $m = [regex]::Match($html, '<tr class="mismatch"><td>OS バージョン</td>')
+            $m.Success | Should -BeFalse
+        }
+    }
 }

@@ -50,7 +50,7 @@
     ],
     "proxy": { "enabled": false, "server": "" },
     "time_sync": {
-      "servers": ["ntp.sample.internal"],
+      "servers": ["ntp.example.internal"],
       "synchronized": true,
       "_volatile": { "last_sync": "" }
     }

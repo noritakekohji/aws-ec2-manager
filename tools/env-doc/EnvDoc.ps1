@@ -23,6 +23,9 @@ $script:EnvDocRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $script:EnvDocRoot 'lib\Html.ps1')
 . (Join-Path $script:EnvDocRoot 'lib\PageIndex.ps1')
 . (Join-Path $script:EnvDocRoot 'lib\PageServer.ps1')
+. (Join-Path $script:EnvDocRoot 'lib\PageNetwork.ps1')
+. (Join-Path $script:EnvDocRoot 'lib\PageMiddleware.ps1')
+. (Join-Path $script:EnvDocRoot 'lib\PageOsBaseline.ps1')
 
 function Write-EnvDocStubPage {
     param([hashtable]$Model, [string]$OutputRoot, [string]$FileName, [string]$Title)
@@ -61,11 +64,12 @@ function Invoke-EnvDoc {
         Write-EnvDocServerPage -Model $model -Server $s -OutputRoot $outputRoot
     }
 
-    # ナビ先のリンク切れを防ぐスタブ(Task 7・8 で本実装に置き換える)
-    Write-EnvDocStubPage -Model $model -OutputRoot $outputRoot -FileName 'aws.html'         -Title 'AWS 構成'
-    Write-EnvDocStubPage -Model $model -OutputRoot $outputRoot -FileName 'network.html'     -Title 'ネットワーク'
-    Write-EnvDocStubPage -Model $model -OutputRoot $outputRoot -FileName 'middleware.html'  -Title 'ミドルウェア'
-    Write-EnvDocStubPage -Model $model -OutputRoot $outputRoot -FileName 'os-baseline.html' -Title 'OS ベースライン'
+    Write-EnvDocNetworkPage    -Model $model -OutputRoot $outputRoot
+    Write-EnvDocMiddlewarePage -Model $model -OutputRoot $outputRoot
+    Write-EnvDocOsBaselinePage -Model $model -OutputRoot $outputRoot
+
+    # aws.html は Task 8 で本実装に置き換える
+    Write-EnvDocStubPage -Model $model -OutputRoot $outputRoot -FileName 'aws.html' -Title 'AWS 構成'
 
     Copy-Item -LiteralPath (Join-Path $script:EnvDocRoot 'assets') `
               -Destination (Join-Path $outputRoot 'assets') -Recurse -Force
