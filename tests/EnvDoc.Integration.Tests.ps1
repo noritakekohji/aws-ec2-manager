@@ -217,15 +217,20 @@ Describe 'EnvDoc 統合' {
             $html | Should -BeLike '*t3.medium*'
             $html | Should -Not -BeLike '*このページは未実装です*'
         }
-        It 'SG を 1 回だけ出し適用サーバを併記する' {
+        It 'SG カードを共有サーバ数によらず 1 枚だけ出す' {
+            # WEB01 と WEB02 が同じ SG を共有する。サーバごとに繰り返すと冗長で読めないため、
+            # カード(h3 見出し)は 1 枚だけであることを厳密に検証する
             $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'aws.html'), [System.Text.Encoding]::UTF8)
-            ([regex]::Matches($html, 'sg-0example</td>')).Count | Should -BeLessOrEqual 2
-            $html | Should -BeLike '*web-sg*'
-            $html | Should -BeLike '*適用サーバ*'
+            ([regex]::Matches($html, '<h3>web-sg \(sg-0example\)</h3>')).Count | Should -Be 1
         }
-        It 'IAM ロールと使用サーバを出す' {
+        It 'SG に適用サーバを逆引きで併記する' {
             $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'aws.html'), [System.Text.Encoding]::UTF8)
-            $html | Should -BeLike '*web-instance-role*'
+            $html | Should -BeLike '*適用サーバ: WEB01, WEB02*'
+        }
+        It 'IAM ロールカードを 1 枚だけ出し使用サーバを併記する' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'aws.html'), [System.Text.Encoding]::UTF8)
+            ([regex]::Matches($html, '<h3>web-instance-role</h3>')).Count | Should -Be 1
+            $html | Should -BeLike '*使用サーバ: WEB01, WEB02*'
             $html | Should -BeLike '*SampleReadOnly*'
         }
         It 'aws 未収集のサーバを未収集と表示する' {

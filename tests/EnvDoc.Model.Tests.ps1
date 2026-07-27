@@ -17,7 +17,7 @@ Describe 'EnvDoc Model - 入力読み込み' {
             $script:Inputs.Snapshots.ContainsKey('db01')  | Should -BeTrue
         }
         It 'aws JSON を snapshot と区別して読む' {
-            $script:Inputs.Aws.Count | Should -Be 1
+            $script:Inputs.Aws.Count | Should -Be 2
             $script:Inputs.Aws['web01'].instance.instance_type | Should -Be 't3.medium'
         }
         It '種別判定できない JSON を警告してスキップする' {
@@ -139,23 +139,29 @@ Describe 'EnvDoc Model - AWS 正規化' {
         Add-EnvDocAwsModel -Model $script:M -Inputs $inputs
     }
 
-    It 'インスタンスを 1 件取り込む' {
-        @($script:M.Aws.Instances).Count | Should -Be 1
+    It 'インスタンスを 2 件取り込む' {
+        @($script:M.Aws.Instances).Count | Should -Be 2
         $script:M.Aws.Instances[0].InstanceType | Should -Be 't3.medium'
     }
-    It 'SG をリソース単位に正規化し適用サーバを持つ' {
+    It 'SG をリソース単位に正規化し適用サーバを逆引きできる' {
+        # WEB01 と WEB02 が同じ SG を共有する。カードは 1 枚で適用サーバが 2 台並ぶのが正解
         @($script:M.Aws.SecurityGroups).Count | Should -Be 1
         $script:M.Aws.SecurityGroups[0].GroupId | Should -Be 'sg-0example'
-        @($script:M.Aws.SecurityGroups[0].AppliedTo) | Should -Be @('WEB01')
+        @($script:M.Aws.SecurityGroups[0].AppliedTo) | Should -Be @('WEB01', 'WEB02')
     }
-    It 'IAM ロールをリソース単位に正規化し使用サーバを持つ' {
+    It 'IAM ロールをリソース単位に正規化し使用サーバを逆引きできる' {
         @($script:M.Aws.IamRoles).Count | Should -Be 1
         $script:M.Aws.IamRoles[0].RoleName | Should -Be 'web-instance-role'
-        @($script:M.Aws.IamRoles[0].AppliedTo) | Should -Be @('WEB01')
+        @($script:M.Aws.IamRoles[0].AppliedTo) | Should -Be @('WEB01', 'WEB02')
     }
-    It 'VPC と Subnet を重複なく取り込む' {
+    It 'VPC を重複なくまとめ Subnet は別々に取り込む' {
+        # 2 台は同一 VPC・別 Subnet。VPC は 1 件に畳まれる
         @($script:M.Aws.Vpcs).Count    | Should -Be 1
-        @($script:M.Aws.Subnets).Count | Should -Be 1
+        @($script:M.Aws.Subnets).Count | Should -Be 2
+    }
+    It 'ルートテーブルを重複なくまとめる' {
+        # 2 台が同じ rtb を参照しても 1 件
+        @($script:M.Aws.RouteTables).Count | Should -Be 1
     }
     It 'aws JSON のあるサーバに Server.Aws を設定する' {
         ($script:M.Servers | Where-Object { $_.Hostname -eq 'WEB01' }).Aws | Should -Not -BeNullOrEmpty
