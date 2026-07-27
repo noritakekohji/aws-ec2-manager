@@ -79,16 +79,35 @@ output/<system-id>/
 ├── index.html          システム概要・サーバ一覧・警告
 ├── aws.html            AWS 構成（SG / IAM はリソース単位 + 適用サーバ逆引き）
 ├── network.html        IP / DNS / 時刻同期 / プロキシ / FW / Listen ポート（横断）+ リモートアクセス（OS 別）
-├── middleware.html     MW バージョン・状態・Listen ポート（横断）
 ├── os-baseline.html    共通項目（横断）+ OS 別サブ表
-├── servers/<host>.html            サーバ詳細
+├── middleware.html     MW バージョン・状態・Listen ポート（横断）
+├── servers/<host>.html            サーバ詳細（目次つき・要約のみ）
+├── servers/<host>-services.html   サービス全件（クロス集計 + 状態別の折りたたみ）
 ├── servers/<host>-packages.html   パッケージ全件
-├── servers/<host>-filelist.html   ファイル一覧全件
+├── servers/<host>-filelist.html   ファイル一覧全件（ディレクトリツリー）
 ├── servers/<host>-configs.html    設定ファイル全文（opt-in 時のみ）
 └── assets/style.css
 ```
 
 すべて相対リンクのみです。`index.html` をダブルクリックすればそのまま閲覧できます。
+
+### 件数の多い情報の見せ方
+
+実機ではサービスが 300 件近く、ファイル一覧が数千件になります。1 ページに並べると
+スクロールが破綻するため、次の方針で分けています。
+
+| 情報 | 見せ方 |
+|---|---|
+| サービス | サーバ詳細には **総数・稼働中・自動起動だが停止** の要約だけを出し、全件は `-services.html` へ |
+| ファイル一覧 | `rel_path` を分解して **ディレクトリツリー**に組み直し、各階層を折りたたむ |
+| パッケージ / 設定ファイル | 従来どおり別ページ |
+
+サービス全件ページの先頭には **状態 × 起動設定のクロス集計**を出します。
+「自動起動なのに停止している」件数が折りたたみを開かずに分かるため、
+保守時に最初に見る値になります。
+
+折りたたみは `<details>` だけで実現しており JavaScript は使いません。
+ページ内の目次（`#` アンカー）から各セクションへ直接飛べます。
 
 ### 不一致ハイライト
 

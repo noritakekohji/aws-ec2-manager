@@ -47,6 +47,63 @@ Describe 'EnvDoc Html' {
         }
     }
 
+    Context 'New-HtmlSection -Id (アンカー)' {
+        It 'Id を指定すると section に id が付く' {
+            New-HtmlSection -Title 'サービス' -Body '<p>x</p>' -Id 'services' |
+                Should -Be '<section id="services"><h2>サービス</h2><p>x</p></section>'
+        }
+        It 'Id をエスケープする' {
+            New-HtmlSection -Title 't' -Body '' -Id 'a"b' | Should -BeLike '*id="a&quot;b"*'
+        }
+    }
+
+    Context 'New-HtmlDetails' {
+        It '既定は閉じた details を返す' {
+            $d = New-HtmlDetails -Summary '停止 (170 件)' -Body '<p>x</p>'
+            $d | Should -Be '<details><summary>停止 (170 件)</summary><p>x</p></details>'
+        }
+        It 'Open で開いた状態にする' {
+            New-HtmlDetails -Summary 's' -Body '' -Open | Should -BeLike '<details open>*'
+        }
+        It 'summary をエスケープし body はそのまま埋める' {
+            $d = New-HtmlDetails -Summary 'a&b' -Body '<table></table>'
+            $d | Should -BeLike '*<summary>a&amp;b</summary><table></table>*'
+        }
+    }
+
+    Context 'New-HtmlToc' {
+        It 'アンカーへのリンク一覧を返す' {
+            $t = New-HtmlToc -Items @(
+                @{ Id = 'basic'; Label = '基本情報' }
+                @{ Id = 'svc';   Label = 'サービス' }
+            )
+            $t | Should -BeLike '*<a href="#basic">基本情報</a>*'
+            $t | Should -BeLike '*<a href="#svc">サービス</a>*'
+            $t | Should -BeLike '*class="toc"*'
+        }
+        It 'ラベルをエスケープする' {
+            New-HtmlToc -Items @(@{ Id = 'a'; Label = 'x&y' }) | Should -BeLike '*x&amp;y*'
+        }
+        It '項目が空なら空文字を返す' {
+            New-HtmlToc -Items @() | Should -Be ''
+        }
+        It '$null を渡しても空項目を出さない' {
+            # @($null) は 1 要素になるため、素直に書くと空の <li> が出る
+            New-HtmlToc -Items $null | Should -Be ''
+        }
+    }
+
+    Context 'ナビゲーションの並び' {
+        It 'OS をミドルウェアより先に出す' {
+            $p = New-HtmlPage -Title 't' -SystemName 'S' -RelRoot '.' -Body ''
+            $osPos = $p.IndexOf('os-baseline.html')
+            $mwPos = $p.IndexOf('middleware.html')
+            $osPos | Should -BeGreaterThan 0
+            $mwPos | Should -BeGreaterThan 0
+            $osPos | Should -BeLessThan $mwPos
+        }
+    }
+
     Context 'New-HtmlTable' {
         It 'ヘッダと行を出力する' {
             $t = New-HtmlTable -Headers @('項目', '値') -Rows @(@{ Cells = @('OS', 'RHEL'); Mismatch = $false })

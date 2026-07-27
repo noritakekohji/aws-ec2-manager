@@ -378,4 +378,131 @@ Describe 'EnvDoc 統合' {
             $html | Should -Not -BeLike '*SAMPLE_HOME*'
         }
     }
+
+    Context 'サービス一覧の分離' {
+        It 'サービス全件ページを生成する' {
+            $p = Join-Path $script:OutRoot 'servers\WEB01-services.html'
+            Test-Path -LiteralPath $p | Should -BeTrue
+            $html = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*W3SVC*'
+            $html | Should -BeLike '*sshd*'
+        }
+        It 'サーバ詳細に全件表を埋め込まず件数とリンクだけ出す' {
+            # 299 件のサービスを詳細ページに直接並べるとスクロールが破綻するため、
+            # 詳細ページは要約に留めて全件は別ページに逃がす
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\WEB01.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*WEB01-services.html*'
+            $html | Should -Not -BeLike '*<td>W3SVC</td>*'
+        }
+        It '状態と起動設定のクロス集計を出す' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\WEB01-services.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*状態 \ 起動設定*'
+        }
+        It '状態ごとに折りたたむ' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\WEB01-services.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*<details*<summary>running*'
+        }
+        It '該当 0 件のとき空行ではなく「データなし」を出す' {
+            # ArrayList.ToArray() を return するとき空配列は $null にアンロールされ、
+            # New-HtmlTable 側で @($null) が 1 要素になって空行が出る(PS の配列アンロール)
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\WEB01-services.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -Not -BeLike '*<tbody><tr><td></td></tr></tbody>*'
+        }
+        It '起動するはずなのに停止しているサービスを抽出する' {
+            # db01 の sshd/postgresql は enabled かつ running なので 0 件になるのが正しい
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\db01-services.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*自動起動だが停止*'
+        }
+        It 'services 未収集なら全件ページを作らない' {
+            # MISSING01 は snapshot 自体が無い
+            Test-Path -LiteralPath (Join-Path $script:OutRoot 'servers\MISSING01-services.html') | Should -BeFalse
+        }
+        It 'services が収集済みでも 0 件ならリンクを張らない' {
+            # 全件ページは 0 件だと生成されない。詳細ページが無条件にリンクすると
+            # リンク切れになるため、件数 0 のときは packages と同じく「なし」を出す
+            $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('envdoc-emptysvc-' + [guid]::NewGuid().ToString())
+            New-Item -ItemType Directory -Path (Join-Path $tmp 'input') -Force | Out-Null
+            try {
+                $snap = '{ "meta": { "hostname": "EMPTY01", "os_type": "windows", "collected_at": "2026-07-28T00:00:00+09:00", "categories": ["os", "services"] }, "os": { "os_name": "Windows" }, "services": [] }'
+                [System.IO.File]::WriteAllText((Join-Path $tmp 'input\EMPTY01.snapshot.json'), $snap, (New-Object System.Text.UTF8Encoding($false)))
+                $sys = "system:`n  id: emptysvc`n  name: Empty`nservers:`n  - hostname: EMPTY01`n    role: t"
+                [System.IO.File]::WriteAllText((Join-Path $tmp 'system.yaml'), $sys, (New-Object System.Text.UTF8Encoding($false)))
+
+                $root = Invoke-EnvDoc -InputDir (Join-Path $tmp 'input') -SystemFile (Join-Path $tmp 'system.yaml') -OutputDir (Join-Path $tmp 'out')
+                $html = [System.IO.File]::ReadAllText((Join-Path $root 'servers\EMPTY01.html'), [System.Text.Encoding]::UTF8)
+                $html | Should -Not -BeLike '*EMPTY01-services.html*'
+            }
+            finally {
+                Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    Context 'ファイル一覧のディレクトリツリー' {
+        It 'ディレクトリを details で入れ子にする' {
+            $p = Join-Path $script:OutRoot 'servers\db01-filelist.html'
+            Test-Path -LiteralPath $p | Should -BeTrue
+            $html = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)
+            # db01 の filelist は app.conf / sub(dir) / sub/extra.conf
+            $html | Should -BeLike '*<summary>sub/*'
+        }
+        It 'ディレクトリごとに件数を出す' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\db01-filelist.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*1 ファイル*'
+        }
+        It '入れ子のファイルはフルパスでなく名前で出す' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\db01-filelist.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*<td>extra.conf</td>*'
+            $html | Should -Not -BeLike '*<td>sub/extra.conf</td>*'
+        }
+    }
+
+    Context 'ファイルツリー構築 (単体)' {
+        It 'バックスラッシュ区切りを階層に分解する' {
+            $entries = @(
+                [PSCustomObject]@{ rel_path = 'game';          type = 'dir' }
+                [PSCustomObject]@{ rel_path = 'game\ps1';      type = 'dir' }
+                [PSCustomObject]@{ rel_path = 'game\ps1\a.iso'; type = 'file' }
+                [PSCustomObject]@{ rel_path = 'readme.txt';    type = 'file' }
+            )
+            $tree = New-EnvDocFileTree -Entries $entries
+            @($tree.Files).Count            | Should -Be 1
+            $tree.Dirs.Contains('game')     | Should -BeTrue
+            $tree.Dirs['game'].Dirs.Contains('ps1') | Should -BeTrue
+            @($tree.Dirs['game'].Dirs['ps1'].Files).Count | Should -Be 1
+        }
+        It 'スラッシュ区切りも同じように扱う' {
+            $entries = @(
+                [PSCustomObject]@{ rel_path = 'sub';           type = 'dir' }
+                [PSCustomObject]@{ rel_path = 'sub/extra.conf'; type = 'file' }
+            )
+            $tree = New-EnvDocFileTree -Entries $entries
+            @($tree.Dirs['sub'].Files).Count | Should -Be 1
+        }
+        It '親ディレクトリの entry が無くても階層を作る' {
+            $entries = @([PSCustomObject]@{ rel_path = 'a\b\c.txt'; type = 'file' })
+            $tree = New-EnvDocFileTree -Entries $entries
+            @($tree.Dirs['a'].Dirs['b'].Files).Count | Should -Be 1
+        }
+        It '再帰的に件数を数える' {
+            $entries = @(
+                [PSCustomObject]@{ rel_path = 'a';        type = 'dir' }
+                [PSCustomObject]@{ rel_path = 'a\x.txt';  type = 'file' }
+                [PSCustomObject]@{ rel_path = 'a\b';      type = 'dir' }
+                [PSCustomObject]@{ rel_path = 'a\b\y.txt'; type = 'file' }
+            )
+            $tree = New-EnvDocFileTree -Entries $entries
+            $c = Get-EnvDocFileTreeCount -Node $tree
+            $c.Files | Should -Be 2
+            $c.Dirs  | Should -Be 2
+        }
+    }
+
+    Context 'サーバ詳細の目次' {
+        It '目次を出す' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\WEB01.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*class="toc"*'
+            $html | Should -BeLike '*href="#services"*'
+        }
+    }
 }

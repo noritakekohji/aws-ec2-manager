@@ -59,8 +59,38 @@ tr.mismatch td:first-child { border-left: 3px solid var(--mismatch-line); font-w
 .warn { border-left: 3px solid var(--mismatch-line); background: var(--mismatch-bg); padding: 8px 12px; }
 .meta { color: var(--muted); font-size: 12px; }
 
+/* ページ内目次 */
+.toc {
+  border: 1px solid var(--line);
+  background: var(--head-bg);
+  padding: 8px 14px;
+  margin: 12px 0 20px;
+  border-radius: 3px;
+}
+.toc ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 20px; }
+.toc a { color: var(--accent); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+
+/* 折りたたみ(件数の多い一覧・ディレクトリツリー) */
+details { margin: 4px 0; }
+details > summary {
+  cursor: pointer;
+  padding: 4px 6px;
+  background: var(--head-bg);
+  border-left: 3px solid var(--line);
+  font-weight: 600;
+  user-select: none;
+}
+details > summary:hover { border-left-color: var(--accent); }
+details[open] > summary { border-left-color: var(--accent); }
+/* ツリーの入れ子は左に寄せて階層を見せる */
+details details { margin-left: 18px; }
+details > .table-wrap { margin-left: 18px; }
+
 @media print {
   header { position: static; }
   main { max-width: none; }
   .table-wrap { overflow-x: visible; }
+  /* 印刷時は折りたたみを開いた状態で出す(閉じた details の中身を強制表示) */
+  details:not([open]) > *:not(summary) { display: block; }
 }

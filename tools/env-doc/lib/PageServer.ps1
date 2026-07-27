@@ -8,7 +8,9 @@ function New-EnvDocKeyValueRows {
         $v = Get-JsonValue -Object $Snapshot -Path $p.Path -Default ''
         [void]$rows.Add(@{ Cells = @((ConvertTo-HtmlText -Text $p.Label), (ConvertTo-HtmlText -Text ([string]$v))); Mismatch = $false })
     }
-    return $rows.ToArray()
+    # カンマを付けないと空配列が $null にアンロールされ、New-HtmlTable 側で
+    # @($null) が 1 要素になって空行が出る
+    return , $rows.ToArray()
 }
 
 function Write-EnvDocServerPage {
@@ -22,6 +24,8 @@ function Write-EnvDocServerPage {
 
     $snap = $Server.Snapshot
     $body = New-Object System.Text.StringBuilder
+    # 目次用。セクションを足すたびにここへ id とラベルを積む
+    $toc = New-Object System.Collections.ArrayList
 
     # 基本情報
     $basic = New-Object System.Collections.ArrayList
@@ -29,7 +33,8 @@ function Write-EnvDocServerPage {
     [void]$basic.Add(@{ Cells = @('役割', (ConvertTo-HtmlText -Text $Server.Role)); Mismatch = $false })
     [void]$basic.Add(@{ Cells = @('備考', (ConvertTo-HtmlText -Text $Server.Note)); Mismatch = $false })
     [void]$basic.Add(@{ Cells = @('収集日時', (ConvertTo-HtmlText -Text $Server.CollectedAt)); Mismatch = $false })
-    [void]$body.Append((New-HtmlSection -Title '基本情報' -Body (New-HtmlTable -Headers @('項目', '値') -Rows $basic.ToArray())))
+    [void]$toc.Add(@{ Id = 'basic'; Label = '基本情報' })
+    [void]$body.Append((New-HtmlSection -Title '基本情報' -Id 'basic' -Body (New-HtmlTable -Headers @('項目', '値') -Rows $basic.ToArray())))
 
     # AWS 要約(aws.json があるサーバのみ再掲。詳細は aws.html を参照)
     if ($null -ne $Server.Aws) {
@@ -43,7 +48,8 @@ function Write-EnvDocServerPage {
         # ConvertTo-HtmlText を通すため、ここで先に ConvertTo-HtmlText すると二重エスケープになる
         [void]$awsRows.Add(@{ Cells = @('IAM ロール', (New-HtmlCell -Text ([string](Get-JsonValue -Object $Server.Aws -Path 'iam.role_name' -Default '-')) -Link '../aws.html')); Mismatch = $false })
         $t = New-HtmlTable -Headers @('項目', '値') -Rows $awsRows.ToArray()
-        [void]$body.Append((New-HtmlSection -Title 'AWS 要約' -Body $t))
+        [void]$toc.Add(@{ Id = 'aws'; Label = 'AWS 要約' })
+        [void]$body.Append((New-HtmlSection -Title 'AWS 要約' -Id 'aws' -Body $t))
     }
 
     # OS / ハードウェア
@@ -60,30 +66,41 @@ function Write-EnvDocServerPage {
             @{ Label = '最終起動';      Path = 'os.last_boot' }
         )
         $rows = New-EnvDocKeyValueRows -Snapshot $snap -Pairs $pairs
-        [void]$body.Append((New-HtmlSection -Title 'OS / ハードウェア' -Body (New-HtmlTable -Headers @('項目', '値') -Rows $rows)))
+        [void]$toc.Add(@{ Id = 'os'; Label = 'OS / ハードウェア' })
+        [void]$body.Append((New-HtmlSection -Title 'OS / ハードウェア' -Id 'os' -Body (New-HtmlTable -Headers @('項目', '値') -Rows $rows)))
     }
     else {
-        [void]$body.Append((New-HtmlSection -Title 'OS / ハードウェア' -Body '<p class="missing">未収集</p>'))
+        [void]$toc.Add(@{ Id = 'os'; Label = 'OS / ハードウェア' })
+        [void]$body.Append((New-HtmlSection -Title 'OS / ハードウェア' -Id 'os' -Body '<p class="missing">未収集</p>'))
     }
 
-    # サービス
+    # サービス(要約のみ。全件は <host>-services.html に逃がす)
+    # 実機では 300 件近くになり、詳細ページに並べるとスクロールが破綻するため。
+    [void]$toc.Add(@{ Id = 'services'; Label = 'サービス' })
     if (Test-EnvDocCategory -Server $Server -Category 'services') {
+        $svcs = @(Get-JsonValue -Object $snap -Path 'services' -Default @())
+        $sum = Get-EnvDocServiceSummary -Services $svcs
+
         $svcRows = New-Object System.Collections.ArrayList
-        foreach ($svc in @(Get-JsonValue -Object $snap -Path 'services' -Default @())) {
-            [void]$svcRows.Add(@{
-                Cells = @(
-                    (ConvertTo-HtmlText -Text ([string]$svc.name)),
-                    (ConvertTo-HtmlText -Text ([string]$svc.status)),
-                    (ConvertTo-HtmlText -Text ([string]$svc.start_type))
-                )
-                Mismatch = $false
-            })
-        }
-        $t = New-HtmlTable -Headers @('サービス名', '状態', '起動設定') -Rows $svcRows.ToArray()
-        [void]$body.Append((New-HtmlSection -Title 'サービス' -Body $t))
+        [void]$svcRows.Add(@{ Cells = @('総数', (ConvertTo-HtmlText -Text ('{0} 件' -f $sum.Total))); Mismatch = $false })
+        [void]$svcRows.Add(@{ Cells = @('稼働中', (ConvertTo-HtmlText -Text ('{0} 件' -f $sum.Running))); Mismatch = $false })
+        # 起動するはずなのに動いていないものは保守で最初に見る値なので、要約に出す
+        [void]$svcRows.Add(@{
+            Cells = @('自動起動だが停止', (ConvertTo-HtmlText -Text ('{0} 件' -f @($sum.AutoStopped).Count)))
+            Mismatch = (@($sum.AutoStopped).Count -gt 0)
+        })
+        # 全件ページは 0 件だと生成されない。無条件にリンクするとリンク切れになるため、
+        # packages と同じく件数 0 のときは「なし」を出す
+        $link = if ($sum.Total -gt 0) {
+            New-HtmlCell -Text '全件を見る' -Link ('{0}-services.html' -f $Server.Hostname)
+        } else { Format-EnvDocMissing -Collected $true -Count 0 }
+        [void]$svcRows.Add(@{ Cells = @('一覧', $link); Mismatch = $false })
+
+        $t = New-HtmlTable -Headers @('項目', '値') -Rows $svcRows.ToArray()
+        [void]$body.Append((New-HtmlSection -Title 'サービス' -Id 'services' -Body $t))
     }
     else {
-        [void]$body.Append((New-HtmlSection -Title 'サービス' -Body '<p class="missing">未収集</p>'))
+        [void]$body.Append((New-HtmlSection -Title 'サービス' -Id 'services' -Body '<p class="missing">未収集</p>'))
     }
 
     # 環境変数(opt-in)
@@ -107,7 +124,8 @@ function Write-EnvDocServerPage {
             }
         }
         $t = New-HtmlTable -Headers @('スコープ', '変数名', '値') -Rows $envRows.ToArray()
-        [void]$body.Append((New-HtmlSection -Title '環境変数' -Body $t))
+        [void]$toc.Add(@{ Id = 'environment'; Label = '環境変数' })
+        [void]$body.Append((New-HtmlSection -Title '環境変数' -Id 'environment' -Body $t))
     }
 
     # 全件ページへのリンク
@@ -138,11 +156,138 @@ function Write-EnvDocServerPage {
     [void]$linkRows.Add(@{ Cells = @('設定ファイル', $cfgCell); Mismatch = $false })
 
     $t = New-HtmlTable -Headers @('区分', '内容') -Rows $linkRows.ToArray()
-    [void]$body.Append((New-HtmlSection -Title '詳細データ' -Body $t))
+    [void]$toc.Add(@{ Id = 'details'; Label = '詳細データ' })
+    [void]$body.Append((New-HtmlSection -Title '詳細データ' -Id 'details' -Body $t))
 
     $title = 'サーバ詳細: {0}' -f $Server.Hostname
-    $html = New-HtmlPage -Title $title -SystemName $Model.System.Name -RelRoot '..' -Body $body.ToString()
+    # 目次は本文の先頭に置く
+    $page = (New-HtmlToc -Items $toc.ToArray()) + $body.ToString()
+    $html = New-HtmlPage -Title $title -SystemName $Model.System.Name -RelRoot '..' -Body $page
     Write-HtmlFile -Path (Join-Path $OutputRoot ('servers\{0}.html' -f $Server.Hostname)) -Content $html
+}
+
+# 「起動するはずなのに動いていない」を OS 差を吸収して判定する。
+# Windows: start_type=automatic / status=running,  Linux: start_type=enabled / status=running,active
+function Test-EnvDocServiceAutoStart {
+    param([string]$StartType)
+    return (@('automatic', 'auto', 'enabled') -contains $StartType.ToLowerInvariant())
+}
+
+function Test-EnvDocServiceUp {
+    param([string]$Status)
+    return (@('running', 'active') -contains $Status.ToLowerInvariant())
+}
+
+function Get-EnvDocServiceSummary {
+    param($Services)
+
+    $svcs = @($Services)
+    $running = 0
+    $autoStopped = New-Object System.Collections.ArrayList
+    foreach ($s in $svcs) {
+        $status = [string](Get-JsonValue -Object $s -Path 'status' -Default '')
+        $start  = [string](Get-JsonValue -Object $s -Path 'start_type' -Default '')
+        if (Test-EnvDocServiceUp -Status $status) { $running++ }
+        elseif (Test-EnvDocServiceAutoStart -StartType $start) { [void]$autoStopped.Add($s) }
+    }
+    return @{
+        Total       = $svcs.Count
+        Running     = $running
+        AutoStopped = @($autoStopped.ToArray())
+    }
+}
+
+function New-EnvDocServiceRows {
+    param($Services)
+
+    $rows = New-Object System.Collections.ArrayList
+    foreach ($s in @($Services)) {
+        [void]$rows.Add(@{
+            Cells = @(
+                (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $s -Path 'name'         -Default '-'))),
+                (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $s -Path 'display_name' -Default ''))),
+                (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $s -Path 'status'       -Default '-'))),
+                (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $s -Path 'start_type'   -Default '-'))),
+                (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $s -Path 'start_name'   -Default '')))
+            )
+            Mismatch = $false
+        })
+    }
+    # 該当 0 件のとき空配列が $null にアンロールされないようカンマを付ける
+    return , $rows.ToArray()
+}
+
+function Write-EnvDocServicesPage {
+    param([hashtable]$Model, [hashtable]$Server, [string]$OutputRoot)
+
+    if (-not (Test-EnvDocCategory -Server $Server -Category 'services')) { return }
+    $svcs = @(Get-JsonValue -Object $Server.Snapshot -Path 'services' -Default @())
+    if ($svcs.Count -eq 0) { return }
+
+    $sum = Get-EnvDocServiceSummary -Services $svcs
+    $body = New-Object System.Text.StringBuilder
+    $toc  = New-Object System.Collections.ArrayList
+
+    # 状態 × 起動設定のクロス集計。「automatic なのに stopped が何件あるか」を
+    # 折りたたみを開かずに把握できるようにする
+    $statuses = @($svcs | ForEach-Object { [string](Get-JsonValue -Object $_ -Path 'status' -Default '-') } | Select-Object -Unique | Sort-Object)
+    $starts   = @($svcs | ForEach-Object { [string](Get-JsonValue -Object $_ -Path 'start_type' -Default '-') } | Select-Object -Unique | Sort-Object)
+
+    $matrix = @{}
+    foreach ($s in $svcs) {
+        $k = '{0}||{1}' -f [string](Get-JsonValue -Object $s -Path 'status' -Default '-'),
+                           [string](Get-JsonValue -Object $s -Path 'start_type' -Default '-')
+        if ($matrix.ContainsKey($k)) { $matrix[$k]++ } else { $matrix[$k] = 1 }
+    }
+
+    $crossRows = New-Object System.Collections.ArrayList
+    foreach ($st in $statuses) {
+        $cells = New-Object System.Collections.ArrayList
+        [void]$cells.Add((ConvertTo-HtmlText -Text $st))
+        $rowTotal = 0
+        foreach ($sp in $starts) {
+            $n = 0
+            $k = '{0}||{1}' -f $st, $sp
+            if ($matrix.ContainsKey($k)) { $n = $matrix[$k] }
+            $rowTotal += $n
+            [void]$cells.Add((ConvertTo-HtmlText -Text ([string]$n)))
+        }
+        [void]$cells.Add((ConvertTo-HtmlText -Text ([string]$rowTotal)))
+        # 起動するはずなのに動いていない行を強調する
+        $isAnomaly = (-not (Test-EnvDocServiceUp -Status $st)) -and
+                     (@($starts | Where-Object { (Test-EnvDocServiceAutoStart -StartType $_) -and $matrix.ContainsKey(('{0}||{1}' -f $st, $_)) }).Count -gt 0)
+        [void]$crossRows.Add(@{ Cells = $cells.ToArray(); Mismatch = $isAnomaly })
+    }
+    $crossHeaders = @('状態 \ 起動設定') + $starts + @('計')
+    [void]$toc.Add(@{ Id = 'summary'; Label = 'サマリ' })
+    [void]$body.Append((New-HtmlSection -Title 'サマリ' -Id 'summary' `
+        -Body (New-HtmlTable -Headers $crossHeaders -Rows $crossRows.ToArray())))
+
+    # 自動起動だが停止しているサービス(保守で最初に見る値なので既定で開く)
+    [void]$toc.Add(@{ Id = 'auto-stopped'; Label = '自動起動だが停止' })
+    $asRows = New-EnvDocServiceRows -Services $sum.AutoStopped
+    $asBody = New-HtmlDetails -Summary ('自動起動だが停止 ({0} 件)' -f @($sum.AutoStopped).Count) `
+        -Body (New-HtmlTable -Headers @('サービス名', '表示名', '状態', '起動設定', '実行ユーザー') -Rows $asRows) -Open
+    [void]$body.Append((New-HtmlSection -Title '自動起動だが停止' -Id 'auto-stopped' -Body $asBody))
+
+    # 状態ごとの一覧。件数が多いので既定は閉じておく
+    [void]$toc.Add(@{ Id = 'by-status'; Label = '状態別の一覧' })
+    $byStatus = New-Object System.Text.StringBuilder
+    foreach ($st in $statuses) {
+        $group = @($svcs | Where-Object { [string](Get-JsonValue -Object $_ -Path 'status' -Default '-') -eq $st } |
+            Sort-Object { [string](Get-JsonValue -Object $_ -Path 'name' -Default '') })
+        $rows = New-EnvDocServiceRows -Services $group
+        $t = New-HtmlTable -Headers @('サービス名', '表示名', '状態', '起動設定', '実行ユーザー') -Rows $rows
+        [void]$byStatus.Append((New-HtmlDetails -Summary ('{0} ({1} 件)' -f $st, $group.Count) -Body $t))
+    }
+    [void]$body.Append((New-HtmlSection -Title '状態別の一覧' -Id 'by-status' -Body $byStatus.ToString()))
+
+    $title = 'サービス一覧: {0}' -f $Server.Hostname
+    $head = '<p class="meta">全 {0} 件 (稼働中 {1} / 自動起動だが停止 {2})</p>' -f `
+        $sum.Total, $sum.Running, @($sum.AutoStopped).Count
+    $page = (New-HtmlToc -Items $toc.ToArray()) + $head + $body.ToString()
+    $html = New-HtmlPage -Title $title -SystemName $Model.System.Name -RelRoot '..' -Body $page
+    Write-HtmlFile -Path (Join-Path $OutputRoot ('servers\{0}-services.html' -f $Server.Hostname)) -Content $html
 }
 
 function Write-EnvDocPackagesPage {
@@ -168,6 +313,97 @@ function Write-EnvDocPackagesPage {
     Write-HtmlFile -Path (Join-Path $OutputRoot ('servers\{0}-packages.html' -f $Server.Hostname)) -Content $html
 }
 
+# --- ファイル一覧のディレクトリツリー ---
+# rel_path はフラットな文字列で来る(Windows は '\'、Linux は '/' 区切り)。
+# そのまま 1000 行の表にすると読めないため、パスを分解して階層に組み直す。
+
+function New-EnvDocFileTreeNode {
+    return @{ Dirs = [ordered]@{}; Files = (New-Object System.Collections.ArrayList) }
+}
+
+function New-EnvDocFileTree {
+    param($Entries)
+
+    $root = New-EnvDocFileTreeNode
+    foreach ($e in @($Entries)) {
+        $rel = [string](Get-JsonValue -Object $e -Path 'rel_path' -Default '')
+        if ($rel -eq '') { continue }
+        # Windows / Linux の両方の区切りを受ける
+        $parts = @($rel -split '[\\/]' | Where-Object { $_ -ne '' })
+        if ($parts.Count -eq 0) { continue }
+
+        # 途中のディレクトリは entry が無くても作る(収集対象外でも階層は必要)
+        $node = $root
+        for ($i = 0; $i -lt $parts.Count - 1; $i++) {
+            $name = $parts[$i]
+            if (-not $node.Dirs.Contains($name)) { $node.Dirs[$name] = (New-EnvDocFileTreeNode) }
+            $node = $node.Dirs[$name]
+        }
+
+        $leaf = $parts[$parts.Count - 1]
+        $type = [string](Get-JsonValue -Object $e -Path 'type' -Default 'file')
+        if ($type -eq 'dir') {
+            if (-not $node.Dirs.Contains($leaf)) { $node.Dirs[$leaf] = (New-EnvDocFileTreeNode) }
+        }
+        else {
+            [void]$node.Files.Add(@{ Name = $leaf; Entry = $e })
+        }
+    }
+    return $root
+}
+
+function Get-EnvDocFileTreeCount {
+    param($Node)
+
+    $files = @($Node.Files).Count
+    $dirs = 0
+    foreach ($k in @($Node.Dirs.Keys)) {
+        $dirs++
+        $c = Get-EnvDocFileTreeCount -Node $Node.Dirs[$k]
+        $files += $c.Files
+        $dirs   += $c.Dirs
+    }
+    return @{ Files = $files; Dirs = $dirs }
+}
+
+function New-EnvDocFileTreeHtml {
+    param($Node)
+
+    $sb = New-Object System.Text.StringBuilder
+
+    # サブディレクトリ(既定は閉じる。開いたままだとスクロール量が元に戻る)
+    foreach ($name in @($Node.Dirs.Keys)) {
+        $child = $Node.Dirs[$name]
+        $c = Get-EnvDocFileTreeCount -Node $child
+        $summary = '{0}/  ({1} ファイル / {2} ディレクトリ)' -f $name, $c.Files, $c.Dirs
+        $inner = New-EnvDocFileTreeHtml -Node $child
+        [void]$sb.Append((New-HtmlDetails -Summary $summary -Body $inner))
+    }
+
+    # このディレクトリ直下のファイル。階層で位置が分かるので名前だけ出す
+    $files = @($Node.Files)
+    if ($files.Count -gt 0) {
+        $rows = New-Object System.Collections.ArrayList
+        foreach ($f in ($files | Sort-Object { $_.Name })) {
+            $e = $f.Entry
+            [void]$rows.Add(@{
+                Cells = @(
+                    (ConvertTo-HtmlText -Text ([string]$f.Name)),
+                    (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $e -Path 'type'  -Default '-'))),
+                    (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $e -Path 'size'  -Default ''))),
+                    (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $e -Path 'mtime' -Default ''))),
+                    (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $e -Path 'owner' -Default '')))
+                )
+                Mismatch = $false
+            })
+        }
+        [void]$sb.Append((New-HtmlTable -Headers @('名前', '種別', 'サイズ', '更新日時', 'オーナー') -Rows $rows.ToArray()))
+    }
+
+    if ($sb.Length -eq 0) { return '<p class="empty">データなし</p>' }
+    return $sb.ToString()
+}
+
 function Write-EnvDocFilelistPage {
     param([hashtable]$Model, [hashtable]$Server, [string]$OutputRoot)
 
@@ -175,34 +411,32 @@ function Write-EnvDocFilelistPage {
     $targets = @(Get-JsonValue -Object $Server.Snapshot -Path 'filelist' -Default @())
 
     $body = New-Object System.Text.StringBuilder
-    $total = 0
+    $toc  = New-Object System.Collections.ArrayList
+    $idx = 0
     foreach ($t in $targets) {
+        $idx++
         $key = [string](Get-JsonValue -Object $t -Path 'key' -Default '-')
+        $path = [string](Get-JsonValue -Object $t -Path 'path' -Default '')
         $entries = @(Get-JsonValue -Object $t -Path 'entries' -Default @())
-        $total += $entries.Count
 
-        $rows = New-Object System.Collections.ArrayList
-        foreach ($e in $entries) {
-            [void]$rows.Add(@{
-                Cells = @(
-                    (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $e -Path 'rel_path' -Default '-'))),
-                    (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $e -Path 'type'     -Default '-'))),
-                    (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $e -Path 'size'     -Default ''))),
-                    (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $e -Path 'mtime'    -Default ''))),
-                    (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $e -Path 'owner'    -Default '')))
-                )
-                Mismatch = $false
-            })
+        $tree = New-EnvDocFileTree -Entries $entries
+        $sub = New-Object System.Text.StringBuilder
+        if ($path) {
+            [void]$sub.Append('<p class="meta">').Append((ConvertTo-HtmlText -Text $path)).Append('</p>')
         }
-        $sub = New-HtmlTable -Headers @('相対パス', '種別', 'サイズ', '更新日時', 'オーナー') -Rows $rows.ToArray()
         if (Get-JsonValue -Object $t -Path 'truncated' -Default $false) {
-            $sub = '<div class="warn">上限に達したため一部のみ収集されています</div>' + $sub
+            [void]$sub.Append('<div class="warn">上限に達したため一部のみ収集されています</div>')
         }
-        [void]$body.Append((New-HtmlSection -Title ('{0} ({1} 件)' -f $key, $entries.Count) -Body $sub))
+        [void]$sub.Append((New-EnvDocFileTreeHtml -Node $tree))
+
+        $id = 'target-{0}' -f $idx
+        [void]$toc.Add(@{ Id = $id; Label = $key })
+        [void]$body.Append((New-HtmlSection -Title ('{0} ({1} 件)' -f $key, $entries.Count) -Id $id -Body $sub.ToString()))
     }
 
     $title = 'ファイル一覧: {0}' -f $Server.Hostname
-    $html = New-HtmlPage -Title $title -SystemName $Model.System.Name -RelRoot '..' -Body $body.ToString()
+    $page = (New-HtmlToc -Items $toc.ToArray()) + $body.ToString()
+    $html = New-HtmlPage -Title $title -SystemName $Model.System.Name -RelRoot '..' -Body $page
     Write-HtmlFile -Path (Join-Path $OutputRoot ('servers\{0}-filelist.html' -f $Server.Hostname)) -Content $html
 }
 

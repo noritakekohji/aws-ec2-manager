@@ -54,6 +54,7 @@ function Invoke-EnvDoc {
     Write-EnvDocIndexPage -Model $model -OutputRoot $outputRoot
     foreach ($s in $model.Servers) {
         Write-EnvDocServerPage     -Model $model -Server $s -OutputRoot $outputRoot
+        Write-EnvDocServicesPage   -Model $model -Server $s -OutputRoot $outputRoot
         Write-EnvDocPackagesPage   -Model $model -Server $s -OutputRoot $outputRoot
         Write-EnvDocFilelistPage   -Model $model -Server $s -OutputRoot $outputRoot
         Write-EnvDocConfigsPage    -Model $model -Server $s -OutputRoot $outputRoot

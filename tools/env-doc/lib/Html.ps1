@@ -5,8 +5,8 @@ $script:EnvDocNavItems = @(
     @{ Href = 'index.html';       Label = '概要' }
     @{ Href = 'aws.html';         Label = 'AWS' }
     @{ Href = 'network.html';     Label = 'ネットワーク' }
-    @{ Href = 'middleware.html';  Label = 'ミドルウェア' }
     @{ Href = 'os-baseline.html'; Label = 'OS' }
+    @{ Href = 'middleware.html';  Label = 'ミドルウェア' }
 )
 
 function ConvertTo-HtmlText {
@@ -57,9 +57,44 @@ function New-HtmlTable {
 }
 
 function New-HtmlSection {
-    param([string]$Title, [string]$Body)
+    param([string]$Title, [string]$Body, [string]$Id = '')
 
-    return ('<section><h2>{0}</h2>{1}</section>' -f (ConvertTo-HtmlText -Text $Title), $Body)
+    if ([string]::IsNullOrWhiteSpace($Id)) {
+        return ('<section><h2>{0}</h2>{1}</section>' -f (ConvertTo-HtmlText -Text $Title), $Body)
+    }
+    # Id は目次からのアンカー先。値は呼び出し側が組み立てるためエスケープして埋める
+    return ('<section id="{0}"><h2>{1}</h2>{2}</section>' -f
+        (ConvertTo-HtmlText -Text $Id), (ConvertTo-HtmlText -Text $Title), $Body)
+}
+
+# 件数の多い一覧を折りたたむ。JS を使わず <details> だけで実現する。
+# Body は呼び出し側でエスケープ済みの HTML 断片。
+function New-HtmlDetails {
+    param([string]$Summary, [string]$Body, [switch]$Open)
+
+    $openAttr = ''
+    if ($Open) { $openAttr = ' open' }
+    return ('<details{0}><summary>{1}</summary>{2}</details>' -f
+        $openAttr, (ConvertTo-HtmlText -Text $Summary), $Body)
+}
+
+# ページ内アンカーへの目次。Items の各要素は @{ Id = '...'; Label = '...' }
+function New-HtmlToc {
+    param($Items)
+
+    # $null をそのまま @() でラップすると 1 要素になり、空の項目が出てしまう
+    if ($null -eq $Items) { return '' }
+    $itemArray = @($Items | Where-Object { $null -ne $_ })
+    if ($itemArray.Count -eq 0) { return '' }
+
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.Append('<nav class="toc"><ul>')
+    foreach ($i in $itemArray) {
+        [void]$sb.Append('<li><a href="#').Append((ConvertTo-HtmlText -Text ([string]$i.Id))).Append('">')
+        [void]$sb.Append((ConvertTo-HtmlText -Text ([string]$i.Label))).Append('</a></li>')
+    }
+    [void]$sb.Append('</ul></nav>')
+    return $sb.ToString()
 }
 
 function New-HtmlPage {

@@ -95,7 +95,7 @@ Windows 版ランチャーの「スナップショット一括実行 → レポ�
 
 ## バージョン
 
-現在: **2.10.0** — 変更履歴は [CHANGELOG.md](CHANGELOG.md) を参照。
+現在: **2.11.0** — 変更履歴は [CHANGELOG.md](CHANGELOG.md) を参照。
 
 ## ライセンス
 
