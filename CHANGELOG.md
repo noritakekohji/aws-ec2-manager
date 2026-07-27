@@ -7,12 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.10.0] - 2026-07-27
+
 ### Fixed
 - `server-snapshot` の `filelist.conf` で、Windows ドライブ直下を `path = D:` や
   `path = "D:\"` のように指定した場合でも `D:\` として扱うようにし、引用符が
   `Test-Path -LiteralPath` に渡って対象なしになる問題を防止。
 
 ### Added
+- **`tools/env-doc`**: システム環境定義書ジェネレータを追加。`server-snapshot` と `aws-instance-audit` の JSON、および手書きの `system.yaml` から、システム単位のマルチページ静的 HTML を生成する。トップにシステム概要とサーバ一覧、AWS / ネットワーク / ミドルウェア / OS の横断ページ、サーバごとの詳細ページと全件ページ(packages / filelist / 設定ファイル)を出力。比較グループ内で値が揃っていない行をハイライトし、Windows / Linux 混在システムでは OS 別サブ表に分けて比較する。PowerShell 5.1 のみで動作し外部モジュールに依存しない(YAML はサブセットを自前パース)。出力は相対リンクのみで構成され、ディレクトリごと GitLab Pages に配置できる。環境変数と設定ファイル全文は既定で非掲載(`show_environment` / `show_configs` で opt-in)
 - **`server-snapshot remote_access` カテゴリを追加**。Windows は RDP/RDS
   (RDP 有効/無効、NLA、ポート、`RDP-Tcp` レジストリ、Terminal Services 系サービス)、
   Remote Assistance、OpenSSH、関連 Firewall ルールを収集。Linux は SSH / xrdp /

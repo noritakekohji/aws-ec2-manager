@@ -87,6 +87,7 @@ Windows 版ランチャーの「スナップショット一括実行 → レポ�
 ├── AwsConfig.psm1           # プロファイル管理
 ├── launch.bat
 ├── tools/                   # 各サーバへ配備する運用スクリプト群（PS1/sh/bat）
+│   └── env-doc/             # 集約側で動く環境定義書ジェネレータ（HTML 出力）
 ├── ssm-tasks/{linux,windows}/  # GUI から呼ぶ SSM YAML 定義
 ├── tests/                   # Pester
 └── docs/superpowers/        # spec / plan
@@ -94,7 +95,7 @@ Windows 版ランチャーの「スナップショット一括実行 → レポ�
 
 ## バージョン
 
-現在: **2.0.0** — 変更履歴は [CHANGELOG.md](CHANGELOG.md) を参照。
+現在: **2.10.0** — 変更履歴は [CHANGELOG.md](CHANGELOG.md) を参照。
 
 ## ライセンス
 

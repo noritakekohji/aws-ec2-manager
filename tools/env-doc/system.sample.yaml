@@ -1,0 +1,31 @@
+# システム環境定義書の定義ファイル。
+# snapshot から取れない「意味づけ」をここに書く。
+#
+# 対応する YAML: 2 スペースインデントのマップ / '-' シーケンス / スカラ /
+#                '#' コメント / クォート / [a, b] インラインシーケンス
+# 非対応:        タブ / アンカー(&) / エイリアス(*) / 複数行スカラ(| >) /
+#                フローマップ({}) / ドキュメント区切り(---)
+
+system:
+  id: order-mgmt                        # 必須。出力ディレクトリ名。半角英数・ハイフン・アンダースコアのみ
+  name: 受注管理システム                  # 必須
+  owner: インフラ運用課
+  contact: infra-ops@example.com
+  description: 受注入力から出荷指示までを担う基幹システム
+  # diagram: assets/system-diagram.png  # 手書きの構成図があれば相対パスで指定
+
+servers:
+  - hostname: WEB01                     # snapshot の meta.hostname と突合(大文字小文字は区別しない)
+    role: Web/AP サーバ
+    note: 冗長構成のプライマリ
+    show_configs: false                 # true にすると設定ファイル全文を掲載する
+    show_environment: false             # true にすると環境変数を掲載する
+  - hostname: WEB02
+    role: Web/AP サーバ
+  - hostname: db01
+    role: DB サーバ
+
+# compare_groups を書くと、os_type × role による自動グループ化は行わない
+# compare_groups:
+#   - name: Web 冗長ペア
+#     servers: [WEB01, WEB02]

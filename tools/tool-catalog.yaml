@@ -391,3 +391,37 @@ tools:
         argument: -FailOnly
         linuxArgument: -f
         default: false
+
+  - id: env-doc
+    name: Environment Document
+    description: snapshot と system.yaml から環境定義書(HTML)を生成
+    menu: false
+    windowsPath: env-doc/EnvDoc.ps1
+    linuxPath: ""
+    defaultArgs: -OutputDir "{ArtifactsDir}"
+    configFiles:
+      - label: system.yaml
+        path: env-doc/system.sample.yaml
+        paramKey: systemFile
+    parameters:
+      - key: inputDir
+        label: 入力ディレクトリ
+        type: directory
+        argument: -InputDir
+        default: ""
+        required: true
+      - key: systemFile
+        label: システム定義 YAML
+        type: text
+        argument: -SystemFile
+        default: "{ToolDir}/system.sample.yaml"
+      - key: outputDir
+        label: 出力先
+        type: hidden
+        argument: -OutputDir
+        value: "{ArtifactsDir}"
+      - key: force
+        label: 上書き
+        type: checkbox
+        argument: -Force
+        default: false
