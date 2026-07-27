@@ -32,7 +32,6 @@ function Write-EnvDocServerPage {
     [void]$basic.Add(@{ Cells = @('ホスト名', (ConvertTo-HtmlText -Text $Server.Hostname)); Mismatch = $false })
     [void]$basic.Add(@{ Cells = @('役割', (ConvertTo-HtmlText -Text $Server.Role)); Mismatch = $false })
     [void]$basic.Add(@{ Cells = @('備考', (ConvertTo-HtmlText -Text $Server.Note)); Mismatch = $false })
-    [void]$basic.Add(@{ Cells = @('収集日時', (ConvertTo-HtmlText -Text $Server.CollectedAt)); Mismatch = $false })
     [void]$toc.Add(@{ Id = 'basic'; Label = '基本情報' })
     [void]$body.Append((New-HtmlSection -Title '基本情報' -Id 'basic' -Body (New-HtmlTable -Headers @('項目', '値') -Rows $basic.ToArray())))
 
@@ -63,7 +62,6 @@ function Write-EnvDocServerPage {
             @{ Label = 'CPU コア数';    Path = 'os.cpu_cores' }
             @{ Label = 'メモリ (GB)';   Path = 'os.total_memory_gb' }
             @{ Label = '仮想化';        Path = 'os.hardware.virtualization' }
-            @{ Label = '最終起動';      Path = 'os.last_boot' }
         )
         $rows = New-EnvDocKeyValueRows -Snapshot $snap -Pairs $pairs
         [void]$toc.Add(@{ Id = 'os'; Label = 'OS / ハードウェア' })
@@ -83,12 +81,7 @@ function Write-EnvDocServerPage {
 
         $svcRows = New-Object System.Collections.ArrayList
         [void]$svcRows.Add(@{ Cells = @('総数', (ConvertTo-HtmlText -Text ('{0} 件' -f $sum.Total))); Mismatch = $false })
-        [void]$svcRows.Add(@{ Cells = @('稼働中', (ConvertTo-HtmlText -Text ('{0} 件' -f $sum.Running))); Mismatch = $false })
-        # 起動するはずなのに動いていないものは保守で最初に見る値なので、要約に出す
-        [void]$svcRows.Add(@{
-            Cells = @('自動起動だが停止', (ConvertTo-HtmlText -Text ('{0} 件' -f @($sum.AutoStopped).Count)))
-            Mismatch = (@($sum.AutoStopped).Count -gt 0)
-        })
+        [void]$svcRows.Add(@{ Cells = @('自動起動', (ConvertTo-HtmlText -Text ('{0} 件' -f $sum.AutoStart))); Mismatch = $false })
         # 全件ページは 0 件だと生成されない。無条件にリンクするとリンク切れになるため、
         # packages と同じく件数 0 のときは「なし」を出す
         $link = if ($sum.Total -gt 0) {
@@ -166,37 +159,27 @@ function Write-EnvDocServerPage {
     Write-HtmlFile -Path (Join-Path $OutputRoot ('servers\{0}.html' -f $Server.Hostname)) -Content $html
 }
 
-# 「起動するはずなのに動いていない」を OS 差を吸収して判定する。
-# Windows: start_type=automatic / status=running,  Linux: start_type=enabled / status=running,active
+# 起動設定の語彙は OS で違う(Windows: automatic / Linux: enabled)。
+# 定義書では「自動起動するか」だけを扱い、今動いているかどうかは扱わない。
 function Test-EnvDocServiceAutoStart {
     param([string]$StartType)
     return (@('automatic', 'auto', 'enabled') -contains $StartType.ToLowerInvariant())
-}
-
-function Test-EnvDocServiceUp {
-    param([string]$Status)
-    return (@('running', 'active') -contains $Status.ToLowerInvariant())
 }
 
 function Get-EnvDocServiceSummary {
     param($Services)
 
     $svcs = @($Services)
-    $running = 0
-    $autoStopped = New-Object System.Collections.ArrayList
+    $auto = 0
     foreach ($s in $svcs) {
-        $status = [string](Get-JsonValue -Object $s -Path 'status' -Default '')
-        $start  = [string](Get-JsonValue -Object $s -Path 'start_type' -Default '')
-        if (Test-EnvDocServiceUp -Status $status) { $running++ }
-        elseif (Test-EnvDocServiceAutoStart -StartType $start) { [void]$autoStopped.Add($s) }
+        $start = [string](Get-JsonValue -Object $s -Path 'start_type' -Default '')
+        if (Test-EnvDocServiceAutoStart -StartType $start) { $auto++ }
     }
-    return @{
-        Total       = $svcs.Count
-        Running     = $running
-        AutoStopped = @($autoStopped.ToArray())
-    }
+    return @{ Total = $svcs.Count; AutoStart = $auto }
 }
 
+# 稼働状態(status)は実行時の情報なので列に含めない。
+# 定義として意味を持つのは「起動設定」「実行ユーザー」「実行ファイル」。
 function New-EnvDocServiceRows {
     param($Services)
 
@@ -206,9 +189,9 @@ function New-EnvDocServiceRows {
             Cells = @(
                 (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $s -Path 'name'         -Default '-'))),
                 (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $s -Path 'display_name' -Default ''))),
-                (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $s -Path 'status'       -Default '-'))),
                 (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $s -Path 'start_type'   -Default '-'))),
-                (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $s -Path 'start_name'   -Default '')))
+                (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $s -Path 'start_name'   -Default ''))),
+                (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $s -Path 'path_name'    -Default '')))
             )
             Mismatch = $false
         })
@@ -228,64 +211,39 @@ function Write-EnvDocServicesPage {
     $body = New-Object System.Text.StringBuilder
     $toc  = New-Object System.Collections.ArrayList
 
-    # 状態 × 起動設定のクロス集計。「automatic なのに stopped が何件あるか」を
-    # 折りたたみを開かずに把握できるようにする
-    $statuses = @($svcs | ForEach-Object { [string](Get-JsonValue -Object $_ -Path 'status' -Default '-') } | Select-Object -Unique | Sort-Object)
-    $starts   = @($svcs | ForEach-Object { [string](Get-JsonValue -Object $_ -Path 'start_type' -Default '-') } | Select-Object -Unique | Sort-Object)
+    $starts = @($svcs |
+        ForEach-Object { [string](Get-JsonValue -Object $_ -Path 'start_type' -Default '-') } |
+        Select-Object -Unique | Sort-Object)
 
-    $matrix = @{}
-    foreach ($s in $svcs) {
-        $k = '{0}||{1}' -f [string](Get-JsonValue -Object $s -Path 'status' -Default '-'),
-                           [string](Get-JsonValue -Object $s -Path 'start_type' -Default '-')
-        if ($matrix.ContainsKey($k)) { $matrix[$k]++ } else { $matrix[$k] = 1 }
+    # 起動設定ごとの件数。自動起動がいくつあるかを開かずに把握できるようにする
+    $sumRows = New-Object System.Collections.ArrayList
+    foreach ($sp in $starts) {
+        $n = @($svcs | Where-Object { [string](Get-JsonValue -Object $_ -Path 'start_type' -Default '-') -eq $sp }).Count
+        [void]$sumRows.Add(@{
+            Cells = @((ConvertTo-HtmlText -Text $sp), (ConvertTo-HtmlText -Text ([string]$n)))
+            Mismatch = $false
+        })
     }
-
-    $crossRows = New-Object System.Collections.ArrayList
-    foreach ($st in $statuses) {
-        $cells = New-Object System.Collections.ArrayList
-        [void]$cells.Add((ConvertTo-HtmlText -Text $st))
-        $rowTotal = 0
-        foreach ($sp in $starts) {
-            $n = 0
-            $k = '{0}||{1}' -f $st, $sp
-            if ($matrix.ContainsKey($k)) { $n = $matrix[$k] }
-            $rowTotal += $n
-            [void]$cells.Add((ConvertTo-HtmlText -Text ([string]$n)))
-        }
-        [void]$cells.Add((ConvertTo-HtmlText -Text ([string]$rowTotal)))
-        # 起動するはずなのに動いていない行を強調する
-        $isAnomaly = (-not (Test-EnvDocServiceUp -Status $st)) -and
-                     (@($starts | Where-Object { (Test-EnvDocServiceAutoStart -StartType $_) -and $matrix.ContainsKey(('{0}||{1}' -f $st, $_)) }).Count -gt 0)
-        [void]$crossRows.Add(@{ Cells = $cells.ToArray(); Mismatch = $isAnomaly })
-    }
-    $crossHeaders = @('状態 \ 起動設定') + $starts + @('計')
     [void]$toc.Add(@{ Id = 'summary'; Label = 'サマリ' })
     [void]$body.Append((New-HtmlSection -Title 'サマリ' -Id 'summary' `
-        -Body (New-HtmlTable -Headers $crossHeaders -Rows $crossRows.ToArray())))
+        -Body (New-HtmlTable -Headers @('起動設定', '件数') -Rows $sumRows.ToArray())))
 
-    # 自動起動だが停止しているサービス(保守で最初に見る値なので既定で開く)
-    [void]$toc.Add(@{ Id = 'auto-stopped'; Label = '自動起動だが停止' })
-    $asRows = New-EnvDocServiceRows -Services $sum.AutoStopped
-    $asBody = New-HtmlDetails -Summary ('自動起動だが停止 ({0} 件)' -f @($sum.AutoStopped).Count) `
-        -Body (New-HtmlTable -Headers @('サービス名', '表示名', '状態', '起動設定', '実行ユーザー') -Rows $asRows) -Open
-    [void]$body.Append((New-HtmlSection -Title '自動起動だが停止' -Id 'auto-stopped' -Body $asBody))
-
-    # 状態ごとの一覧。件数が多いので既定は閉じておく
-    [void]$toc.Add(@{ Id = 'by-status'; Label = '状態別の一覧' })
-    $byStatus = New-Object System.Text.StringBuilder
-    foreach ($st in $statuses) {
-        $group = @($svcs | Where-Object { [string](Get-JsonValue -Object $_ -Path 'status' -Default '-') -eq $st } |
+    # 起動設定ごとの一覧。件数が多いので既定は閉じておく
+    [void]$toc.Add(@{ Id = 'by-start-type'; Label = '起動設定別の一覧' })
+    $byStart = New-Object System.Text.StringBuilder
+    foreach ($sp in $starts) {
+        $group = @($svcs |
+            Where-Object { [string](Get-JsonValue -Object $_ -Path 'start_type' -Default '-') -eq $sp } |
             Sort-Object { [string](Get-JsonValue -Object $_ -Path 'name' -Default '') })
         $rows = New-EnvDocServiceRows -Services $group
-        $t = New-HtmlTable -Headers @('サービス名', '表示名', '状態', '起動設定', '実行ユーザー') -Rows $rows
-        [void]$byStatus.Append((New-HtmlDetails -Summary ('{0} ({1} 件)' -f $st, $group.Count) -Body $t))
+        $t = New-HtmlTable -Headers @('サービス名', '表示名', '起動設定', '実行ユーザー', '実行ファイル') -Rows $rows
+        [void]$byStart.Append((New-HtmlDetails -Summary ('{0} ({1} 件)' -f $sp, $group.Count) -Body $t))
     }
-    [void]$body.Append((New-HtmlSection -Title '状態別の一覧' -Id 'by-status' -Body $byStatus.ToString()))
+    [void]$body.Append((New-HtmlSection -Title '起動設定別の一覧' -Id 'by-start-type' -Body $byStart.ToString()))
 
     $title = 'サービス一覧: {0}' -f $Server.Hostname
-    $head = '<p class="meta">全 {0} 件 (稼働中 {1} / 自動起動だが停止 {2})</p>' -f `
-        $sum.Total, $sum.Running, @($sum.AutoStopped).Count
-    $page = (New-HtmlToc -Items $toc.ToArray()) + $head + $body.ToString()
+    $head = '<p class="meta">全 {0} 件 (自動起動 {1})</p>' -f $sum.Total, $sum.AutoStart
+    $page = (New-HtmlToc -Items $toc.ToArray()) + $head + $body.ToString() + (New-HtmlBackToTop)
     $html = New-HtmlPage -Title $title -SystemName $Model.System.Name -RelRoot '..' -Body $page
     Write-HtmlFile -Path (Join-Path $OutputRoot ('servers\{0}-services.html' -f $Server.Hostname)) -Content $html
 }
@@ -309,7 +267,7 @@ function Write-EnvDocPackagesPage {
     }
     $t = New-HtmlTable -Headers @('名称', 'バージョン', '提供元') -Rows $rows.ToArray()
     $title = 'パッケージ一覧: {0}' -f $Server.Hostname
-    $html = New-HtmlPage -Title $title -SystemName $Model.System.Name -RelRoot '..' -Body (New-HtmlSection -Title ('全 {0} 件' -f $pkgs.Count) -Body $t)
+    $html = New-HtmlPage -Title $title -SystemName $Model.System.Name -RelRoot '..' -Body ((New-HtmlSection -Title ('全 {0} 件' -f $pkgs.Count) -Body $t) + (New-HtmlBackToTop))
     Write-HtmlFile -Path (Join-Path $OutputRoot ('servers\{0}-packages.html' -f $Server.Hostname)) -Content $html
 }
 
@@ -391,13 +349,13 @@ function New-EnvDocFileTreeHtml {
                     (ConvertTo-HtmlText -Text ([string]$f.Name)),
                     (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $e -Path 'type'  -Default '-'))),
                     (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $e -Path 'size'  -Default ''))),
-                    (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $e -Path 'mtime' -Default ''))),
                     (ConvertTo-HtmlText -Text ([string](Get-JsonValue -Object $e -Path 'owner' -Default '')))
                 )
                 Mismatch = $false
             })
         }
-        [void]$sb.Append((New-HtmlTable -Headers @('名前', '種別', 'サイズ', '更新日時', 'オーナー') -Rows $rows.ToArray()))
+        # mtime は実行時に変わる情報なので定義書には出さない
+        [void]$sb.Append((New-HtmlTable -Headers @('名前', '種別', 'サイズ', 'オーナー') -Rows $rows.ToArray()))
     }
 
     if ($sb.Length -eq 0) { return '<p class="empty">データなし</p>' }
@@ -435,7 +393,7 @@ function Write-EnvDocFilelistPage {
     }
 
     $title = 'ファイル一覧: {0}' -f $Server.Hostname
-    $page = (New-HtmlToc -Items $toc.ToArray()) + $body.ToString()
+    $page = (New-HtmlToc -Items $toc.ToArray()) + $body.ToString() + (New-HtmlBackToTop)
     $html = New-HtmlPage -Title $title -SystemName $Model.System.Name -RelRoot '..' -Body $page
     Write-HtmlFile -Path (Join-Path $OutputRoot ('servers\{0}-filelist.html' -f $Server.Hostname)) -Content $html
 }
@@ -537,6 +495,6 @@ function Write-EnvDocConfigsPage {
     }
 
     $title = '設定ファイル: {0}' -f $Server.Hostname
-    $html = New-HtmlPage -Title $title -SystemName $Model.System.Name -RelRoot '..' -Body $body.ToString()
+    $html = New-HtmlPage -Title $title -SystemName $Model.System.Name -RelRoot '..' -Body ($body.ToString() + (New-HtmlBackToTop))
     Write-HtmlFile -Path (Join-Path $OutputRoot ('servers\{0}-configs.html' -f $Server.Hostname)) -Content $html
 }

@@ -76,14 +76,16 @@ function Get-EnvDocRaScalar {
     return [string]$v
 }
 
-function Get-EnvDocRaServiceState {
+# 定義書なので稼働状態(status)ではなく起動設定(start_type)を出す。
+# 「今動いているか」ではなく「起動する設定になっているか」が定義。
+function Get-EnvDocRaServiceConfig {
     param($Server, [string]$Path, [string]$NameFilter = '')
 
     if (-not (Test-EnvDocCategory -Server $Server -Category 'remote_access')) { return '__MISSING__' }
     $svcs = @(Get-JsonValue -Object $Server.Snapshot -Path $Path -Default @())
     if ($NameFilter) { $svcs = @($svcs | Where-Object { [string]$_.name -eq $NameFilter }) }
     if ($svcs.Count -eq 0) { return 'なし' }
-    return ((@($svcs | ForEach-Object { '{0}: {1}' -f $_.name, $_.status })) -join "`n")
+    return ((@($svcs | ForEach-Object { '{0}: {1}' -f $_.name, $_.start_type })) -join "`n")
 }
 
 function Get-EnvDocRaFirewallSummary {
@@ -99,7 +101,7 @@ function Get-EnvDocRemoteAccessRows {
     param([string]$OsType)
 
     $scalar  = { param($s, $p) Get-EnvDocRaScalar -Server $s -Path $p }
-    $svcPath = { param($s, $p) Get-EnvDocRaServiceState -Server $s -Path $p }
+    $svcPath = { param($s, $p) Get-EnvDocRaServiceConfig -Server $s -Path $p }
 
     if ($OsType -eq 'windows') {
         return @(
@@ -108,7 +110,7 @@ function Get-EnvDocRemoteAccessRows {
             @{ Label = 'NLA';                 Arg = 'remote_access.rdp.nla_enabled';           Getter = $scalar }
             @{ Label = '最小暗号化レベル';      Arg = 'remote_access.rdp.min_encryption_level'; Getter = $scalar }
             @{ Label = 'セキュリティレイヤ';    Arg = 'remote_access.rdp.security_layer';       Getter = $scalar }
-            @{ Label = 'SSH サービス';         Arg = 'sshd'; Getter = { param($s, $n) Get-EnvDocRaServiceState -Server $s -Path 'remote_access.services' -NameFilter $n } }
+            @{ Label = 'SSH サービス';         Arg = 'sshd'; Getter = { param($s, $n) Get-EnvDocRaServiceConfig -Server $s -Path 'remote_access.services' -NameFilter $n } }
             @{ Label = '関連 FW ルール';       Getter = { param($s) Get-EnvDocRaFirewallSummary -Server $s } }
         )
     }

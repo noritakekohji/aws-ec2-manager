@@ -176,7 +176,8 @@ Describe 'EnvDoc 統合' {
             $html | Should -BeLike '*リモートアクセス - Windows (2 台)*'
             $html | Should -BeLike '*リモートアクセス - Linux (1 台)*'
             # Linux は unit 名から .service を除去し、status は SubState を入れる
-            $html | Should -BeLike '*sshd: running*'
+            # 定義書なので稼働状態ではなく起動設定を出す
+            $html | Should -BeLike '*sshd: enabled*'
         }
         It 'NLA の不一致をハイライトする' {
             # WEB01 は nla_enabled=true、WEB02 は false
@@ -394,24 +395,16 @@ Describe 'EnvDoc 統合' {
             $html | Should -BeLike '*WEB01-services.html*'
             $html | Should -Not -BeLike '*<td>W3SVC</td>*'
         }
-        It '状態と起動設定のクロス集計を出す' {
+        It '起動設定ごとの件数サマリを出す' {
             $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\WEB01-services.html'), [System.Text.Encoding]::UTF8)
-            $html | Should -BeLike '*状態 \ 起動設定*'
-        }
-        It '状態ごとに折りたたむ' {
-            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\WEB01-services.html'), [System.Text.Encoding]::UTF8)
-            $html | Should -BeLike '*<details*<summary>running*'
+            $html | Should -BeLike '*<th>起動設定</th>*'
+            $html | Should -BeLike '*<th>件数</th>*'
         }
         It '該当 0 件のとき空行ではなく「データなし」を出す' {
             # ArrayList.ToArray() を return するとき空配列は $null にアンロールされ、
             # New-HtmlTable 側で @($null) が 1 要素になって空行が出る(PS の配列アンロール)
             $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\WEB01-services.html'), [System.Text.Encoding]::UTF8)
             $html | Should -Not -BeLike '*<tbody><tr><td></td></tr></tbody>*'
-        }
-        It '起動するはずなのに停止しているサービスを抽出する' {
-            # db01 の sshd/postgresql は enabled かつ running なので 0 件になるのが正しい
-            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\db01-services.html'), [System.Text.Encoding]::UTF8)
-            $html | Should -BeLike '*自動起動だが停止*'
         }
         It 'services 未収集なら全件ページを作らない' {
             # MISSING01 は snapshot 自体が無い
@@ -495,6 +488,81 @@ Describe 'EnvDoc 統合' {
             $c = Get-EnvDocFileTreeCount -Node $tree
             $c.Files | Should -Be 2
             $c.Dirs  | Should -Be 2
+        }
+    }
+
+    Context '定義のみを載せ実行時の状態を載せない' {
+        # 環境定義書は「どう設定されているか」を書くもので「今どうなっているか」は対象外。
+        # 状態と時刻を排除することで、再生成しても出力が変わらず、
+        # 2 世代を diff すれば本当の構成変更だけが浮かぶ
+        It 'サーバ詳細に収集日時を出さない' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\WEB01.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -Not -BeLike '*収集日時*'
+        }
+        It 'サーバ詳細に最終起動を出さない' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\WEB01.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -Not -BeLike '*最終起動*'
+        }
+        It 'index のサーバ一覧に収集日時を出さない' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'index.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -Not -BeLike '*収集日時*'
+        }
+        It 'os-baseline に最終起動を出さない' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'os-baseline.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -Not -BeLike '*最終起動*'
+        }
+        It 'サービス一覧に稼働状態の列を出さない' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\WEB01-services.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -Not -BeLike '*<th>状態</th>*'
+            $html | Should -Not -BeLike '*<td>running</td>*'
+            $html | Should -Not -BeLike '*<td>stopped</td>*'
+        }
+        It 'サービスは起動設定でグループ化する' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\WEB01-services.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*<summary>automatic*'
+        }
+        It 'ミドルウェア横断に状態行を出さない' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'middleware.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -Not -BeLike '*<td>状態</td>*'
+        }
+        It 'ファイル一覧に更新日時を出さない' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\db01-filelist.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -Not -BeLike '*<th>更新日時</th>*'
+        }
+        It '同じ入力からは毎回同じ HTML が出る(生成時刻を埋めない)' {
+            # 生成のたびに差分が出ると、diff で構成変更を追えなくなる
+            $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('envdoc-stable-' + [guid]::NewGuid().ToString())
+            try {
+                $r1 = Invoke-EnvDoc -InputDir (Join-Path $script:Fixtures 'input') -SystemFile $script:SysFile -OutputDir (Join-Path $tmp 'a')
+                $r2 = Invoke-EnvDoc -InputDir (Join-Path $script:Fixtures 'input') -SystemFile $script:SysFile -OutputDir (Join-Path $tmp 'b')
+                foreach ($name in @('index.html', 'os-baseline.html', 'servers\WEB01.html')) {
+                    $a = [System.IO.File]::ReadAllText((Join-Path $r1 $name), [System.Text.Encoding]::UTF8)
+                    $b = [System.IO.File]::ReadAllText((Join-Path $r2 $name), [System.Text.Encoding]::UTF8)
+                    $a | Should -Be $b -Because "$name が生成のたびに変わってはいけない"
+                }
+            }
+            finally {
+                Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    Context '上部に戻る導線' {
+        It 'ヘッダを固定表示にする' {
+            $css = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'assets\style.css'), [System.Text.Encoding]::UTF8)
+            $css | Should -BeLike '*position: sticky*'
+        }
+        It 'アンカー先が固定ヘッダに隠れないようにする' {
+            $css = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'assets\style.css'), [System.Text.Encoding]::UTF8)
+            $css | Should -BeLike '*scroll-margin-top*'
+        }
+        It '長いページの末尾に上部へ戻るリンクを置く' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\WEB01-services.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*href="#top"*'
+        }
+        It '目次のアンカー先として先頭に id=top を置く' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\WEB01-services.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*id="top"*'
         }
     }
 

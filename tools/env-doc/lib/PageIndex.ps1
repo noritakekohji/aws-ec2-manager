@@ -13,7 +13,8 @@ function Write-EnvDocIndexPage {
     if ($sys.Owner)       { [void]$overview.Add(@{ Cells = @('管理部署', (ConvertTo-HtmlText -Text $sys.Owner)); Mismatch = $false }) }
     if ($sys.Contact)     { [void]$overview.Add(@{ Cells = @('連絡先', (ConvertTo-HtmlText -Text $sys.Contact)); Mismatch = $false }) }
     if ($sys.Description) { [void]$overview.Add(@{ Cells = @('概要', (ConvertTo-HtmlText -Text $sys.Description)); Mismatch = $false }) }
-    [void]$overview.Add(@{ Cells = @('生成日時', (ConvertTo-HtmlText -Text $Model.Meta.GeneratedAt)); Mismatch = $false })
+    # 生成日時は載せない。載せると再生成のたびに差分が出て、
+    # 2 世代を diff したときに本当の構成変更が埋もれるため
     [void]$body.Append((New-HtmlSection -Title 'システム概要' -Body (New-HtmlTable -Headers @('項目', '値') -Rows $overview.ToArray())))
 
     # 構成図
@@ -48,13 +49,12 @@ function Write-EnvDocIndexPage {
                 (ConvertTo-HtmlText -Text $s.Role),
                 $osCell,
                 $ipCell,
-                (ConvertTo-HtmlText -Text $s.CollectedAt),
                 (ConvertTo-HtmlText -Text $s.Note)
             )
             Mismatch = $false
         })
     }
-    $table = New-HtmlTable -Headers @('ホスト名', '役割', 'OS', 'IP アドレス', '収集日時', '備考') -Rows $rows.ToArray()
+    $table = New-HtmlTable -Headers @('ホスト名', '役割', 'OS', 'IP アドレス', '備考') -Rows $rows.ToArray()
     [void]$body.Append((New-HtmlSection -Title 'サーバ一覧' -Body $table))
 
     # 警告

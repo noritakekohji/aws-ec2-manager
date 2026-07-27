@@ -78,6 +78,12 @@ function New-HtmlDetails {
         $openAttr, (ConvertTo-HtmlText -Text $Summary), $Body)
 }
 
+# 長いページの末尾に置く「上部へ戻る」リンク。
+# ヘッダは sticky で常に見えるが、数千行のページでは戻る導線が別途要る。
+function New-HtmlBackToTop {
+    return '<p class="back-to-top"><a href="#top">▲ ページ上部へ</a></p>'
+}
+
 # ページ内アンカーへの目次。Items の各要素は @{ Id = '...'; Label = '...' }
 function New-HtmlToc {
     param($Items)
@@ -124,7 +130,8 @@ function New-HtmlPage {
     [void]$sb.AppendLine('</head>')
     [void]$sb.AppendLine('<body>')
     [void]$sb.AppendLine(('<header><div class="sys">{0}</div><nav>{1}</nav></header>' -f (ConvertTo-HtmlText -Text $SystemName), $nav.ToString()))
-    [void]$sb.AppendLine(('<main><h1>{0}</h1>' -f (ConvertTo-HtmlText -Text $Title)))
+    # id="top" は「上部へ戻る」リンクの飛び先
+    [void]$sb.AppendLine(('<main id="top"><h1>{0}</h1>' -f (ConvertTo-HtmlText -Text $Title)))
     [void]$sb.AppendLine($Body)
     [void]$sb.AppendLine('</main>')
     [void]$sb.AppendLine('</body>')

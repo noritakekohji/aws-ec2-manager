@@ -89,7 +89,6 @@ function Write-EnvDocOsBaselinePage {
         @{ Label = 'メモリ (GB)';    Getter = { param($s) Get-EnvDocCategoryValue -Server $s -Category 'os' -Getter { param($x) [string](Get-JsonValue -Object $x.Snapshot -Path 'os.total_memory_gb' -Default '-') } } }
         @{ Label = 'タイムゾーン';    Getter = { param($s) Get-EnvDocCategoryValue -Server $s -Category 'os' -Getter { param($x) [string](Get-JsonValue -Object $x.Snapshot -Path 'os.timezone' -Default '-') } } }
         @{ Label = '仮想化';         Getter = { param($s) Get-EnvDocCategoryValue -Server $s -Category 'os' -Getter { param($x) [string](Get-JsonValue -Object $x.Snapshot -Path 'os.hardware.virtualization' -Default '-') } } }
-        @{ Label = '最終起動'; NoCompare = $true; Getter = { param($s) Get-EnvDocCategoryValue -Server $s -Category 'os' -Getter { param($x) [string](Get-JsonValue -Object $x.Snapshot -Path 'os.last_boot' -Default '-') } } }
     )
     [void]$body.Append((New-HtmlSection -Title '共通項目(横断)' -Body (New-EnvDocCrossTable -Model $Model -Servers $servers -Rows $commonRows)))
 

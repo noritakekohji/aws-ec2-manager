@@ -95,7 +95,6 @@ function Write-EnvDocMiddlewarePage {
         $mwGetter = { param($s, $a) Get-EnvDocMwSummary -Server $s -ProductKey $a.Product -Field $a.Field }
         $rows = @(
             @{ Label = 'バージョン';    Arg = @{ Product = $p.Key; Field = 'version' }; Getter = $mwGetter }
-            @{ Label = '状態';          Arg = @{ Product = $p.Key; Field = 'state'   }; Getter = $mwGetter }
             @{ Label = 'Listen ポート'; Arg = @{ Product = $p.Key; Field = 'ports'   }; Getter = $mwGetter }
         )
         $t = New-EnvDocCrossTable -Model $Model -Servers $servers -Rows $rows
