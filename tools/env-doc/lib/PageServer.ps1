@@ -194,8 +194,16 @@ function Write-EnvDocFilelistPage {
 # config_files は「絶対パスをキー、値が {content, masked, size_bytes, sha256, readable, reason}」
 # のマップ。配列ではない。sap のみキー名が profiles である点に注意。
 function Add-EnvDocConfigFileBlock {
-    param([System.Text.StringBuilder]$Body, $ConfigMap, [string]$Owner)
+    param(
+        [System.Text.StringBuilder]$Body,
+        $ConfigMap,
+        [string]$Owner,
+        [Parameter(Mandatory)][bool]$ShowConfigs
+    )
 
+    # 機密の担保を呼び出し元 1 箇所に依存させない。将来この関数が別ページから
+    # 呼ばれても、opt-in していないサーバの本文が出ないようここでも遮断する
+    if (-not $ShowConfigs) { return 0 }
     if ($null -eq $ConfigMap) { return 0 }
     $count = 0
     foreach ($cf in $ConfigMap.PSObject.Properties) {
@@ -249,7 +257,7 @@ function Write-EnvDocConfigsPage {
                     $instName = if ($null -ne $product) {
                         '{0} {1}' -f $prop.Name, (Get-EnvDocMwInstanceId -Instance $inst -Product $product)
                     } else { $prop.Name }
-                    $total += Add-EnvDocConfigFileBlock -Body $body -ConfigMap (Get-JsonValue -Object $inst -Path $cfgKey) -Owner $instName
+                    $total += Add-EnvDocConfigFileBlock -Body $body -ConfigMap (Get-JsonValue -Object $inst -Path $cfgKey) -Owner $instName -ShowConfigs $Server.ShowConfigs
                 }
             }
         }
@@ -259,7 +267,7 @@ function Write-EnvDocConfigsPage {
     if (Test-EnvDocCategory -Server $Server -Category 'services') {
         foreach ($svc in @(Get-JsonValue -Object $snap -Path 'services' -Default @())) {
             $owner = 'service {0}' -f [string](Get-JsonValue -Object $svc -Path 'name' -Default '-')
-            $total += Add-EnvDocConfigFileBlock -Body $body -ConfigMap (Get-JsonValue -Object $svc -Path 'config_files') -Owner $owner
+            $total += Add-EnvDocConfigFileBlock -Body $body -ConfigMap (Get-JsonValue -Object $svc -Path 'config_files') -Owner $owner -ShowConfigs $Server.ShowConfigs
         }
     }
 
@@ -270,7 +278,7 @@ function Write-EnvDocConfigsPage {
             foreach ($key in @('ssh', 'rdp', 'vnc')) {
                 $node = Get-JsonValue -Object $ra -Path $key
                 if ($null -eq $node) { continue }
-                $total += Add-EnvDocConfigFileBlock -Body $body -ConfigMap (Get-JsonValue -Object $node -Path 'config_files') -Owner ('remote_access {0}' -f $key)
+                $total += Add-EnvDocConfigFileBlock -Body $body -ConfigMap (Get-JsonValue -Object $node -Path 'config_files') -Owner ('remote_access {0}' -f $key) -ShowConfigs $Server.ShowConfigs
             }
         }
     }

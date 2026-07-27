@@ -272,6 +272,12 @@ Describe 'EnvDoc 統合' {
         It '読み取り不可のファイルは本文を出さず理由を出す' {
             $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'servers\WEB01-configs.html'), [System.Text.Encoding]::UTF8)
             $html | Should -BeLike '*permission_denied*'
+            # 本文ブロックは readable: true の 2 件(server.xml / catalina.properties)。
+            # catalina.properties は masked: true だが readable: true なので <pre> は出る
+            # (masked はマスク済みの content をそのまま表示する仕様。Task 9 で確認済み)。
+            # 件数で見ないと、readable ガードを外しても空の <pre></pre> が出るだけで
+            # 上の文字列アサーションは通ってしまい、テストが実効性を失う
+            ([regex]::Matches($html, '<pre>')).Count | Should -Be 2
         }
         It 'show_configs 未指定なら設定ファイルページを作らない' {
             Test-Path -LiteralPath (Join-Path $script:OutRoot 'servers\WEB02-configs.html') | Should -BeFalse
