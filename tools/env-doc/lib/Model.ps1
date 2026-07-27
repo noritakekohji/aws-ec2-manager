@@ -238,3 +238,108 @@ function Build-EnvDocModel {
         }
     }
 }
+
+function Add-EnvDocAwsModel {
+    param([Parameter(Mandatory)][hashtable]$Model, [Parameter(Mandatory)][hashtable]$Inputs)
+
+    $instances = New-Object System.Collections.ArrayList
+    $vpcs    = [ordered]@{}
+    $subnets = [ordered]@{}
+    $sgs     = [ordered]@{}
+    $roles   = [ordered]@{}
+    $rtbs    = [ordered]@{}
+
+    foreach ($srv in $Model.Servers) {
+        if (-not $Inputs.Aws.ContainsKey($srv.Key)) { continue }
+        $a = $Inputs.Aws[$srv.Key]
+        $srv.Aws = $a
+
+        [void]$instances.Add(@{
+            Hostname     = $srv.Hostname
+            InstanceId   = [string](Get-JsonValue -Object $a -Path 'instance.instance_id'       -Default '-')
+            InstanceType = [string](Get-JsonValue -Object $a -Path 'instance.instance_type'     -Default '-')
+            AmiId        = [string](Get-JsonValue -Object $a -Path 'instance.ami_id'            -Default '-')
+            Az           = [string](Get-JsonValue -Object $a -Path 'instance.availability_zone' -Default '-')
+            PrivateIp    = [string](Get-JsonValue -Object $a -Path 'instance.private_ip'        -Default '-')
+            PublicIp     = [string](Get-JsonValue -Object $a -Path 'instance.public_ip'         -Default '')
+            VpcId        = [string](Get-JsonValue -Object $a -Path 'instance.vpc_id'            -Default '-')
+            SubnetId     = [string](Get-JsonValue -Object $a -Path 'instance.subnet_id'         -Default '-')
+            Tags         = (Get-JsonValue -Object $a -Path 'instance.tags')
+        })
+
+        $vpc = Get-JsonValue -Object $a -Path 'network.vpc'
+        if ($null -ne $vpc) {
+            $id = [string](Get-JsonValue -Object $vpc -Path 'vpc_id' -Default '')
+            if ($id -and -not $vpcs.Contains($id)) {
+                $vpcs[$id] = @{ VpcId = $id; Cidr = [string](Get-JsonValue -Object $vpc -Path 'cidr' -Default '-') }
+            }
+        }
+
+        $sub = Get-JsonValue -Object $a -Path 'network.subnet'
+        if ($null -ne $sub) {
+            $id = [string](Get-JsonValue -Object $sub -Path 'subnet_id' -Default '')
+            if ($id -and -not $subnets.Contains($id)) {
+                $subnets[$id] = @{
+                    SubnetId = $id
+                    Cidr     = [string](Get-JsonValue -Object $sub -Path 'cidr' -Default '-')
+                    Az       = [string](Get-JsonValue -Object $sub -Path 'az'   -Default '-')
+                    VpcId    = [string](Get-JsonValue -Object $a -Path 'instance.vpc_id' -Default '-')
+                    Hosts    = (New-Object System.Collections.ArrayList)
+                }
+            }
+            if ($id) { [void]$subnets[$id].Hosts.Add($srv.Hostname) }
+        }
+
+        # SG は複数サーバで共有されるため、リソース単位に束ねて適用サーバを逆引きする
+        foreach ($sg in @(Get-JsonValue -Object $a -Path 'security_groups' -Default @())) {
+            $id = [string](Get-JsonValue -Object $sg -Path 'group_id' -Default '')
+            if (-not $id) { continue }
+            if (-not $sgs.Contains($id)) {
+                $sgs[$id] = @{
+                    GroupId     = $id
+                    GroupName   = [string](Get-JsonValue -Object $sg -Path 'group_name'  -Default '-')
+                    Description = [string](Get-JsonValue -Object $sg -Path 'description' -Default '')
+                    Ingress     = @(Get-JsonValue -Object $sg -Path 'ingress' -Default @())
+                    Egress      = @(Get-JsonValue -Object $sg -Path 'egress'  -Default @())
+                    AppliedTo   = (New-Object System.Collections.ArrayList)
+                }
+            }
+            [void]$sgs[$id].AppliedTo.Add($srv.Hostname)
+        }
+
+        $roleName = [string](Get-JsonValue -Object $a -Path 'iam.role_name' -Default '')
+        if ($roleName) {
+            if (-not $roles.Contains($roleName)) {
+                $roles[$roleName] = @{
+                    RoleName         = $roleName
+                    RoleArn          = [string](Get-JsonValue -Object $a -Path 'iam.role_arn' -Default '')
+                    AttachedPolicies = @(Get-JsonValue -Object $a -Path 'iam.attached_policies' -Default @())
+                    InlinePolicies   = @(Get-JsonValue -Object $a -Path 'iam.inline_policies'   -Default @())
+                    AppliedTo        = (New-Object System.Collections.ArrayList)
+                }
+            }
+            [void]$roles[$roleName].AppliedTo.Add($srv.Hostname)
+        }
+
+        foreach ($rt in @(Get-JsonValue -Object $a -Path 'network.route_tables' -Default @())) {
+            $id = [string](Get-JsonValue -Object $rt -Path 'route_table_id' -Default '')
+            if ($id -and -not $rtbs.Contains($id)) {
+                $rtbs[$id] = @{ RouteTableId = $id; Routes = @(Get-JsonValue -Object $rt -Path 'routes' -Default @()) }
+            }
+        }
+    }
+
+    # ArrayList を配列に固める
+    foreach ($k in $subnets.Keys) { $subnets[$k].Hosts     = @($subnets[$k].Hosts.ToArray()) }
+    foreach ($k in $sgs.Keys)     { $sgs[$k].AppliedTo     = @($sgs[$k].AppliedTo.ToArray()) }
+    foreach ($k in $roles.Keys)   { $roles[$k].AppliedTo   = @($roles[$k].AppliedTo.ToArray()) }
+
+    $Model.Aws = @{
+        Instances      = @($instances.ToArray())
+        Vpcs           = @($vpcs.Keys    | ForEach-Object { $vpcs[$_] })
+        Subnets        = @($subnets.Keys | ForEach-Object { $subnets[$_] })
+        SecurityGroups = @($sgs.Keys     | ForEach-Object { $sgs[$_] })
+        IamRoles       = @($roles.Keys   | ForEach-Object { $roles[$_] })
+        RouteTables    = @($rtbs.Keys    | ForEach-Object { $rtbs[$_] })
+    }
+}

@@ -209,4 +209,29 @@ Describe 'EnvDoc 統合' {
             $m.Success | Should -BeFalse
         }
     }
+
+    Context 'AWS ページ' {
+        It 'aws.html を生成する' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'aws.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*i-0aaa1111bbbb2222c*'
+            $html | Should -BeLike '*t3.medium*'
+            $html | Should -Not -BeLike '*このページは未実装です*'
+        }
+        It 'SG を 1 回だけ出し適用サーバを併記する' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'aws.html'), [System.Text.Encoding]::UTF8)
+            ([regex]::Matches($html, 'sg-0example</td>')).Count | Should -BeLessOrEqual 2
+            $html | Should -BeLike '*web-sg*'
+            $html | Should -BeLike '*適用サーバ*'
+        }
+        It 'IAM ロールと使用サーバを出す' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'aws.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*web-instance-role*'
+            $html | Should -BeLike '*SampleReadOnly*'
+        }
+        It 'aws 未収集のサーバを未収集と表示する' {
+            $html = [System.IO.File]::ReadAllText((Join-Path $script:OutRoot 'aws.html'), [System.Text.Encoding]::UTF8)
+            $html | Should -BeLike '*db01*'
+            $html | Should -BeLike '*未収集*'
+        }
+    }
 }

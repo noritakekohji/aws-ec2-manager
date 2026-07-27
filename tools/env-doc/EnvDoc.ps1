@@ -26,16 +26,7 @@ $script:EnvDocRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $script:EnvDocRoot 'lib\PageNetwork.ps1')
 . (Join-Path $script:EnvDocRoot 'lib\PageMiddleware.ps1')
 . (Join-Path $script:EnvDocRoot 'lib\PageOsBaseline.ps1')
-
-function Write-EnvDocStubPage {
-    param([hashtable]$Model, [string]$OutputRoot, [string]$FileName, [string]$Title)
-
-    $target = Join-Path $OutputRoot $FileName
-    if (Test-Path -LiteralPath $target) { return }
-    $body = '<p class="missing">このページは未実装です。</p>'
-    $html = New-HtmlPage -Title $Title -SystemName $Model.System.Name -RelRoot '.' -Body $body
-    Write-HtmlFile -Path $target -Content $html
-}
+. (Join-Path $script:EnvDocRoot 'lib\PageAws.ps1')
 
 function Invoke-EnvDoc {
     param(
@@ -48,6 +39,7 @@ function Invoke-EnvDoc {
     $systemDef = ConvertFrom-YamlLite -Path $SystemFile
     $inputs    = Read-EnvDocInput -InputDir $InputDir
     $model     = Build-EnvDocModel -SystemDef $systemDef -Inputs $inputs
+    Add-EnvDocAwsModel -Model $model -Inputs $inputs
     $model.Groups = Get-EnvDocCompareGroup -Model $model -SystemDef $systemDef
 
     $outputRoot = Join-Path $OutputDir $model.System.Id
@@ -67,9 +59,7 @@ function Invoke-EnvDoc {
     Write-EnvDocNetworkPage    -Model $model -OutputRoot $outputRoot
     Write-EnvDocMiddlewarePage -Model $model -OutputRoot $outputRoot
     Write-EnvDocOsBaselinePage -Model $model -OutputRoot $outputRoot
-
-    # aws.html は Task 8 で本実装に置き換える
-    Write-EnvDocStubPage -Model $model -OutputRoot $outputRoot -FileName 'aws.html' -Title 'AWS 構成'
+    Write-EnvDocAwsPage        -Model $model -OutputRoot $outputRoot
 
     Copy-Item -LiteralPath (Join-Path $script:EnvDocRoot 'assets') `
               -Destination (Join-Path $outputRoot 'assets') -Recurse -Force

@@ -127,3 +127,38 @@ Describe 'EnvDoc Model - モデル構築' {
         { Build-EnvDocModel -SystemDef $def -Inputs $script:Inputs } | Should -Throw -ExpectedMessage '*system.name*'
     }
 }
+
+Describe 'EnvDoc Model - AWS 正規化' {
+    BeforeAll {
+        . (Join-Path $PSScriptRoot '..\tools\env-doc\lib\YamlLite.ps1')
+        . (Join-Path $PSScriptRoot '..\tools\env-doc\lib\Model.ps1')
+        $fixtures = (Resolve-Path (Join-Path $PSScriptRoot 'fixtures\env-doc')).Path
+        $def    = ConvertFrom-YamlLite -Path (Join-Path $fixtures 'system.yaml')
+        $inputs = Read-EnvDocInput -InputDir (Join-Path $fixtures 'input')
+        $script:M = Build-EnvDocModel -SystemDef $def -Inputs $inputs
+        Add-EnvDocAwsModel -Model $script:M -Inputs $inputs
+    }
+
+    It 'インスタンスを 1 件取り込む' {
+        @($script:M.Aws.Instances).Count | Should -Be 1
+        $script:M.Aws.Instances[0].InstanceType | Should -Be 't3.medium'
+    }
+    It 'SG をリソース単位に正規化し適用サーバを持つ' {
+        @($script:M.Aws.SecurityGroups).Count | Should -Be 1
+        $script:M.Aws.SecurityGroups[0].GroupId | Should -Be 'sg-0example'
+        @($script:M.Aws.SecurityGroups[0].AppliedTo) | Should -Be @('WEB01')
+    }
+    It 'IAM ロールをリソース単位に正規化し使用サーバを持つ' {
+        @($script:M.Aws.IamRoles).Count | Should -Be 1
+        $script:M.Aws.IamRoles[0].RoleName | Should -Be 'web-instance-role'
+        @($script:M.Aws.IamRoles[0].AppliedTo) | Should -Be @('WEB01')
+    }
+    It 'VPC と Subnet を重複なく取り込む' {
+        @($script:M.Aws.Vpcs).Count    | Should -Be 1
+        @($script:M.Aws.Subnets).Count | Should -Be 1
+    }
+    It 'aws JSON のあるサーバに Server.Aws を設定する' {
+        ($script:M.Servers | Where-Object { $_.Hostname -eq 'WEB01' }).Aws | Should -Not -BeNullOrEmpty
+        ($script:M.Servers | Where-Object { $_.Hostname -eq 'db01'  }).Aws | Should -BeNullOrEmpty
+    }
+}
