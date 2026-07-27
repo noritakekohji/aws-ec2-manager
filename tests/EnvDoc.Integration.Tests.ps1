@@ -74,12 +74,76 @@ Describe 'EnvDoc 統合' {
         } | Should -Not -Throw
     }
 
+    Context '終了コード' {
+        # dot-source では if (-not $env:ENVDOC_SKIP_MAIN) ブロックを通らないため、
+        # 終了コードは必ず子プロセスで実行して検証する
+        BeforeAll {
+            # 子プロセスは環境変数を継承する。ENVDOC_SKIP_MAIN が立ったままだと
+            # 子プロセス側でもメインブロックがスキップされ、常に exit 0 になり検知できない
+            Remove-Item Env:\ENVDOC_SKIP_MAIN -ErrorAction SilentlyContinue
+
+            $script:ScriptPath = (Resolve-Path (Join-Path $PSScriptRoot '..\tools\env-doc\EnvDoc.ps1')).Path
+            $script:SysFile    = (Join-Path $script:Fixtures 'system.yaml')
+            $script:InDir      = (Join-Path $script:Fixtures 'input')
+
+            function Invoke-EnvDocExe {
+                param([string[]]$ScriptArgs)
+                $out = Join-Path ([System.IO.Path]::GetTempPath()) ('envdoc-ec-' + [guid]::NewGuid().ToString())
+                $all = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $script:ScriptPath) + $ScriptArgs + @('-OutputDir', $out)
+                # このファイルの外側の BeforeAll で EnvDoc.ps1 を dot-source しているため、
+                # $ErrorActionPreference = 'Stop' がこのスコープにも及んでいる。
+                # その状態で子プロセスの stderr を 2>$null すると NativeCommandError が
+                # 終了エラーとして送出され $LASTEXITCODE を読む前に落ちるため、ここだけ緩める
+                $prevEap = $ErrorActionPreference
+                $ErrorActionPreference = 'Continue'
+                try {
+                    & powershell.exe @all 2>$null | Out-Null
+                }
+                finally {
+                    $ErrorActionPreference = $prevEap
+                }
+                return @{ Code = $LASTEXITCODE; Out = $out }
+            }
+        }
+
+        It '成功したら 0 を返す' {
+            $r = Invoke-EnvDocExe -ScriptArgs @('-InputDir', $script:InDir, '-SystemFile', $script:SysFile)
+            $r.Code | Should -Be 0
+            Remove-Item -LiteralPath $r.Out -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        It '入力ディレクトリが無ければ 2 を返す' {
+            $r = Invoke-EnvDocExe -ScriptArgs @('-InputDir', 'Z:\no\such\dir', '-SystemFile', $script:SysFile)
+            $r.Code | Should -Be 2
+        }
+        It 'system.yaml が無ければ 1 を返す' {
+            $r = Invoke-EnvDocExe -ScriptArgs @('-InputDir', $script:InDir, '-SystemFile', 'Z:\no\such.yaml')
+            $r.Code | Should -Be 1
+        }
+        It '出力先が既存で -Force なしなら 1 を返す' {
+            $r1 = Invoke-EnvDocExe -ScriptArgs @('-InputDir', $script:InDir, '-SystemFile', $script:SysFile)
+            $r1.Code | Should -Be 0
+            $all = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $script:ScriptPath,
+                     '-InputDir', $script:InDir, '-SystemFile', $script:SysFile, '-OutputDir', $r1.Out)
+            # Invoke-EnvDocExe と同じ理由で、ここも一時的に EAP を緩める
+            $prevEap = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
+            try {
+                & powershell.exe @all 2>$null | Out-Null
+            }
+            finally {
+                $ErrorActionPreference = $prevEap
+            }
+            $LASTEXITCODE | Should -Be 1
+            Remove-Item -LiteralPath $r1.Out -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
     It '相対リンクに切れがない' {
         $files = @(Get-ChildItem -LiteralPath $script:OutRoot -Recurse -File -Filter '*.html')
         $broken = @()
         foreach ($f in $files) {
             $html = [System.IO.File]::ReadAllText($f.FullName, [System.Text.Encoding]::UTF8)
-            foreach ($m in [regex]::Matches($html, 'href="([^"]+)"')) {
+            foreach ($m in [regex]::Matches($html, '(?:href|src)="([^"]+)"')) {
                 $href = $m.Groups[1].Value
                 if ($href.StartsWith('#') -or $href -match '^[a-z]+:') { continue }
                 $target = Join-Path (Split-Path -Parent $f.FullName) ($href -replace '/', '\')

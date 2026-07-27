@@ -74,16 +74,35 @@ function Invoke-EnvDoc {
 }
 
 if (-not $env:ENVDOC_SKIP_MAIN) {
+    # $ErrorActionPreference = 'Stop' の下では Write-Error 自体が終了エラーになり、
+    # 後続の exit 分岐に到達しない。エラー出力は [Console]::Error に直接書く。
     try {
+        # 終了コードをメッセージ文字列の推測で決めると誤分類する。
+        # 1 と 2 を分ける条件はここで明示的に判定する。
+        if (-not (Test-Path -LiteralPath $SystemFile -PathType Leaf)) {
+            [Console]::Error.WriteLine("システム定義 YAML が見つかりません: $SystemFile")
+            exit 1
+        }
+        if (-not (Test-Path -LiteralPath $InputDir -PathType Container)) {
+            [Console]::Error.WriteLine("入力ディレクトリが見つかりません: $InputDir")
+            exit 2
+        }
+
         $root = Invoke-EnvDoc -InputDir $InputDir -SystemFile $SystemFile -OutputDir $OutputDir -Force:$Force
         Write-Host "環境定義書を生成しました: $root"
         exit 0
     }
     catch {
         $msg = $_.Exception.Message
-        Write-Error $msg
-        if ($msg -like '*が見つかりません*') { exit 2 }
-        if ($msg -like '*行 *' -or $msg -like '*system.*' -or $msg -like '*-Force*') { exit 1 }
+        [Console]::Error.WriteLine($msg)
+        # ここに来るのは入力の存在チェックを通過した後の失敗のみ。
+        # 'system.' のような広いパターンは .NET 型名(System.Boolean 等)を巻き込むため使わない。
+        if ($msg -like '*行 *:*' -or
+            $msg -like '*system.id*' -or
+            $msg -like '*system.name*' -or
+            $msg -like '*system セクション*' -or
+            $msg -like '*-Force*') { exit 1 }
+        if ($msg -like '*JSON が見つかりません*') { exit 2 }
         exit 4
     }
 }
