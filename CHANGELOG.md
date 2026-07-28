@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `server-snapshot`: 1 カテゴリ内で例外が発生してもスクリプト全体が exit 4
+  で停止してしまい JSON が書き出されなかった問題を修正。カテゴリ単位で例外を
+  握り、失敗したカテゴリは `{ error = "..." }` として記録、他カテゴリの結果と
+  合わせて必ず JSON を書き出すようにした（`meta.errors` に集約）。
+- `server-snapshot` の `filelist`: 個別 target のパスがドライブ不存在や
+  クォート混入で `Test-Path` / `Get-Item` が例外を投げても、他 target の収集を
+  止めないよう保護。該当 target は `exists = false` + `errors[]` に理由を記録。
+
 ## [2.12.0] - 2026-07-28
 
 ### Changed

@@ -942,12 +942,24 @@ function Get-FilelistTarget {
         $result.os_matched = $false
         return $result
     }
-    if (-not $Target.path -or -not (Test-Path -LiteralPath $Target.path)) {
+    if (-not $Target.path) { return $result }
+    # Test-Path / Get-Item can raise "drive does not exist" for values like
+    # '"D' when the user's conf slipped a stray quote. Treat any such failure
+    # as exists=false and record it so the collection continues.
+    $exists = $false
+    try { $exists = Test-Path -LiteralPath $Target.path -ErrorAction Stop } catch { $exists = $false }
+    if (-not $exists) {
+        $result.errors += @{ rel_path = ''; reason = 'path_not_found'; message = "path: $($Target.path)" }
+        return $result
+    }
+    $rootFull = $null
+    try {
+        $rootFull = (Get-Item -LiteralPath $Target.path -ErrorAction Stop).FullName
+    } catch {
+        $result.errors += @{ rel_path = ''; reason = 'get_item_failed'; message = "$($_.Exception.Message)" }
         return $result
     }
     $result.exists = $true
-
-    $rootFull = (Get-Item -LiteralPath $Target.path).FullName
     $rootLen  = $rootFull.Length
     $limit    = if ($Target.depth -eq 'unlimited') { [int]::MaxValue } else { [int]$Target.depth }
 
@@ -1008,7 +1020,27 @@ function Get-FilelistInfo {
     $conf = Read-FilelistConf
     $results = @()
     foreach ($t in $conf.targets) {
-        $results += ,(Get-FilelistTarget -Target $t -MaxEntries $conf.max_entries_per_target)
+        # Guard: a single failing target (bad drive / permission / etc.) must
+        # not abort the whole filelist collection.
+        try {
+            $results += ,(Get-FilelistTarget -Target $t -MaxEntries $conf.max_entries_per_target)
+        } catch {
+            $msg = "$($_.Exception.Message)"
+            Write-Warning ("  filelist target [{0}] failed: {1}" -f $t.key, $msg)
+            $results += ,([ordered]@{
+                key          = $t.key
+                path         = $t.path
+                os_matched   = $true
+                exists       = $false
+                depth        = $t.depth
+                hash_enabled = [bool]$t.hash
+                excluded     = @($t.exclude)
+                entries      = @()
+                entry_count  = 0
+                truncated    = $false
+                errors       = @(@{ rel_path = ''; reason = 'exception'; message = $msg })
+            })
+        }
     }
     return @($results)
 }
@@ -1162,23 +1194,37 @@ function Invoke-Collect {
         }
     }
 
+    # Per-category try/catch so one failing collector does not abort the whole
+    # snapshot — the failed category is recorded as { error = "..." } and the
+    # remaining categories keep collecting. The final JSON is always written.
+    $catErrors = @()
     foreach ($cat in $resolved) {
-        $result[$cat] = switch ($cat) {
-            'os'          { Get-OsInfo }
-            'network'     { Get-NetworkInfo }
-            'services'    { Get-ServicesInfo }
-            'remote_access' { Get-RemoteAccessInfo }
-            'packages'    { Get-PackagesInfo }
-            'users'       { Get-UsersInfo }
-            'filesystem'  { Get-FilesystemInfo }
-            'environment' { Get-EnvironmentInfo }
-            'security'    { Get-SecurityInfo }
-            'patches'     { Get-PatchesInfo }
-            'tuning'      { Get-TuningInfo }
-            'scheduled'   { Get-ScheduledInfo }
-            'middleware'  { Get-MiddlewareInfo }
-            'filelist'    { ,@(Get-FilelistInfo) }
+        try {
+            $result[$cat] = switch ($cat) {
+                'os'          { Get-OsInfo }
+                'network'     { Get-NetworkInfo }
+                'services'    { Get-ServicesInfo }
+                'remote_access' { Get-RemoteAccessInfo }
+                'packages'    { Get-PackagesInfo }
+                'users'       { Get-UsersInfo }
+                'filesystem'  { Get-FilesystemInfo }
+                'environment' { Get-EnvironmentInfo }
+                'security'    { Get-SecurityInfo }
+                'patches'     { Get-PatchesInfo }
+                'tuning'      { Get-TuningInfo }
+                'scheduled'   { Get-ScheduledInfo }
+                'middleware'  { Get-MiddlewareInfo }
+                'filelist'    { ,@(Get-FilelistInfo) }
+            }
+        } catch {
+            $msg = "$($_.Exception.Message)"
+            Write-Warning ("[{0}] failed: {1}" -f $cat, $msg)
+            $result[$cat] = @{ error = $msg }
+            $catErrors += @{ category = $cat; error = $msg }
         }
+    }
+    if ($catErrors.Count -gt 0) {
+        $result.meta.errors = @($catErrors)
     }
 
     $json = $result | ConvertTo-Json -Depth 10
