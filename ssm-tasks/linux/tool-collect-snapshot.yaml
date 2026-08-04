@@ -1,0 +1,45 @@
+name: "[tools] 断面情報の一括収集(ZIP)"
+description: collect-snapshot を実行し各ツールの出力を ZIP にまとめる。ZIP を Windows へ回収して ReportSnapshot / env-doc に食わせる想定
+output: text
+timeout: 1800
+script: |
+  # POSIX sh の範囲で書く(SSM がシェバンを無視して /bin/sh で実行することがある)
+  OPS_ROOT=/opt/ops-scripts
+  TOOL_ID=collect-snapshot
+  LABEL=""   # 例: before-patch / after-patch
+
+  set -u
+  export HOME="${HOME:-/root}"
+  LAUNCHER="${OPS_ROOT}/local-tools-launcher.sh"
+  if [ ! -f "$LAUNCHER" ]; then
+    echo "[FAIL] launcher not found: $LAUNCHER" >&2
+    exit 2
+  fi
+
+  set -- run "$TOOL_ID"
+  [ -n "$LABEL" ] && set -- "$@" --set "label=${LABEL}"
+
+  RUN_DIR=$(bash "$LAUNCHER" "$@")
+  RC=$?
+
+  echo "=== ${TOOL_ID} @ $(hostname) ==="
+  echo "exit code : ${RC}   (0=全ツール正常 / 1=一部ツール失敗または ZIP 失敗 / 10=前提コマンド不足)"
+  echo "run dir   : ${RUN_DIR}"
+  if [ -z "$RUN_DIR" ] || [ ! -d "$RUN_DIR" ]; then exit "${RC}"; fi
+
+  echo
+  echo "--- artifacts (この ZIP を Windows へ回収する) ---"
+  find "${RUN_DIR}/artifacts" -type f -printf '%10s  %p\n' | sort -k2
+
+  echo
+  echo "--- stdout.log (last 200 lines) ---"
+  tail -n 200 "${RUN_DIR}/stdout.log"
+
+  echo
+  echo "--- stderr.log (last 50 lines) ---"
+  tail -n 50 "${RUN_DIR}/stderr.log"
+
+  # 回収後の流れ(Windows 側):
+  #   ローカルツールランチャー -> Snapshot Report(ZIP パスを指定)
+  #   または env-doc に入力ディレクトリとして渡す
+  exit "${RC}"

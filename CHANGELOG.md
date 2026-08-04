@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `ssm-tasks/{linux,windows}/tool-*.yaml`: 配備済み `tools/` のスクリプトを
+  SSM Run Command から実行する定義を追加（雛形 + 全 9 ツール × 2 プラット
+  フォーム = 20 ファイル）。対象は aws-instance-audit / cert-check /
+  collect-snapshot / file-transfer-check / log-collector / network-check /
+  perf-monitor / port-inventory / server-snapshot。
+  集約側で動く env-doc と Snapshot Report はリモート実行の対象外。
+  HTML 等の成果物はサーバ側の `<OpsRoot>/reports/local-tools/<tool-id>/<timestamp>/artifacts`
+  に残し、SSM には実行サマリ（exit code / run ディレクトリ / 成果物一覧 /
+  ログ末尾）だけをテキストで返す。SSM 応答の 24,000 文字上限を踏まえ、
+  HTML 本体を SSM 経由で持ち帰る設計は採らない。
+  Linux は非対話 CLI を持つ `local-tools-launcher.sh run <tool-id>` 経由、
+  Windows は GUI 専用ランチャーに CLI が無いためツール本体を直接起動する。
+
 ### Fixed
 - `server-snapshot`: 1 カテゴリ内で例外が発生してもスクリプト全体が exit 4
   で停止してしまい JSON が書き出されなかった問題を修正。カテゴリ単位で例外を

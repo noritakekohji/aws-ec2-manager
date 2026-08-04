@@ -1,0 +1,42 @@
+name: "[tools] 証明書有効期限チェック"
+description: cert-check を実行し cert-check.html をサーバ側に生成する。NG があると exit 1(SSM 上は Failed 表示)
+output: text
+timeout: 900
+script: |
+  # POSIX sh の範囲で書く(SSM がシェバンを無視して /bin/sh で実行することがある)
+  OPS_ROOT=/opt/ops-scripts
+  TOOL_ID=cert-check
+
+  set -u
+  export HOME="${HOME:-/root}"
+  LAUNCHER="${OPS_ROOT}/local-tools-launcher.sh"
+  if [ ! -f "$LAUNCHER" ]; then
+    echo "[FAIL] launcher not found: $LAUNCHER" >&2
+    exit 2
+  fi
+
+  # ターゲットリストを差し替える場合は --set "targetList=/etc/ops/cert_targets.lst" を足す
+  set -- run "$TOOL_ID" \
+    --set "timeoutSec=10" \
+    --set "failOnly=false"
+
+  RUN_DIR=$(bash "$LAUNCHER" "$@")
+  RC=$?
+
+  echo "=== ${TOOL_ID} @ $(hostname) ==="
+  echo "exit code : ${RC}   (0=全て有効 / 1=期限切れ・期限間近あり / 2以上=失敗)"
+  echo "run dir   : ${RUN_DIR}"
+  if [ -z "$RUN_DIR" ] || [ ! -d "$RUN_DIR" ]; then exit "${RC}"; fi
+
+  echo
+  echo "--- artifacts ---"
+  find "${RUN_DIR}/artifacts" -type f -printf '%10s  %p\n' | sort -k2
+
+  echo
+  echo "--- stdout.log (last 200 lines) ---"
+  tail -n 200 "${RUN_DIR}/stdout.log"
+
+  echo
+  echo "--- stderr.log (last 50 lines) ---"
+  tail -n 50 "${RUN_DIR}/stderr.log"
+  exit "${RC}"

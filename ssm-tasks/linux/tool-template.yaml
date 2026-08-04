@@ -1,0 +1,67 @@
+name: "[雛形] tools/ ツール実行"
+description: local-tools-launcher.sh 経由で配備済みツールを実行する雛形。HTML 等の成果物はサーバ側に残り、SSM には実行サマリだけ返る
+output: text
+timeout: 900
+script: |
+  # SSM の Linux ドキュメントはシェバンを無視して /bin/sh で実行することがあるため、
+  # bash 専用構文(配列・[[ ]])を使わず POSIX sh の範囲で書く。
+  # ======================================================================
+  # ここだけ書き換えて使う
+  # ======================================================================
+  OPS_ROOT=/opt/ops-scripts   # local-tools-launcher.sh と tools/ の配備先
+  TOOL_ID=cert-check          # tools/tool-catalog.yaml の id
+  TAIL_STDOUT=200             # SSM に返す stdout.log の末尾行数
+  TAIL_STDERR=50
+  # ======================================================================
+
+  set -u
+  # SSM は HOME 未設定で起動されることがある(ランチャーが $HOME/.config を読む)
+  export HOME="${HOME:-/root}"
+  LAUNCHER="${OPS_ROOT}/local-tools-launcher.sh"
+
+  if [ ! -f "$LAUNCHER" ]; then
+    echo "[FAIL] launcher not found: $LAUNCHER" >&2
+    echo "  tools/ 一式と local-tools-launcher.sh をこのサーバへ配備してください" >&2
+    exit 2
+  fi
+
+  # ---- ツール引数: --set key=value を必要なだけ並べる ----------------
+  # key はカタログの parameters[].key。並べなければ既定値のまま実行される。
+  # 位置パラメータで組み立てるのは、値にスペースが入っても引数が割れないため。
+  set -- run "$TOOL_ID" \
+    --set "timeoutSec=10"
+  # --------------------------------------------------------------------
+
+  # ランチャーは進捗を stderr、run ディレクトリのパスだけを stdout に出す
+  RUN_DIR=$(bash "$LAUNCHER" "$@")
+  RC=$?
+
+  echo "=== ${TOOL_ID} @ $(hostname) ==="
+  echo "exit code : ${RC}   (意味はツールごとに異なる。README の終了コード表を参照)"
+  echo "run dir   : ${RUN_DIR}"
+
+  if [ -z "$RUN_DIR" ] || [ ! -d "$RUN_DIR" ]; then
+    echo "[FAIL] run ディレクトリが作られていません。上の stderr を確認してください" >&2
+    exit "${RC}"
+  fi
+
+  echo
+  echo "--- artifacts (このサーバ上に残ります) ---"
+  find "${RUN_DIR}/artifacts" -type f -printf '%10s  %p\n' | sort -k2
+
+  echo
+  echo "--- command.txt ---"
+  cat "${RUN_DIR}/command.txt"
+
+  echo
+  echo "--- stdout.log (last ${TAIL_STDOUT} lines) ---"
+  tail -n "${TAIL_STDOUT}" "${RUN_DIR}/stdout.log"
+
+  echo
+  echo "--- stderr.log (last ${TAIL_STDERR} lines) ---"
+  tail -n "${TAIL_STDERR}" "${RUN_DIR}/stderr.log"
+
+  # SSM の応答は 24,000 文字で打ち切られる。HTML レポートは上の artifacts の
+  # パスをサーバ上で直接参照するか、tar.gz にして持ち帰ること:
+  #   bash "$LAUNCHER" archive "$TOOL_ID"
+  exit "${RC}"

@@ -1,0 +1,75 @@
+name: "[tools] ネットワーク疎通チェック"
+description: network-check を実行し network-check.html をサーバ側に生成する。Failed があると exit 1(SSM 上は Failed 表示)
+output: text
+timeout: 900
+script: |
+  $OpsRoot  = 'C:\ops-scripts'
+  $ToolId   = 'network-check'
+  $EntryRel = 'network-check\Check-NetworkConnectivity.ps1'
+
+  $ErrorActionPreference = 'Stop'
+  $ToolsRoot = Join-Path $OpsRoot 'tools'
+  $Entry     = Join-Path $ToolsRoot $EntryRel
+  $ToolDir   = Split-Path -Parent $Entry
+  if (-not (Test-Path -LiteralPath $Entry)) {
+      Write-Output "[FAIL] entry not found: $Entry"
+      exit 2
+  }
+
+  $stamp     = (Get-Date).ToString('yyyyMMdd-HHmmss')
+  $RunDir    = Join-Path $OpsRoot ('reports\local-tools\{0}\{1}' -f $ToolId, $stamp)
+  $Artifacts = Join-Path $RunDir 'artifacts'
+  New-Item -ItemType Directory -Path $Artifacts -Force | Out-Null
+  $StdoutLog = Join-Path $RunDir 'stdout.log'
+  $StderrLog = Join-Path $RunDir 'stderr.log'
+
+  # ターゲットリストを差し替える場合はここを書き換える
+  $ToolArgs = @(
+      '-TargetList', (Join-Path $ToolDir 'targets.lst'),
+      '-PingCount', '3',
+      '-TimeoutSec', '3',
+      '-HtmlReport', (Join-Path $Artifacts 'network-check.html')
+  )
+
+  $psArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Entry) + $ToolArgs
+  # Start-Process -ArgumentList は配列を空白で連結するだけでクォートしない。
+  # パスにスペースが含まれると引数が割れるため、LocalToolsLauncher.ps1 の
+  # Join-ProcessArguments と同じ規則で自前でクォートする。
+  $argLine = ($psArgs | ForEach-Object {
+      if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ }
+  }) -join ' '
+  Set-Content -LiteralPath (Join-Path $RunDir 'command.txt') -Value $argLine -Encoding UTF8
+
+  $spParams = @{
+      FilePath               = 'powershell.exe'
+      ArgumentList           = $argLine
+      WorkingDirectory       = $ToolDir
+      RedirectStandardOutput = $StdoutLog
+      RedirectStandardError  = $StderrLog
+      NoNewWindow            = $true
+      Wait                   = $true
+      PassThru               = $true
+  }
+  $proc = Start-Process @spParams
+  $rc = $proc.ExitCode
+  # -Wait 付きでも ExitCode が null になることがある。成功と誤認しないよう失敗扱いにする
+  if ($null -eq $rc) { $rc = 1 }
+  Set-Content -LiteralPath (Join-Path $RunDir 'exit-code.txt') -Value $rc -Encoding UTF8
+
+  Write-Output "=== $ToolId @ $env:COMPUTERNAME ==="
+  Write-Output ("exit code : {0}   (0=全てOK / 1=Failed あり / 2=リスト不在 / 10=前提コマンド不足)" -f $rc)
+  Write-Output "run dir   : $RunDir"
+
+  Write-Output ''
+  Write-Output '--- artifacts ---'
+  Get-ChildItem -LiteralPath $Artifacts -Recurse -File -ErrorAction SilentlyContinue |
+      ForEach-Object { '{0,10}  {1}' -f $_.Length, $_.FullName }
+
+  Write-Output ''
+  Write-Output '--- stdout.log (last 200 lines) ---'
+  if (Test-Path -LiteralPath $StdoutLog) { Get-Content -LiteralPath $StdoutLog -Tail 200 }
+
+  Write-Output ''
+  Write-Output '--- stderr.log (last 50 lines) ---'
+  if (Test-Path -LiteralPath $StderrLog) { Get-Content -LiteralPath $StderrLog -Tail 50 }
+  exit $rc

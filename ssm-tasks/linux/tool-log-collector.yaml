@@ -1,0 +1,49 @@
+name: "[tools] 障害対応ログ収集"
+description: log-collector をプリセット指定で実行し ZIP をサーバ側に生成する。ZIP は SSM では持ち帰れないため run ディレクトリから回収する
+output: text
+timeout: 1800
+script: |
+  # POSIX sh の範囲で書く(SSM がシェバンを無視して /bin/sh で実行することがある)
+  OPS_ROOT=/opt/ops-scripts
+  TOOL_ID=log-collector
+  # target: collect_targets.conf に定義されたプリセット名(os / middleware など)
+  TARGET=os
+  SINCE=24h
+  MAX_SIZE_MB=500
+
+  set -u
+  export HOME="${HOME:-/root}"
+  LAUNCHER="${OPS_ROOT}/local-tools-launcher.sh"
+  if [ ! -f "$LAUNCHER" ]; then
+    echo "[FAIL] launcher not found: $LAUNCHER" >&2
+    exit 2
+  fi
+
+  set -- run "$TOOL_ID" \
+    --set "target=${TARGET}" \
+    --set "since=${SINCE}" \
+    --set "maxSizeMb=${MAX_SIZE_MB}"
+
+  RUN_DIR=$(bash "$LAUNCHER" "$@")
+  RC=$?
+
+  echo "=== ${TOOL_ID} (${TARGET}, since=${SINCE}) @ $(hostname) ==="
+  echo "exit code : ${RC}   (0=成功 / 1=引数不正・設定不在 / 2=収集対象なし / 10=前提コマンド不足)"
+  echo "run dir   : ${RUN_DIR}"
+  if [ -z "$RUN_DIR" ] || [ ! -d "$RUN_DIR" ]; then exit "${RC}"; fi
+
+  echo
+  echo "--- artifacts ---"
+  find "${RUN_DIR}/artifacts" -type f -printf '%10s  %p\n' | sort -k2
+
+  echo
+  echo "--- stdout.log (last 200 lines) ---"
+  tail -n 200 "${RUN_DIR}/stdout.log"
+
+  echo
+  echo "--- stderr.log (last 50 lines) ---"
+  tail -n 50 "${RUN_DIR}/stderr.log"
+
+  # ZIP をまとめて回収する場合:
+  #   bash "$LAUNCHER" archive log-collector
+  exit "${RC}"

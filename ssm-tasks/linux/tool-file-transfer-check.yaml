@@ -1,0 +1,47 @@
+name: "[tools] SMB 共有の転送疎通チェック"
+description: file-transfer-check を実行し共有への往復転送を確認する。smbclient / 認証情報が必要。NG があると exit 1(SSM 上は Failed 表示)
+output: text
+timeout: 1800
+script: |
+  # POSIX sh の範囲で書く(SSM がシェバンを無視して /bin/sh で実行することがある)
+  OPS_ROOT=/opt/ops-scripts
+  TOOL_ID=file-transfer-check
+
+  set -u
+  export HOME="${HOME:-/root}"
+  LAUNCHER="${OPS_ROOT}/local-tools-launcher.sh"
+  if [ ! -f "$LAUNCHER" ]; then
+    echo "[FAIL] launcher not found: $LAUNCHER" >&2
+    exit 2
+  fi
+
+  # 共有リストを差し替える場合は --set "shareList=/etc/ops/shares.lst" を足す
+  set -- run "$TOOL_ID" \
+    --set "sizeMB=10" \
+    --set "timeoutSec=60" \
+    --set "html=true" \
+    --set "failOnly=false"
+
+  RUN_DIR=$(bash "$LAUNCHER" "$@")
+  RC=$?
+
+  echo "=== ${TOOL_ID} @ $(hostname) ==="
+  echo "exit code : ${RC}   (0=全てOK / 1=NG・Warning あり / 2=リスト不在 / 10=前提コマンド不在)"
+  echo "run dir   : ${RUN_DIR}"
+  if [ -z "$RUN_DIR" ] || [ ! -d "$RUN_DIR" ]; then exit "${RC}"; fi
+
+  echo
+  echo "--- artifacts ---"
+  find "${RUN_DIR}/artifacts" -type f -printf '%10s  %p\n' | sort -k2
+
+  echo
+  echo "--- stdout.log (last 200 lines) ---"
+  tail -n 200 "${RUN_DIR}/stdout.log"
+
+  echo
+  echo "--- stderr.log (last 50 lines) ---"
+  tail -n 50 "${RUN_DIR}/stderr.log"
+
+  # SSM は root で実行される。shares.lst に資格情報を書かない運用の場合、
+  # 対話ログイン時と認証コンテキストが変わる点に注意。
+  exit "${RC}"

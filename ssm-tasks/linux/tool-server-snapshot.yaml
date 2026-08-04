@@ -1,0 +1,53 @@
+name: "[tools] サーバ構成スナップショット収集"
+description: server-snapshot collect を実行し server-snapshot.json をサーバ側に生成する。before/after/compare は COMMAND を書き換える
+output: text
+timeout: 1800
+script: |
+  # POSIX sh の範囲で書く(SSM がシェバンを無視して /bin/sh で実行することがある)
+  OPS_ROOT=/opt/ops-scripts
+  TOOL_ID=server-snapshot
+  # command: collect / before / after / compare / list
+  # 変更作業の前後比較をする場合は before -> (作業) -> after の順に実行する
+  # after は最新の before と自動比較し、HTML=true なら HTML も生成される
+  COMMAND=collect
+  CATEGORY=all
+  LABEL=""
+  HTML=false
+
+  set -u
+  export HOME="${HOME:-/root}"
+  LAUNCHER="${OPS_ROOT}/local-tools-launcher.sh"
+  if [ ! -f "$LAUNCHER" ]; then
+    echo "[FAIL] launcher not found: $LAUNCHER" >&2
+    exit 2
+  fi
+
+  set -- run "$TOOL_ID" \
+    --set "command=${COMMAND}" \
+    --set "category=${CATEGORY}" \
+    --set "html=${HTML}"
+  if [ -n "$LABEL" ]; then set -- "$@" --set "label=${LABEL}"; fi
+
+  RUN_DIR=$(bash "$LAUNCHER" "$@")
+  RC=$?
+
+  echo "=== ${TOOL_ID} ${COMMAND} @ $(hostname) ==="
+  echo "exit code : ${RC}"
+  echo "run dir   : ${RUN_DIR}"
+  if [ -z "$RUN_DIR" ] || [ ! -d "$RUN_DIR" ]; then exit "${RC}"; fi
+
+  echo
+  echo "--- artifacts ---"
+  find "${RUN_DIR}/artifacts" -type f -printf '%10s  %p\n' | sort -k2
+
+  echo
+  echo "--- stdout.log (last 150 lines) ---"
+  tail -n 150 "${RUN_DIR}/stdout.log"
+
+  echo
+  echo "--- stderr.log (last 50 lines) ---"
+  tail -n 50 "${RUN_DIR}/stderr.log"
+
+  # JSON をまとめて Windows へ持ち帰る場合:
+  #   bash "$LAUNCHER" archive server-snapshot
+  exit "${RC}"
