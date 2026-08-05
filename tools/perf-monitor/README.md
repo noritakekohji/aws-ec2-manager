@@ -1,7 +1,10 @@
 # Performance Monitor
 
-負荷テスト中のサーバーリソース（CPU / メモリ / ディスク I/O / ネットワーク / ロード）を
+負荷テスト中のサーバーリソース（CPU / メモリ / ディスク I/O / ディスク使用率 / ネットワーク / ロード）を
 **定期収集** して JSON Lines に保存し、終了後に **HTML レポート** を生成する運用補助ツールです。
+
+ディスク使用率は検出された全ドライブ（Windows は固定ディスクのみ、Linux は仮想 FS を除く
+全マウントポイント）を自動収集し、レポートではドライブごとの系列としてグラフ化されます。
 
 **このフォルダ一式をコピーすれば動きます。**
 
@@ -90,11 +93,12 @@ perf_monitor.bat list
 | `Duration` | 0 | 計測時間（秒）。0 で stop まで継続 |
 | `OutputDir` | `.` | セッションディレクトリの親 |
 | `OutputPrefix` | `perf` | セッションディレクトリ名のプレフィックス |
-| `Metrics` | `all` | 収集メトリクス（カンマ区切り: `cpu,mem,disk,net,load` または `all`） |
+| `Metrics` | `all` | 収集メトリクス（カンマ区切り: `cpu,mem,disk,net,load` または `all`。`disk` にディスク I/O とディスク使用率の両方が含まれる） |
 | `ThresholdCpuPct` | 80.0 | CPU 使用率しきい値 (%) |
 | `ThresholdMemPct` | 85.0 | メモリ使用率しきい値 (%) |
 | `ThresholdDiskReadMBps` | 500.0 | ディスク Read しきい値 (MB/s) |
 | `ThresholdDiskWriteMBps` | 500.0 | ディスク Write しきい値 (MB/s) |
+| `ThresholdDiskUsedPct` | 90.0 | ディスク使用率しきい値 (%、全ドライブ/マウント共通) |
 | `ThresholdNetRxMbps` | 900.0 | NIC Rx しきい値 (Mbps) |
 | `ThresholdNetTxMbps` | 900.0 | NIC Tx しきい値 (Mbps) |
 | `ThresholdLoadAvg1` | 4.0 | Load avg(1) しきい値（Linux のみ） |

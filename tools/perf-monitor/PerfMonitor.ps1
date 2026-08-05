@@ -56,6 +56,7 @@ param(
     [double]$_ThrMem    = 0,
     [double]$_ThrDiskR  = 0,
     [double]$_ThrDiskW  = 0,
+    [double]$_ThrDiskUsed = 0,
     [double]$_ThrNetRx  = 0,
     [double]$_ThrNetTx  = 0,
     [double]$_ThrLoad   = 0,
@@ -156,6 +157,7 @@ $CFG = [ordered]@{
     ThresholdMemPct        = 85.0
     ThresholdDiskReadMBps  = 500.0
     ThresholdDiskWriteMBps = 500.0
+    ThresholdDiskUsedPct   = 90.0
     ThresholdNetRxMbps     = 900.0
     ThresholdNetTxMbps     = 900.0
     ThresholdLoadAvg1      = 4.0
@@ -285,6 +287,19 @@ function Invoke-Collect {
                 }
             } catch {} }
 
+            # ── ディスク使用率 (Win32_LogicalDisk: 固定ディスクの容量使用率) ──
+            # DriveType=3 はローカル固定ディスク（リムーバブル/CD-ROM/ネットワークドライブは除外）
+            $disk_usage_pct = [ordered]@{}
+            if ($collectDisk) { try {
+                $vols = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction Stop
+                foreach ($v in $vols) {
+                    if ($null -ne $v.Size -and [double]$v.Size -gt 0) {
+                        $used = [double]$v.Size - [double]$v.FreeSpace
+                        $disk_usage_pct[[string]$v.DeviceID] = [math]::Round(100 * $used / [double]$v.Size, 1)
+                    }
+                }
+            } catch {} }
+
             # ── ネットワーク (Win32_PerfRawData_Tcpip_NetworkInterface: 累積バイト) ──
             $net_rx_mbps = $null; $net_tx_mbps = $null
             if ($collectNet) { try {
@@ -323,6 +338,7 @@ function Invoke-Collect {
                 mem_free_gb = $mem_free_gb; mem_total_gb = $mem_total_gb
                 swap_used_pct = $swap_used_pct; swap_used_gb = $swap_used_gb
                 disk_read_mbps = $disk_read_mbps; disk_write_mbps = $disk_write_mbps
+                disk_usage_pct = $disk_usage_pct
                 net_rx_mbps = $net_rx_mbps; net_tx_mbps = $net_tx_mbps
                 load_avg_1 = $null; load_avg_5 = $null; load_avg_15 = $null
                 proc_count = $proc_count
@@ -341,8 +357,14 @@ function Invoke-Collect {
             $dw_s  = if ($null -ne $disk_write_mbps) { "${disk_write_mbps}MB/s" } else { '?' }
             $rx_s  = if ($null -ne $net_rx_mbps) { "${net_rx_mbps}Mbps" } else { '?' }
             $tx_s  = if ($null -ne $net_tx_mbps) { "${net_tx_mbps}Mbps" } else { '?' }
+            # ステータス表示は最も使用率が高いドライブだけを代表値として出す
+            $duMax = $null; $duMaxDrive = $null
+            foreach ($k in $disk_usage_pct.Keys) {
+                if ($null -eq $duMax -or $disk_usage_pct[$k] -gt $duMax) { $duMax = $disk_usage_pct[$k]; $duMaxDrive = $k }
+            }
+            $du_s = if ($null -ne $duMax) { "$duMaxDrive ${duMax}%" } else { '?' }
             $t_short = (Get-Date).ToString('HH:mm:ss')
-            "[$t_short] #$SampleCount | CPU:$cpu_s MEM:$mem_s | Disk R:$dr_s W:$dw_s | Net Rx:$rx_s Tx:$tx_s" |
+            "[$t_short] #$SampleCount | CPU:$cpu_s MEM:$mem_s | Disk R:$dr_s W:$dw_s Use:$du_s | Net Rx:$rx_s Tx:$tx_s" |
                 Out-File $StatusFile -Encoding utf8
 
             # しきい値チェック
@@ -351,6 +373,13 @@ function Invoke-Collect {
             }
             if ($null -ne $mem_used_pct -and $_ThrMem -gt 0 -and $mem_used_pct -ge $_ThrMem) {
                 CLog 'WARN ' "THRESHOLD: mem_used_pct=${mem_used_pct}% >= ${_ThrMem}%"
+            }
+            if ($_ThrDiskUsed -gt 0) {
+                foreach ($k in $disk_usage_pct.Keys) {
+                    if ($disk_usage_pct[$k] -ge $_ThrDiskUsed) {
+                        CLog 'WARN ' "THRESHOLD: disk_usage_pct[$k]=$($disk_usage_pct[$k])% >= ${_ThrDiskUsed}%"
+                    }
+                }
             }
         } catch {
             CLog 'WARN ' "Sample error: $($_.Exception.Message)"
@@ -408,6 +437,7 @@ function Invoke-Start {
         '-_ThrMem',    [double]$CFG['ThresholdMemPct'],
         '-_ThrDiskR',  [double]$CFG['ThresholdDiskReadMBps'],
         '-_ThrDiskW',  [double]$CFG['ThresholdDiskWriteMBps'],
+        '-_ThrDiskUsed', [double]$CFG['ThresholdDiskUsedPct'],
         '-_ThrNetRx',  [double]$CFG['ThresholdNetRxMbps'],
         '-_ThrNetTx',  [double]$CFG['ThresholdNetTxMbps'],
         '-_ThrLoad',   [double]$CFG['ThresholdLoadAvg1'],
@@ -483,6 +513,7 @@ function Invoke-Report {
         $env:PERF_THR_MEM    = $CFG['ThresholdMemPct']
         $env:PERF_THR_DISK_R = $CFG['ThresholdDiskReadMBps']
         $env:PERF_THR_DISK_W = $CFG['ThresholdDiskWriteMBps']
+        $env:PERF_THR_DISK_USED = $CFG['ThresholdDiskUsedPct']
         $env:PERF_THR_NET_RX = $CFG['ThresholdNetRxMbps']
         $env:PERF_THR_NET_TX = $CFG['ThresholdNetTxMbps']
         $env:PERF_THR_LOAD   = $CFG['ThresholdLoadAvg1']
@@ -506,6 +537,7 @@ function Invoke-Report {
         mem_used_pct   = [double]$CFG['ThresholdMemPct']
         disk_read_mbps = [double]$CFG['ThresholdDiskReadMBps']
         disk_write_mbps= [double]$CFG['ThresholdDiskWriteMBps']
+        disk_usage_pct = [double]$CFG['ThresholdDiskUsedPct']
         net_rx_mbps    = [double]$CFG['ThresholdNetRxMbps']
         net_tx_mbps    = [double]$CFG['ThresholdNetTxMbps']
         load_avg_1     = [double]$CFG['ThresholdLoadAvg1']
@@ -608,18 +640,44 @@ function New-PerfHtmlReport {
         return ($s -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;')
     }
 
+    function Measure-StatsFromVals([double[]]$Vals) {
+        if ($Vals.Count -eq 0) { return $null }
+        $sorted = @($Vals | Sort-Object)
+        $p95i   = [math]::Min([int]($Vals.Count * 95 / 100), $Vals.Count - 1)
+        return [PSCustomObject]@{
+            min   = [math]::Round(($Vals | Measure-Object -Min).Minimum, 2)
+            max   = [math]::Round(($Vals | Measure-Object -Max).Maximum, 2)
+            avg   = [math]::Round(($Vals | Measure-Object -Average).Average, 2)
+            p95   = [math]::Round($sorted[$p95i], 2)
+            count = $Vals.Count
+        }
+    }
+
     function Measure-Stats([string]$Key) {
         $vals = @($records | Where-Object { $null -ne $_.$Key } | ForEach-Object { [double]$_.$Key })
-        if ($vals.Count -eq 0) { return $null }
-        $sorted = @($vals | Sort-Object)
-        $p95i   = [math]::Min([int]($vals.Count * 95 / 100), $vals.Count - 1)
-        return [PSCustomObject]@{
-            min   = [math]::Round(($vals | Measure-Object -Min).Minimum, 2)
-            max   = [math]::Round(($vals | Measure-Object -Max).Maximum, 2)
-            avg   = [math]::Round(($vals | Measure-Object -Average).Average, 2)
-            p95   = [math]::Round($sorted[$p95i], 2)
-            count = $vals.Count
+        return Measure-StatsFromVals $vals
+    }
+
+    # ── ディスク使用率(ドライブ/マウントごと): PSCustomObject の動的プロパティを列挙 ──
+    function Get-DiskDriveNames {
+        $names = New-Object System.Collections.Generic.HashSet[string]
+        foreach ($r in $records) {
+            $du = $r.disk_usage_pct
+            if ($null -ne $du) {
+                foreach ($p in $du.PSObject.Properties) { [void]$names.Add($p.Name) }
+            }
         }
+        return @($names | Sort-Object)
+    }
+
+    function Get-DiskDriveVals([string]$Drive, [array]$Source) {
+        return @($Source | ForEach-Object {
+            $du = $_.disk_usage_pct
+            if ($null -ne $du) {
+                $p = $du.PSObject.Properties[$Drive]
+                if ($null -ne $p -and $null -ne $p.Value) { [double]$p.Value }
+            }
+        })
     }
 
     # ── メタ情報 ─────────────────────────────────────────────────
@@ -652,16 +710,29 @@ function New-PerfHtmlReport {
     $st = @{}
     foreach ($k in $stKeys) { $st[$k] = Measure-Stats $k }
 
+    $diskDrives = Get-DiskDriveNames
+    $diskUsageStats = @{}
+    foreach ($d in $diskDrives) { $diskUsageStats[$d] = Measure-StatsFromVals (Get-DiskDriveVals $d $records) }
+
     # ── アラート検出 ─────────────────────────────────────────────
+    $diskThr = if ($Thresholds.ContainsKey('disk_usage_pct')) { [double]$Thresholds['disk_usage_pct'] } else { 0.0 }
     $alerts = New-Object System.Collections.Generic.List[object]
     foreach ($r in $records) {
         $violations = New-Object System.Collections.Generic.List[object]
         foreach ($k in $Thresholds.Keys) {
+            if ($k -eq 'disk_usage_pct') { continue }
             $tv = [double]$Thresholds[$k]
             if ($tv -le 0) { continue }
             $v = $r.$k
             if ($null -ne $v -and [double]$v -ge $tv) {
                 $violations.Add([PSCustomObject]@{ metric=$k; value=[double]$v; threshold=$tv })
+            }
+        }
+        if ($diskThr -gt 0 -and $null -ne $r.disk_usage_pct) {
+            foreach ($p in $r.disk_usage_pct.PSObject.Properties) {
+                if ($null -ne $p.Value -and [double]$p.Value -ge $diskThr) {
+                    $violations.Add([PSCustomObject]@{ metric="disk_usage_pct[$($p.Name)]"; value=[double]$p.Value; threshold=$diskThr })
+                }
             }
         }
         if ($violations.Count -gt 0) {
@@ -681,11 +752,21 @@ function New-PerfHtmlReport {
     }
     $alertColor = if ($alertCount -gt 0) { '#ef4444' } else { '#16a34a' }
     $loadPeak = if ($isLinux) { Get-PeakText 'load_avg_1' '' } else { 'N/A (Windows)' }
+
+    # ディスク使用率は複数ドライブあるため、最大使用率のドライブを代表値としてカードに出す
+    $duPeak = 'N/A'
+    if ($diskDrives.Count -gt 0) {
+        $topDrive = $diskDrives | Sort-Object { $diskUsageStats[$_].max } -Descending | Select-Object -First 1
+        $ds = $diskUsageStats[$topDrive]
+        $duPeak = "$(ConvertTo-SvgText $topDrive) $($ds.max)% (avg $($ds.avg)%)"
+    }
+
     $cardsHtml = (
         (Build-Card 'CPU ピーク'        (Get-PeakText 'cpu_pct'         '%')    '#3b82f6') +
         (Build-Card 'メモリ ピーク'      (Get-PeakText 'mem_used_pct'    '%')    '#8b5cf6') +
         (Build-Card 'Disk Read ピーク'  (Get-PeakText 'disk_read_mbps'  'MB/s') '#f59e0b') +
         (Build-Card 'Disk Write ピーク' (Get-PeakText 'disk_write_mbps' 'MB/s') '#f97316') +
+        (Build-Card 'Disk 使用率ピーク'  $duPeak                                '#ec4899') +
         (Build-Card 'Net Rx ピーク'     (Get-PeakText 'net_rx_mbps'     'Mbps') '#06b6d4') +
         (Build-Card 'Net Tx ピーク'     (Get-PeakText 'net_tx_mbps'     'Mbps') '#0891b2') +
         (Build-Card 'Load Avg ピーク'   $loadPeak                              '#22c55e') +
@@ -701,7 +782,6 @@ function New-PerfHtmlReport {
 
     function Make-Chart {
         param(
-            [string]$ChartId,
             [string]$Title,
             [array]$Datasets,    # @{ Label; Data (nullable double[]); Color; Fill }
             [string]$YLabel = '',
@@ -783,7 +863,7 @@ function New-PerfHtmlReport {
 
         $legendHtml = ($legendItems | ForEach-Object {
             $dashCls = if ($_.Dashed) { ' legend-dash' } else { '' }
-            "<span class=`"legend-item$dashCls`"><span class=`"legend-swatch`" style=`"background:$($_.Color)`"></span>$($_.Label)</span>"
+            "<span class=`"legend-item$dashCls`"><span class=`"legend-swatch`" style=`"background:$($_.Color)`"></span>$(ConvertTo-SvgText $_.Label)</span>"
         }) -join ''
 
         $svg = "<svg viewBox=`"0 0 $SvgW $Height`" preserveAspectRatio=`"none`" style=`"width:100%;height:${Height}px`" role=`"img`" aria-label=`"$Title`">" +
@@ -804,13 +884,25 @@ function New-PerfHtmlReport {
     $thrRx  = [double]$Thresholds['net_rx_mbps'];    $thrTx = [double]$Thresholds['net_tx_mbps']
     $thrLoad = if ($Thresholds.ContainsKey('load_avg_1')) { [double]$Thresholds['load_avg_1'] } else { 0.0 }
 
+    function Get-ChartValsForDrive([string]$Drive) {
+        return @($chartRecords | ForEach-Object {
+            $du = $_.disk_usage_pct
+            $v = $null
+            if ($null -ne $du) {
+                $p = $du.PSObject.Properties[$Drive]
+                if ($null -ne $p -and $null -ne $p.Value) { $v = [double]$p.Value }
+            }
+            $v
+        })
+    }
+
     $chartsHtml = ''
     # 1. CPU
-    $chartsHtml += Make-Chart -ChartId 'chartCpu' -Title 'CPU 使用率' `
+    $chartsHtml += Make-Chart -Title 'CPU 使用率' `
         -Datasets @(@{Label='CPU (%)'; Data=(Get-ChartVals 'cpu_pct'); Color='#3b82f6'; Fill=$true}) `
         -YLabel '%' -Threshold $thrCpu -ThresholdLabel "しきい値 ($thrCpu%)" -YMax 100
     # 2. メモリ使用率
-    $chartsHtml += Make-Chart -ChartId 'chartMem' -Title 'メモリ使用率' `
+    $chartsHtml += Make-Chart -Title 'メモリ使用率' `
         -Datasets @(
             @{Label='Memory (%)'; Data=(Get-ChartVals 'mem_used_pct'); Color='#8b5cf6'; Fill=$true},
             @{Label='Swap (%)';   Data=(Get-ChartVals 'swap_used_pct'); Color='#c084fc'; Fill=$false}
@@ -818,7 +910,7 @@ function New-PerfHtmlReport {
         -YLabel '%' -Threshold $thrMem -ThresholdLabel "しきい値 ($thrMem%)" -YMax 100
     # 3. メモリ容量 (GB)
     $yMaxMem = if ($st['mem_total_gb']) { [double]$st['mem_total_gb'].max } else { $null }
-    $chartsHtml += Make-Chart -ChartId 'chartMemGB' -Title 'メモリ容量 (GB)' `
+    $chartsHtml += Make-Chart -Title 'メモリ容量 (GB)' `
         -Datasets @(
             @{Label='使用 (GB)';     Data=(Get-ChartVals 'mem_used_gb'); Color='#7c3aed'; Fill=$true},
             @{Label='空き (GB)';     Data=(Get-ChartVals 'mem_free_gb'); Color='#a78bfa'; Fill=$false},
@@ -826,14 +918,31 @@ function New-PerfHtmlReport {
         ) `
         -YLabel 'GB' -Threshold 0 -YMax $yMaxMem
     # 4. ディスク I/O
-    $chartsHtml += Make-Chart -ChartId 'chartDisk' -Title 'ディスク I/O' `
+    $chartsHtml += Make-Chart -Title 'ディスク I/O' `
         -Datasets @(
             @{Label='Read (MB/s)';  Data=(Get-ChartVals 'disk_read_mbps');  Color='#f59e0b'; Fill=$false},
             @{Label='Write (MB/s)'; Data=(Get-ChartVals 'disk_write_mbps'); Color='#f97316'; Fill=$false}
         ) `
         -YLabel 'MB/s' -Threshold ([math]::Max($thrDr,$thrDw)) -ThresholdLabel 'しきい値'
+    # 4b. ディスク使用率(ドライブ/マウントごとの系列)
+    if ($diskDrives.Count -gt 0) {
+        $diskUsagePalette = @('#ec4899','#f97316','#eab308','#84cc16','#06b6d4','#8b5cf6','#f43f5e','#14b8a6')
+        $diskUsageDatasets = @()
+        for ($i = 0; $i -lt $diskDrives.Count; $i++) {
+            $d = $diskDrives[$i]
+            $diskUsageDatasets += @{
+                Label = $d
+                Data  = (Get-ChartValsForDrive $d)
+                Color = $diskUsagePalette[$i % $diskUsagePalette.Count]
+                Fill  = $false
+            }
+        }
+        $chartsHtml += Make-Chart -Title 'ディスク使用率' `
+            -Datasets $diskUsageDatasets `
+            -YLabel '%' -Threshold $diskThr -ThresholdLabel "しきい値 ($diskThr%)" -YMax 100
+    }
     # 5. ネットワーク
-    $chartsHtml += Make-Chart -ChartId 'chartNet' -Title 'ネットワークスループット' `
+    $chartsHtml += Make-Chart -Title 'ネットワークスループット' `
         -Datasets @(
             @{Label='Rx (Mbps)'; Data=(Get-ChartVals 'net_rx_mbps'); Color='#06b6d4'; Fill=$false},
             @{Label='Tx (Mbps)'; Data=(Get-ChartVals 'net_tx_mbps'); Color='#0891b2'; Fill=$false}
@@ -841,7 +950,7 @@ function New-PerfHtmlReport {
         -YLabel 'Mbps' -Threshold ([math]::Max($thrRx,$thrTx)) -ThresholdLabel 'しきい値'
     # 6. ロードアベレージ（Linux のみ）
     if ($isLinux) {
-        $chartsHtml += Make-Chart -ChartId 'chartLoad' -Title 'ロードアベレージ' `
+        $chartsHtml += Make-Chart -Title 'ロードアベレージ' `
             -Datasets @(
                 @{Label='Load 1min';  Data=(Get-ChartVals 'load_avg_1');  Color='#22c55e'; Fill=$false},
                 @{Label='Load 5min';  Data=(Get-ChartVals 'load_avg_5');  Color='#4ade80'; Fill=$false},
@@ -852,7 +961,7 @@ function New-PerfHtmlReport {
     # 7. プロセス数
     $hasProc = @($records | Where-Object { $null -ne $_.proc_count }).Count -gt 0
     if ($hasProc) {
-        $chartsHtml += Make-Chart -ChartId 'chartProc' -Title 'プロセス数' `
+        $chartsHtml += Make-Chart -Title 'プロセス数' `
             -Datasets @(@{Label='Processes'; Data=(Get-ChartVals 'proc_count'); Color='#64748b'; Fill=$false}) `
             -YLabel ''
     }
@@ -866,6 +975,15 @@ function New-PerfHtmlReport {
         $avgCls = if ($tv -gt 0 -and $s.avg -ge $tv * 0.8)  { ' class="warn"'  } else { '' }
         return "<tr><td>$Label</td><td>$($s.min)$Unit</td><td$avgCls>$($s.avg)$Unit</td><td$maxCls>$($s.max)$Unit</td><td>$($s.p95)$Unit</td></tr>"
     }
+    function DiskUsage-StatRow([string]$Drive) {
+        $s = $diskUsageStats[$Drive]
+        $label = "ディスク使用率 ($(ConvertTo-SvgText $Drive))"
+        if (-not $s) { return "<tr><td>$label</td><td colspan=`"4`" class=`"na`">N/A</td></tr>" }
+        $maxCls = if ($diskThr -gt 0 -and $s.max -ge $diskThr)       { ' class="alert"' } else { '' }
+        $avgCls = if ($diskThr -gt 0 -and $s.avg -ge $diskThr * 0.8) { ' class="warn"'  } else { '' }
+        return "<tr><td>$label</td><td>$($s.min)%</td><td$avgCls>$($s.avg)%</td><td$maxCls>$($s.max)%</td><td>$($s.p95)%</td></tr>"
+    }
+    $diskUsageStatRows = ($diskDrives | ForEach-Object { DiskUsage-StatRow $_ }) -join ''
     $statRows = (
         (Stat-Row 'CPU 使用率'        'cpu_pct'         '%') +
         (Stat-Row 'メモリ使用率'      'mem_used_pct'    '%') +
@@ -873,6 +991,7 @@ function New-PerfHtmlReport {
         (Stat-Row 'スワップ使用率'    'swap_used_pct'   '%') +
         (Stat-Row 'ディスク Read'     'disk_read_mbps'  'MB/s') +
         (Stat-Row 'ディスク Write'    'disk_write_mbps' 'MB/s') +
+        $diskUsageStatRows +
         (Stat-Row 'ネット受信'        'net_rx_mbps'     'Mbps') +
         (Stat-Row 'ネット送信'        'net_tx_mbps'     'Mbps')
     )
@@ -891,7 +1010,7 @@ function New-PerfHtmlReport {
             $tsDisp = Get-TsLabel $a.ts
             foreach ($v in $a.violations) {
                 if ($shown -ge 200) { break }
-                $rows.Add("<tr><td>$tsDisp</td><td>$($v.metric)</td><td class=`"alert`">$($v.value)</td><td>$($v.threshold)</td></tr>")
+                $rows.Add("<tr><td>$tsDisp</td><td>$(ConvertTo-SvgText $v.metric)</td><td class=`"alert`">$($v.value)</td><td>$($v.threshold)</td></tr>")
                 $shown++
             }
             if ($shown -ge 200) { break }
@@ -917,6 +1036,7 @@ function New-PerfHtmlReport {
         @{label='メモリ使用率';          key='mem_used_pct';    unit='%'},
         @{label='ディスク Read';         key='disk_read_mbps';  unit='MB/s'},
         @{label='ディスク Write';        key='disk_write_mbps'; unit='MB/s'},
+        @{label='ディスク使用率(全ドライブ共通)'; key='disk_usage_pct'; unit='%'},
         @{label='ネット受信';            key='net_rx_mbps';     unit='Mbps'},
         @{label='ネット送信';            key='net_tx_mbps';     unit='Mbps'},
         @{label='ロードアベレージ 1min'; key='load_avg_1';      unit=''}

@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.13.0] - 2026-08-06
+
 ### Added
+- **`perf-monitor`: ディスク使用率(容量 %)の収集・グラフ化を追加**。検出された
+  全ドライブ/マウントポイントを自動収集し、レポートにドライブごとの系列として
+  グラフ化する(Windows は固定ディスクのみ、Linux は仮想 FS を除く全マウント)。
+  `ThresholdDiskUsedPct`(既定 90.0%)のしきい値アラート・統計テーブル・サマリー
+  カードにも対応（`render_report.py` / `PerfMonitor.ps1` 両レンダラー）。
 - `ssm-tasks/{linux,windows}/tool-*.yaml`: 配備済み `tools/` のスクリプトを
   SSM Run Command から実行する定義を追加（雛形 + 全 9 ツール × 2 プラット
   フォーム = 20 ファイル）。対象は aws-instance-audit / cert-check /
@@ -22,6 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Windows は GUI 専用ランチャーに CLI が無いためツール本体を直接起動する。
 
 ### Fixed
+- `perf-monitor`: SVG レポートのグラフ凡例・統計テーブル・サマリーカード・
+  しきい値超過一覧に、ディスクのドライブ名/マウントポイント名を HTML エスケープ
+  せずに埋め込んでいた問題を修正（`render_report.py` / `PerfMonitor.ps1` 両方）。
+  細工された `data.jsonl` からの HTML インジェクションを防ぐ。
+- `render_report.py`: ローカル変数 `html`（出力 HTML 文字列）が `import html`
+  モジュールをシャドーイングし、`html.escape()` 呼び出しが `UnboundLocalError`
+  になっていた問題を修正（変数名を `html_out` に変更）。
 - `server-snapshot`: 1 カテゴリ内で例外が発生してもスクリプト全体が exit 4
   で停止してしまい JSON が書き出されなかった問題を修正。カテゴリ単位で例外を
   握り、失敗したカテゴリは `{ error = "..." }` として記録、他カテゴリの結果と

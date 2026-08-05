@@ -10,13 +10,14 @@ render_report.py  -  perf_monitor の JSON Lines データから HTML レポー�
     （間引きの対象はグラフの描画データのみ）。
 
 環境変数（しきい値、未設定 or 0 で無効）:
-    PERF_THR_CPU      CPU使用率しきい値 (%)
-    PERF_THR_MEM      メモリ使用率しきい値 (%)
-    PERF_THR_DISK_R   ディスク読み込みしきい値 (MB/s)
-    PERF_THR_DISK_W   ディスク書き込みしきい値 (MB/s)
-    PERF_THR_NET_RX   ネット受信しきい値 (Mbps)
-    PERF_THR_NET_TX   ネット送信しきい値 (Mbps)
-    PERF_THR_LOAD     ロードアベレージ1分しきい値
+    PERF_THR_CPU        CPU使用率しきい値 (%)
+    PERF_THR_MEM        メモリ使用率しきい値 (%)
+    PERF_THR_DISK_R     ディスク読み込みしきい値 (MB/s)
+    PERF_THR_DISK_W     ディスク書き込みしきい値 (MB/s)
+    PERF_THR_DISK_USED  ディスク使用率しきい値 (%、全ドライブ/マウント共通)
+    PERF_THR_NET_RX     ネット受信しきい値 (Mbps)
+    PERF_THR_NET_TX     ネット送信しきい値 (Mbps)
+    PERF_THR_LOAD       ロードアベレージ1分しきい値
 """
 from __future__ import annotations
 import html, json, math, os, sys, statistics
@@ -45,6 +46,7 @@ THR = {
     'mem_used_pct':    _thr('PERF_THR_MEM',    85.0),
     'disk_read_mbps':  _thr('PERF_THR_DISK_R', 500.0),
     'disk_write_mbps': _thr('PERF_THR_DISK_W', 500.0),
+    'disk_usage_pct':  _thr('PERF_THR_DISK_USED', 90.0),
     'net_rx_mbps':     _thr('PERF_THR_NET_RX', 900.0),
     'net_tx_mbps':     _thr('PERF_THR_NET_TX', 900.0),
     'load_avg_1':      _thr('PERF_THR_LOAD',    4.0),
@@ -71,8 +73,7 @@ def pct(values: list[float], p: float) -> float:
     idx = min(int(len(values) * p / 100), len(values) - 1)
     return round(sorted(values)[idx], 2)
 
-def stats(records: list[dict], key: str) -> dict | None:
-    vals = [r[key] for r in records if r.get(key) is not None]
+def stats_from_values(vals: list[float]) -> dict | None:
     if not vals:
         return None
     return {
@@ -82,6 +83,19 @@ def stats(records: list[dict], key: str) -> dict | None:
         'p95':  pct(vals, 95),
         'count': len(vals),
     }
+
+def stats(records: list[dict], key: str) -> dict | None:
+    vals = [r[key] for r in records if r.get(key) is not None]
+    return stats_from_values(vals)
+
+def disk_drive_names(records: list[dict]) -> list[str]:
+    """全レコードに出現したディスクのドライブ名/マウントポイントのユニオン(ソート済み)。"""
+    names = {k for r in records for k in (r.get('disk_usage_pct') or {})}
+    return sorted(names)
+
+def disk_drive_values(records: list[dict], drive: str) -> list[float]:
+    return [v for r in records
+            if (v := (r.get('disk_usage_pct') or {}).get(drive)) is not None]
 
 def parse_range_bound(value: str | None, name: str) -> datetime | None:
     """--from/--to の値を datetime にパースする。失敗時は警告を出して None（フィルタ無効）を返す。"""
@@ -138,7 +152,6 @@ def duration_str(sec: float) -> str:
 # JS 実行環境やライブラリ配布の問題に一切左右されない）
 # ─────────────────────────────────────────────────────────────
 def make_chart(
-    chart_id: str,
     title: str,
     labels: list[str],
     datasets: list[dict],       # {label, data, color, fill}
@@ -212,7 +225,7 @@ def make_chart(
 
     legend_html = ''.join(
         f'<span class="legend-item{" legend-dash" if dashed else ""}">'
-        f'<span class="legend-swatch" style="background:{color}"></span>{label}</span>'
+        f'<span class="legend-swatch" style="background:{color}"></span>{html.escape(label)}</span>'
         for color, label, dashed in legend_items
     )
 
@@ -234,15 +247,20 @@ def make_chart(
 # アラート検出
 # ─────────────────────────────────────────────────────────────
 def find_alerts(records: list[dict]) -> list[dict]:
+    disk_thr = THR.get('disk_usage_pct', 0)
     alerts = []
     for r in records:
         violations = []
         for key, thr in THR.items():
-            if thr <= 0:
+            if key == 'disk_usage_pct' or thr <= 0:
                 continue
             v = r.get(key)
             if v is not None and v >= thr:
                 violations.append({'metric': key, 'value': v, 'threshold': thr})
+        if disk_thr > 0:
+            for drive, v in (r.get('disk_usage_pct') or {}).items():
+                if v is not None and v >= disk_thr:
+                    violations.append({'metric': f'disk_usage_pct[{drive}]', 'value': v, 'threshold': disk_thr})
         if violations:
             alerts.append({'ts': r.get('ts', ''), 'violations': violations})
     return alerts
@@ -297,6 +315,8 @@ def render(data_path: str, output_path: str, from_str: str | None = None, to_str
         'load_avg_1', 'load_avg_5', 'load_avg_15',
         'proc_count',
     ]}
+    disk_drives = disk_drive_names(records)
+    disk_usage_stats = {d: stats_from_values(disk_drive_values(records, d)) for d in disk_drives}
 
     # ── アラート ──────────────────────────────────────────────
     alerts = find_alerts(records)
@@ -324,11 +344,19 @@ def render(data_path: str, output_path: str, from_str: str | None = None, to_str
     ld_peak  = peak('load_avg_1', '') if is_linux else 'N/A (Windows)'
     alert_color = '#ef4444' if alert_count > 0 else '#16a34a'
 
+    # ディスク使用率は複数ドライブあるため、最大使用率のドライブを代表値としてカードに出す
+    du_peak = 'N/A'
+    if disk_drives:
+        top_drive = max(disk_drives, key=lambda d: disk_usage_stats[d]['max'])
+        s = disk_usage_stats[top_drive]
+        du_peak = f"{html.escape(top_drive)} {s['max']}% (avg {s['avg']}%)"
+
     cards_html = ''.join([
         card('CPU ピーク',       cpu_peak, '#3b82f6'),
         card('メモリ ピーク',     mem_peak, '#8b5cf6'),
         card('Disk Read ピーク', dr_peak,  '#f59e0b'),
         card('Disk Write ピーク',dw_peak,  '#f97316'),
+        card('Disk 使用率ピーク', du_peak,  '#ec4899'),
         card('Net Rx ピーク',    rx_peak,  '#06b6d4'),
         card('Net Tx ピーク',    tx_peak,  '#0891b2'),
         card('Load Avg ピーク',  ld_peak,  '#22c55e'),
@@ -344,14 +372,14 @@ def render(data_path: str, output_path: str, from_str: str | None = None, to_str
 
     # 1. CPU
     charts_html += make_chart(
-        'chartCpu', 'CPU 使用率', labels,
+        'CPU 使用率', labels,
         [{'label': 'CPU (%)', 'data': vals('cpu_pct'), 'color': '#3b82f6', 'fill': True}],
         '%', THR['cpu_pct'], f"しきい値 ({THR['cpu_pct']}%)", y_max=100,
     )
 
     # 2. メモリ
     charts_html += make_chart(
-        'chartMem', 'メモリ使用率', labels,
+        'メモリ使用率', labels,
         [
             {'label': 'Memory (%)', 'data': vals('mem_used_pct'), 'color': '#8b5cf6', 'fill': True},
             {'label': 'Swap (%)',   'data': vals('swap_used_pct'), 'color': '#c084fc', 'fill': False},
@@ -363,7 +391,7 @@ def render(data_path: str, output_path: str, from_str: str | None = None, to_str
     mem_total = st.get('mem_total_gb')
     y_max_mem = (mem_total['max'] if mem_total else None)
     charts_html += make_chart(
-        'chartMemGB', 'メモリ容量 (GB)', labels,
+        'メモリ容量 (GB)', labels,
         [
             {'label': '使用 (GB)',  'data': vals('mem_used_gb'), 'color': '#7c3aed', 'fill': True},
             {'label': '空き (GB)',  'data': vals('mem_free_gb'), 'color': '#a78bfa', 'fill': False},
@@ -374,7 +402,7 @@ def render(data_path: str, output_path: str, from_str: str | None = None, to_str
 
     # 4. ディスク I/O
     charts_html += make_chart(
-        'chartDisk', 'ディスク I/O', labels,
+        'ディスク I/O', labels,
         [
             {'label': 'Read (MB/s)',  'data': vals('disk_read_mbps'),  'color': '#f59e0b', 'fill': False},
             {'label': 'Write (MB/s)', 'data': vals('disk_write_mbps'), 'color': '#f97316', 'fill': False},
@@ -382,9 +410,22 @@ def render(data_path: str, output_path: str, from_str: str | None = None, to_str
         'MB/s', max(THR['disk_read_mbps'], THR['disk_write_mbps']), 'しきい値',
     )
 
+    # 4b. ディスク使用率(ドライブ/マウントごとの系列)
+    DISK_USAGE_PALETTE = ['#ec4899', '#f97316', '#eab308', '#84cc16', '#06b6d4', '#8b5cf6', '#f43f5e', '#14b8a6']
+    if disk_drives:
+        charts_html += make_chart(
+            'ディスク使用率', labels,
+            [
+                {'label': d, 'data': [(r.get('disk_usage_pct') or {}).get(d) for r in chart_records],
+                 'color': DISK_USAGE_PALETTE[i % len(DISK_USAGE_PALETTE)], 'fill': False}
+                for i, d in enumerate(disk_drives)
+            ],
+            '%', THR['disk_usage_pct'], f"しきい値 ({THR['disk_usage_pct']}%)", y_max=100,
+        )
+
     # 5. ネットワーク
     charts_html += make_chart(
-        'chartNet', 'ネットワークスループット', labels,
+        'ネットワークスループット', labels,
         [
             {'label': 'Rx (Mbps)', 'data': vals('net_rx_mbps'), 'color': '#06b6d4', 'fill': False},
             {'label': 'Tx (Mbps)', 'data': vals('net_tx_mbps'), 'color': '#0891b2', 'fill': False},
@@ -395,7 +436,7 @@ def render(data_path: str, output_path: str, from_str: str | None = None, to_str
     # 6. ロードアベレージ（Linux のみ）
     if is_linux:
         charts_html += make_chart(
-            'chartLoad', 'ロードアベレージ', labels,
+            'ロードアベレージ', labels,
             [
                 {'label': 'Load 1min',  'data': vals('load_avg_1'),  'color': '#22c55e', 'fill': False},
                 {'label': 'Load 5min',  'data': vals('load_avg_5'),  'color': '#4ade80', 'fill': False},
@@ -407,7 +448,7 @@ def render(data_path: str, output_path: str, from_str: str | None = None, to_str
     # 7. プロセス数
     if any(r.get('proc_count') is not None for r in records):
         charts_html += make_chart(
-            'chartProc', 'プロセス数', labels,
+            'プロセス数', labels,
             [{'label': 'Processes', 'data': vals('proc_count'), 'color': '#64748b', 'fill': False}],
             '',
         )
@@ -426,6 +467,20 @@ def render(data_path: str, output_path: str, from_str: str | None = None, to_str
                 f'<td{max_cls}>{s["max"]}{unit}</td>'
                 f'<td>{s["p95"]}{unit}</td></tr>')
 
+    def disk_usage_stat_row(drive: str) -> str:
+        s = disk_usage_stats.get(drive)
+        label = f'ディスク使用率 ({html.escape(drive)})'
+        if not s:
+            return f'<tr><td>{label}</td><td colspan="4" class="na">N/A</td></tr>'
+        thr_v = THR.get('disk_usage_pct', 0)
+        max_cls = ' class="alert"' if thr_v > 0 and s['max'] >= thr_v else ''
+        avg_cls = ' class="warn"'  if thr_v > 0 and s['avg'] >= thr_v * 0.8 else ''
+        return (f'<tr><td>{label}</td>'
+                f'<td>{s["min"]}%</td>'
+                f'<td{avg_cls}>{s["avg"]}%</td>'
+                f'<td{max_cls}>{s["max"]}%</td>'
+                f'<td>{s["p95"]}%</td></tr>')
+
     stat_rows = ''.join([
         stat_row('CPU 使用率',           'cpu_pct',        '%'),
         stat_row('メモリ使用率',          'mem_used_pct',   '%'),
@@ -433,6 +488,7 @@ def render(data_path: str, output_path: str, from_str: str | None = None, to_str
         stat_row('スワップ使用率',        'swap_used_pct',  '%'),
         stat_row('ディスク Read',         'disk_read_mbps', 'MB/s'),
         stat_row('ディスク Write',        'disk_write_mbps','MB/s'),
+    ] + [disk_usage_stat_row(d) for d in disk_drives] + [
         stat_row('ネット受信',            'net_rx_mbps',    'Mbps'),
         stat_row('ネット送信',            'net_tx_mbps',    'Mbps'),
     ] + ([
@@ -451,7 +507,7 @@ def render(data_path: str, output_path: str, from_str: str | None = None, to_str
             for v in a['violations']:
                 rows.append(
                     f'<tr><td>{ts_disp}</td>'
-                    f'<td>{v["metric"]}</td>'
+                    f'<td>{html.escape(v["metric"])}</td>'
                     f'<td class="alert">{v["value"]}</td>'
                     f'<td>{v["threshold"]}</td></tr>'
                 )
@@ -466,6 +522,7 @@ def render(data_path: str, output_path: str, from_str: str | None = None, to_str
         ('メモリ使用率', 'mem_used_pct', '%'),
         ('ディスク Read', 'disk_read_mbps', 'MB/s'),
         ('ディスク Write', 'disk_write_mbps', 'MB/s'),
+        ('ディスク使用率(全ドライブ共通)', 'disk_usage_pct', '%'),
         ('ネット受信', 'net_rx_mbps', 'Mbps'),
         ('ネット送信', 'net_tx_mbps', 'Mbps'),
         ('ロードアベレージ 1min', 'load_avg_1', ''),
@@ -476,7 +533,9 @@ def render(data_path: str, output_path: str, from_str: str | None = None, to_str
             thr_rows += f'<tr><td>{label}</td><td>{tv}{unit}</td></tr>'
 
     # ── HTML 組み立て ─────────────────────────────────────────
-    html = f"""<!DOCTYPE html>
+    # 変数名を `html` にすると import した html モジュール(escape 用)をシャドーイングし、
+    # それより前の html.escape() 呼び出しが UnboundLocalError になるため html_out とする。
+    html_out = f"""<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -589,7 +648,7 @@ td.na{{color:#94a3b8}}
 </body>
 </html>"""
 
-    Path(output_path).write_text(html, encoding='utf-8')
+    Path(output_path).write_text(html_out, encoding='utf-8')
     print(f'Report: {output_path}  ({n_samples} samples, {alert_count} alerts)')
 
 

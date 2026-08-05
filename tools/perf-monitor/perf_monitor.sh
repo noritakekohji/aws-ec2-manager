@@ -58,6 +58,7 @@ declare -A CFG=(
     [ThresholdMemPct]="85.0"
     [ThresholdDiskReadMBps]="500.0"
     [ThresholdDiskWriteMBps]="500.0"
+    [ThresholdDiskUsedPct]="90.0"
     [ThresholdNetRxMbps]="900.0"
     [ThresholdNetTxMbps]="900.0"
     [ThresholdLoadAvg1]="4.0"
@@ -152,6 +153,28 @@ _disk_stat() {
     END{print rs+0, ws+0}' /proc/diskstats
 }
 
+# ディスク使用率: df の Capacity 列(%)をマウントポイントごとに JSON オブジェクト中身として出力する。
+# 仮想 FS (tmpfs 等) は -x で除外。-x 非対応の df (busybox 等) では
+# フォールバックして /proc, /sys, /dev, /run 配下のマウントポイントのみ除外する。
+_disk_usage_json() {
+    local out
+    out=$(df -P -x tmpfs -x devtmpfs -x squashfs -x overlay -x proc -x sysfs \
+             -x tracefs -x cgroup -x cgroup2 -x devpts -x mqueue -x securityfs \
+             -x pstore -x debugfs -x autofs -x binfmt_misc 2>/dev/null)
+    if [[ -z "$out" ]]; then
+        out=$(df -P 2>/dev/null)
+    fi
+    echo "$out" | awk '
+    BEGIN{n=0}
+    NR>1 && NF>=6 {
+        pct=$5; sub(/%$/,"",pct)
+        mnt=$NF
+        if (mnt ~ /^\/(proc|sys|dev|run)(\/|$)/) next
+        gsub(/\\/,"\\\\",mnt); gsub(/"/,"\\\"",mnt)
+        printf "%s\"%s\":%s", (n++?",":""), mnt, pct
+    }'
+}
+
 # ネットワーク: /proc/net/dev から loopback 除く受信/送信バイト累積
 _net_stat() {
     awk 'NR>2 && !/lo:/{
@@ -216,6 +239,7 @@ collect_sample() {
     # ── ディスク I/O ─────────────────────────────────────────
     local disk_read_mbps="null" disk_write_mbps="null"
     local curr_disk=""
+    local disk_usage_json="{}"
     if [[ "$metrics" == "all" ]] || echo "$metrics" | grep -q "disk"; then
         curr_disk=$(_disk_stat)
         if [[ -n "$prev_disk" && -n "$curr_disk" ]]; then
@@ -226,6 +250,7 @@ collect_sample() {
             disk_read_mbps=$(awk  "BEGIN{printf \"%.2f\",($cr-$pr)*512/1048576/$interval}")
             disk_write_mbps=$(awk "BEGIN{printf \"%.2f\",($cw-$pw)*512/1048576/$interval}")
         fi
+        disk_usage_json="{$(_disk_usage_json)}"
     fi
 
     # ── ネットワーク ─────────────────────────────────────────
@@ -259,11 +284,11 @@ collect_sample() {
     # JSON Lines 出力
     # 空文字は JSON の "null" にフォールバック
     _j() { [[ -z "$1" ]] && echo "null" || echo "$1"; }
-    printf '{"ts":"%s","hostname":"%s","os":"linux","cpu_pct":%s,"mem_used_pct":%s,"mem_used_gb":%s,"mem_free_gb":%s,"mem_total_gb":%s,"swap_used_pct":%s,"swap_used_gb":%s,"disk_read_mbps":%s,"disk_write_mbps":%s,"net_rx_mbps":%s,"net_tx_mbps":%s,"load_avg_1":%s,"load_avg_5":%s,"load_avg_15":%s,"proc_count":%s}\n' \
+    printf '{"ts":"%s","hostname":"%s","os":"linux","cpu_pct":%s,"mem_used_pct":%s,"mem_used_gb":%s,"mem_free_gb":%s,"mem_total_gb":%s,"swap_used_pct":%s,"swap_used_gb":%s,"disk_read_mbps":%s,"disk_write_mbps":%s,"disk_usage_pct":%s,"net_rx_mbps":%s,"net_tx_mbps":%s,"load_avg_1":%s,"load_avg_5":%s,"load_avg_15":%s,"proc_count":%s}\n' \
         "$ts" "$hostname" \
         "$(_j "$cpu_pct")" "$(_j "$mem_used_pct")" "$(_j "$mem_used_gb")" "$(_j "$mem_free_gb")" "$(_j "$mem_total_gb")" \
         "$(_j "$swap_used_pct")" "$(_j "$swap_used_gb")" \
-        "$(_j "$disk_read_mbps")" "$(_j "$disk_write_mbps")" \
+        "$(_j "$disk_read_mbps")" "$(_j "$disk_write_mbps")" "$disk_usage_json" \
         "$(_j "$net_rx_mbps")" "$(_j "$net_tx_mbps")" \
         "$(_j "$load1")" "$(_j "$load5")" "$(_j "$load15")" "$(_j "$proc_count")"
 
@@ -282,6 +307,7 @@ _run_collector() {
     local duration="${CFG[Duration]}"
     local thr_cpu="${CFG[ThresholdCpuPct]}"
     local thr_mem="${CFG[ThresholdMemPct]}"
+    local thr_disk_used="${CFG[ThresholdDiskUsedPct]}"
 
     log_info "Collector started: session=$session_dir interval=${interval}s duration=${duration}s"
 
@@ -317,7 +343,7 @@ _run_collector() {
         sample_count=$(( sample_count + 1 ))
 
         # ステータスファイル更新（リアルタイム表示用）
-        local cpu_v mem_v dr_v dw_v rx_v tx_v ld1_v
+        local cpu_v mem_v dr_v dw_v rx_v tx_v ld1_v du_v du_mnt du_pct
         cpu_v=$(echo "$sample" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d.get('cpu_pct','null'))" 2>/dev/null || echo "?")
         mem_v=$(echo "$sample" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d.get('mem_used_pct','null'))" 2>/dev/null || echo "?")
         dr_v=$(echo "$sample"  | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d.get('disk_read_mbps','null'))" 2>/dev/null || echo "?")
@@ -325,10 +351,22 @@ _run_collector() {
         rx_v=$(echo "$sample"  | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d.get('net_rx_mbps','null'))" 2>/dev/null || echo "?")
         tx_v=$(echo "$sample"  | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d.get('net_tx_mbps','null'))" 2>/dev/null || echo "?")
         ld1_v=$(echo "$sample" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d.get('load_avg_1','null'))" 2>/dev/null || echo "?")
+        # ステータス表示は最も使用率が高いマウントポイントだけを代表値として出す
+        du_v=$(echo "$sample" | python3 -c "
+import json,sys
+d=json.loads(sys.stdin.read())
+du=d.get('disk_usage_pct') or {}
+if du:
+    k=max(du,key=du.get)
+    print(k, du[k])
+else:
+    print('? ?')
+" 2>/dev/null || echo "? ?")
+        read -r du_mnt du_pct <<< "$du_v"
         local ts_short
         ts_short=$(date '+%H:%M:%S')
-        printf '[%s] #%d | CPU:%s%% MEM:%s%% | Disk R:%sMB/s W:%sMB/s | Net Rx:%sMbps Tx:%sMbps | Load:%s\n' \
-            "$ts_short" "$sample_count" "$cpu_v" "$mem_v" "$dr_v" "$dw_v" "$rx_v" "$tx_v" "$ld1_v" \
+        printf '[%s] #%d | CPU:%s%% MEM:%s%% | Disk R:%sMB/s W:%sMB/s Use:%s %s%% | Net Rx:%sMbps Tx:%sMbps | Load:%s\n' \
+            "$ts_short" "$sample_count" "$cpu_v" "$mem_v" "$dr_v" "$dw_v" "$du_mnt" "$du_pct" "$rx_v" "$tx_v" "$ld1_v" \
             > "$status_file"
 
         # しきい値チェック（ログ出力）
@@ -339,6 +377,20 @@ _run_collector() {
         if [[ "$thr_mem" != "0" ]] && [[ "$mem_v" != "?" ]] && \
            awk "BEGIN{exit ($mem_v < $thr_mem)}"; then
             log_warn "THRESHOLD: mem_used_pct=${mem_v}% >= ${thr_mem}%"
+        fi
+        if [[ "$thr_disk_used" != "0" ]]; then
+            while read -r du_mnt2 du_pct2; do
+                [[ -z "$du_mnt2" ]] && continue
+                log_warn "THRESHOLD: disk_usage_pct[$du_mnt2]=${du_pct2}% >= ${thr_disk_used}%"
+            done < <(echo "$sample" | python3 -c "
+import json,sys
+d=json.loads(sys.stdin.read())
+du=d.get('disk_usage_pct') or {}
+thr=$thr_disk_used
+for k,v in du.items():
+    if v is not None and v >= thr:
+        print(k, v)
+" 2>/dev/null)
         fi
 
         # 期間チェック
@@ -517,6 +569,7 @@ cmd_report() {
        PERF_THR_MEM="${CFG[ThresholdMemPct]}"           \
        PERF_THR_DISK_R="${CFG[ThresholdDiskReadMBps]}"  \
        PERF_THR_DISK_W="${CFG[ThresholdDiskWriteMBps]}" \
+       PERF_THR_DISK_USED="${CFG[ThresholdDiskUsedPct]}" \
        PERF_THR_NET_RX="${CFG[ThresholdNetRxMbps]}"     \
        PERF_THR_NET_TX="${CFG[ThresholdNetTxMbps]}"     \
        PERF_THR_LOAD="${CFG[ThresholdLoadAvg1]}"        \
