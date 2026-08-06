@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.15.0] - 2026-08-06
+
+### Changed
+- **`collect-snapshot` の差分レポート(compare)を python3 不要にした**。
+  `ReportSnapshot.ps1` の compare モードは `compare_server_info.py` 専用のラッパーで、
+  python3 が見つからないと `exit 10` で止まっていた。python3 があればそちらを優先し
+  (プラットフォーム間で出力が揃うため)、無い場合は `ServerSnapshot.ps1` の
+  PowerShell ネイティブ比較エンジンへ自動でフォールバックするようにした。
+  比較ロジックは既存の PS 実装をそのまま使うため二重実装は発生しない。
+  Windows Store のダミー python のように「見つかるが実行できない」ケース
+  (exit 9009 等)でも PS ネイティブへ倒す。
+  併せて README の前提表・終了コード表を実態に合わせ、`exit 10`(python3 不足)を廃止した
+  (比較エンジンが両方見つからない場合は `exit 2`)。
+  なお Linux 版 `server_snapshot.sh` は JSON 生成自体に python3 を使うため、
+  従来どおり python3 が必要。
+
+### Added
+- `tests/ReportSnapshot.CompareFallback.Tests.ps1`: PATH から python を隠した状態で
+  compare を実行し、PS ネイティブ比較エンジンへフォールバックして HTML 差分レポートが
+  生成されること(サービス追加・バージョン変更の検出まで)を担保するテストを追加。
+  python3 がある環境では `compare_server_info.py` 経路も同時に検証する
+
 ## [2.14.0] - 2026-08-06
 
 ### Changed

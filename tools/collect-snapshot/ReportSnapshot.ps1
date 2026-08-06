@@ -38,8 +38,11 @@
     Exit codes:
       0  Success
       1  Bad arguments / input not found
-      2  JSON not found or invalid input
-     10  Prerequisite missing (python3 for compare mode)
+      2  JSON not found or invalid input (compare mode: comparator not found)
+
+    compare モードは python3 があれば compare_server_info.py を使い、
+    無ければ ServerSnapshot.ps1 の PS ネイティブ comparator にフォールバックする。
+    python3 は必須ではない。
 #>
 [CmdletBinding()]
 param(
@@ -637,7 +640,11 @@ function filterTables(q) {
 }
 
 # ============================================================
-# Compare mode (delegates to compare_server_info.py)
+# Compare mode
+#   python3 があれば compare_server_info.py（プラットフォーム間で出力が揃う）、
+#   無ければ ServerSnapshot.ps1 の PS ネイティブ comparator にフォールバックする。
+#   どちらも同じ JSON を入力に取り、同等の HTML レポートを出力するため、
+#   python3 が使えない環境でも compare が動く。
 # ============================================================
 
 function Invoke-CompareReport {
@@ -649,27 +656,58 @@ function Invoke-CompareReport {
     )
 
     $pyScript = Join-Path $ToolsDir 'server-snapshot\compare_server_info.py'
-    if (-not (Test-Path $pyScript)) {
-        Write-Error "[report-snapshot] compare_server_info.py not found: $pyScript"
+    $psScript = Join-Path $ToolsDir 'server-snapshot\ServerSnapshot.ps1'
+
+    # 1) python3 が使えるならそちらを優先
+    if (Test-Path -LiteralPath $pyScript) {
+        $python = $null
+        foreach ($candidate in @('python3', 'python', 'py')) {
+            $cmd = Get-Command $candidate -ErrorAction SilentlyContinue
+            if ($null -ne $cmd) { $python = $cmd.Source; break }
+        }
+        if ($python) {
+            $pyArgs = @($pyScript, $BeforeJson, $AfterJson)
+            if ($HtmlPath)  { $pyArgs += '--html';      $pyArgs += $HtmlPath }
+            if ($OnlyDiff)  { $pyArgs += '--diff-only' }
+
+            Write-Host "[report-snapshot] Running compare_server_info.py ..."
+            & $python @pyArgs
+            $ec = $LASTEXITCODE
+            if ($null -eq $ec) { $ec = 0 }
+            if ($ec -eq 0) { return 0 }
+            # Windows Store のダミー python は exit 9009 を返すなど、見つかっても
+            # 実行できないことがある。その場合も PS ネイティブへ倒す。
+            Write-Warning "[report-snapshot] compare_server_info.py exited with $ec; falling back to the PowerShell comparator"
+            $global:LASTEXITCODE = 0
+        } else {
+            Write-Host "[report-snapshot] python3 not found — using the PowerShell comparator"
+        }
+    }
+
+    # 2) PS ネイティブ comparator（ServerSnapshot.ps1 の compare コマンド）
+    if (-not (Test-Path -LiteralPath $psScript)) {
+        Write-Error "[report-snapshot] comparator not found: $pyScript / $psScript"
         return 2
     }
 
-    $python = $null
-    foreach ($candidate in @('python3', 'python')) {
-        $cmd = Get-Command $candidate -ErrorAction SilentlyContinue
-        if ($null -ne $cmd) { $python = $cmd.Source; break }
+    # 別スクリプトとして呼ぶため、ServerSnapshot.ps1 内の exit は呼び出し元を
+    # 巻き込まず $LASTEXITCODE として返る（後片付けの finally も通る）。
+    # 名前付きパラメータはハッシュテーブルで渡す。配列スプラッティングだと
+    # 全要素が位置引数として渡され、'-BeforePath' がパラメータ名として
+    # 解釈されない（上の python 呼び出しはネイティブ exe なので配列で問題ない）。
+    $psParams = @{
+        BeforePath = $BeforeJson
+        AfterPath  = $AfterJson
     }
-    if (-not $python) {
-        Write-Error "[report-snapshot] python3 / python not found (required for compare mode)"
-        return 10
-    }
+    if ($HtmlPath) { $psParams['HtmlReport'] = $HtmlPath }
+    if ($OnlyDiff) { $psParams['DiffOnly']   = $true }
 
-    $pyArgs = @($pyScript, $BeforeJson, $AfterJson)
-    if ($HtmlPath)  { $pyArgs += '--html';      $pyArgs += $HtmlPath }
-    if ($OnlyDiff)  { $pyArgs += '--diff-only' }
-
-    Write-Host "[report-snapshot] Running compare_server_info.py ..."
-    & $python @pyArgs
+    Write-Host "[report-snapshot] Running ServerSnapshot.ps1 compare (PowerShell native) ..."
+    # ネイティブ exe と違い、PowerShell スクリプトは正常終了時に $LASTEXITCODE を
+    # 設定しない。StrictMode 下では未設定変数の参照が例外になるため、呼び出し前に
+    # 0 を入れておき、子スクリプトが exit したときだけ上書きされるようにする。
+    $global:LASTEXITCODE = 0
+    & $psScript compare @psParams
     $ec = $LASTEXITCODE
     if ($null -eq $ec) { $ec = 0 }
     return $ec

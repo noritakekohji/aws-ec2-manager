@@ -152,7 +152,12 @@ snapshots/
 | モード | 必要なもの |
 |---|---|
 | 単一レポート | PowerShell 5.1+ のみ |
-| 差分レポート | PowerShell 5.1+ + `python3`（compare_server_info.py 用） |
+| 差分レポート | PowerShell 5.1+ のみ（`python3` は任意） |
+
+> **差分レポートも python3 不要**: `python3` があれば `compare_server_info.py`
+> （プラットフォーム間で出力が揃う）を使い、無い場合は `ServerSnapshot.ps1` の
+> PowerShell ネイティブ比較エンジンへ自動でフォールバックします。どちらも同じ
+> JSON を入力に取り、同等の HTML 差分レポートを出力します。
 
 ### 終了コード（ReportSnapshot）
 
@@ -160,8 +165,7 @@ snapshots/
 |---|---|
 | 0 | 成功 |
 | 1 | 引数不正 / 入力ファイル未検出 |
-| 2 | JSON が見つからない、または未対応の入力形式 |
-| 10 | 前提コマンド不足（compare モードで python3 なし） |
+| 2 | JSON が見つからない、未対応の入力形式、または比較エンジンが見つからない |
 
 ## テスト
 
