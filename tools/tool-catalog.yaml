@@ -232,6 +232,7 @@ tools:
         type: directory
         argument: ""
         default: ""
+        tooltip: "stop / report / status の対象セッション。start 時に指定すると、そのセッションと同じ場所に新しいセッションを作る(空欄なら実行ごとのフォルダに作成)"
       - key: interval
         label: 間隔秒
         type: number

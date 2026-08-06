@@ -451,6 +451,25 @@ function Get-ConfigFileEnvVars {
     return $map
 }
 
+function Get-PerfMonitorOutputDir {
+    # perf-monitor の -OutputDir を「セッション」欄の入力から解決する。
+    # 既定の {ArtifactsDir} は実行ごとに作られる新しいフォルダなので、start のたびに
+    # セッションが別の場所へ散らばってしまう。セッションが指定されているときは
+    # その場所に揃えて、新しいセッションが既存セッションの隣に並ぶようにする。
+    #   - セッションディレクトリ自体を指定 → その親を出力先にする
+    #   - セッションを束ねるフォルダを指定 → そのフォルダ自体を出力先にする
+    # 空欄・存在しないパスの場合は $null を返し、呼び出し側がカタログ既定を使う。
+    $sessionDir = ([string](Get-ParameterValueByKey -Key 'sessionDir')).Trim()
+    if (-not $sessionDir) { return $null }
+    if (-not (Test-Path -LiteralPath $sessionDir)) { return $null }
+    $isSession = (Test-Path -LiteralPath (Join-Path $sessionDir 'session.conf')) -or
+                 (Test-Path -LiteralPath (Join-Path $sessionDir 'data.jsonl'))
+    if (-not $isSession) { return $sessionDir }
+    $parent = Split-Path -Parent $sessionDir
+    if (-not $parent) { return $null }
+    return $parent
+}
+
 function Get-ToolArguments {
     param(
         $Tool,
@@ -464,6 +483,10 @@ function Get-ToolArguments {
         $value = ''
         if ($type -eq 'hidden') {
             $value = Expand-LauncherValue -Value ([string]$paramDef.Value) -Tool $Tool -RunDir $RunDir
+            if ([string]$Tool.Id -eq 'perf-monitor' -and [string]$paramDef.Key -eq 'outputDir') {
+                $perfOut = Get-PerfMonitorOutputDir
+                if ($perfOut) { $value = ConvertTo-DisplayPath $perfOut }
+            }
             Add-ParameterToArguments -Arguments $argList -ArgumentName $argumentName -Value $value
             continue
         }
@@ -1023,12 +1046,20 @@ function Open-RunReportIfEnabled {
     # カタログ規約でツールは {ArtifactsDir} に HTML を出力するため、ツール側の対応は不要。
     # ExitCode 非 0 でも開く: ops ツールの非 0 は「チェック NG 検出」を含み、
     # そのときこそレポートを確認したいため(レポートが無ければ何もしない)。
-    param([string]$RunDir, [string]$ExitCode)
+    # ExtraDir: 成果物を実行フォルダの外へ書くツール向けの追加探索先
+    # (perf-monitor の report は指定セッション配下に report.html を書く)
+    param([string]$RunDir, [string]$ExitCode, [string]$ExtraDir = '')
     if (-not (Get-ConfigBool -Config $script:LoadedConfig -Name 'OpenReportAfterRun' -DefaultValue $true)) { return }
-    $artifactsDir = Get-ArtifactsDir -RunDir $RunDir
-    if (-not (Test-Path -LiteralPath $artifactsDir)) { return }
-    $html = Get-ChildItem -LiteralPath $artifactsDir -Filter '*.html' -File -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $searchDirs = New-Object System.Collections.Generic.List[string]
+    [void]$searchDirs.Add((Get-ArtifactsDir -RunDir $RunDir))
+    if ($ExtraDir) { [void]$searchDirs.Add($ExtraDir) }
+    $html = $null
+    foreach ($dir in $searchDirs) {
+        if (-not (Test-Path -LiteralPath $dir)) { continue }
+        $found = Get-ChildItem -LiteralPath $dir -Filter '*.html' -File -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($null -ne $found) { $html = $found; break }
+    }
     if ($null -eq $html) { return }
     try {
         Start-Process -FilePath $html.FullName -ErrorAction Stop
@@ -1076,6 +1107,19 @@ function Invoke-ToolExecution {
     $stderrPath = Join-Path $runDir 'stderr.log'
     $exitPath = Join-Path $runDir 'exit-code.txt'
     $commandPath = Join-Path $runDir 'command.txt'
+
+    # perf-monitor の後処理(セッション欄の更新・レポート自動オープン)で使う情報を
+    # 実行時点の入力から確定させておく。実行完了時には画面の入力が変わっている
+    # 可能性があるため、ここで控えた値を使う。
+    $perfCommand = ''
+    $perfSessionDir = ''
+    $perfOutputDir = ''
+    if ([string]$tool.Id -eq 'perf-monitor') {
+        $perfCommand = ([string](Get-ParameterValueByKey -Key 'command')).Trim()
+        $perfSessionDir = ([string](Get-ParameterValueByKey -Key 'sessionDir')).Trim()
+        $resolvedOut = Get-PerfMonitorOutputDir
+        $perfOutputDir = if ($resolvedOut) { $resolvedOut } else { Get-ArtifactsDir -RunDir $runDir }
+    }
 
     try {
         if ($null -ne $ToolArgsFactory) {
@@ -1168,6 +1212,9 @@ function Invoke-ToolExecution {
             StdoutPath = $stdoutPath
             StderrPath = $stderrPath
             ExitPath = $exitPath
+            PerfCommand = $perfCommand
+            PerfSessionDir = $perfSessionDir
+            PerfOutputDir = $perfOutputDir
         }
 
         $script:WaitTimer = New-Object System.Windows.Threading.DispatcherTimer
@@ -1234,7 +1281,13 @@ function Complete-ToolExecution {
                 # 実行エラーの両方があり得るため、「失敗」と断定しない表現にする
                 Set-Status "終了: ExitCode $exitCode / $($ctx.RunDir)(NG 検出またはエラー。ログとレポートを確認してください)"
             }
-            Open-RunReportIfEnabled -RunDir $ctx.RunDir -ExitCode $exitCode
+            # perf-monitor の report は指定セッション配下に report.html を書くため、
+            # 実行フォルダの artifacts には何も残らない。探索先にセッションを加える。
+            $extraReportDir = ''
+            if ($ctx.ToolId -eq 'perf-monitor' -and $ctx.PerfCommand -eq 'report' -and $ctx.PerfSessionDir) {
+                $extraReportDir = $ctx.PerfSessionDir
+            }
+            Open-RunReportIfEnabled -RunDir $ctx.RunDir -ExitCode $exitCode -ExtraDir $extraReportDir
             if ($ctx.ToolId -eq 'collect-snapshot' -and $null -ne $SnapshotZipTextBox) {
                 $artifactsDir = Join-Path $ctx.RunDir 'artifacts'
                 if (Test-Path -LiteralPath $artifactsDir) {
@@ -1246,10 +1299,16 @@ function Complete-ToolExecution {
                     }
                 }
             }
-            if ($ctx.ToolId -eq 'perf-monitor') {
-                $artifactsDir = Join-Path $ctx.RunDir 'artifacts'
-                if (Test-Path -LiteralPath $artifactsDir) {
-                    $sessionSubDir = Get-ChildItem -LiteralPath $artifactsDir -Directory -ErrorAction SilentlyContinue |
+            # start で新しく作られたセッションを「セッション」欄へ反映する。
+            # 出力先はセッション欄の指定有無で変わる(指定あり: そのセッションと同じ場所 /
+            # なし: 実行フォルダの artifacts)ため、実行時に確定した実効出力先を見る。
+            # start 以外で走らせると、report/status のときに無関係な新しいセッションを
+            # 拾って欄を書き換えてしまうため、start のときだけ実行する。
+            if ($ctx.ToolId -eq 'perf-monitor' -and $ctx.PerfCommand -eq 'start') {
+                $sessionRoot = $ctx.PerfOutputDir
+                if ($sessionRoot -and (Test-Path -LiteralPath $sessionRoot)) {
+                    $sessionSubDir = Get-ChildItem -LiteralPath $sessionRoot -Directory -ErrorAction SilentlyContinue |
+                        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'session.conf') } |
                         Sort-Object LastWriteTime -Descending | Select-Object -First 1
                     if ($null -ne $sessionSubDir) {
                         $script:LastPerfSessionDir = $sessionSubDir.FullName
