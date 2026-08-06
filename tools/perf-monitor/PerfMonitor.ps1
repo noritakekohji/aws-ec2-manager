@@ -710,9 +710,11 @@ function New-PerfHtmlReport {
     $st = @{}
     foreach ($k in $stKeys) { $st[$k] = Measure-Stats $k }
 
-    $diskDrives = Get-DiskDriveNames
+    # 検出ドライブが1件だけの場合、代入時に配列がスカラーへ自動アンラップされ
+    # $diskDrives[$i] が「文字列の1文字目」を返してしまう罠があるため @() で保護する
+    $diskDrives = @(Get-DiskDriveNames)
     $diskUsageStats = @{}
-    foreach ($d in $diskDrives) { $diskUsageStats[$d] = Measure-StatsFromVals (Get-DiskDriveVals $d $records) }
+    foreach ($d in $diskDrives) { $diskUsageStats[$d] = Measure-StatsFromVals @(Get-DiskDriveVals $d $records) }
 
     # ── アラート検出 ─────────────────────────────────────────────
     $diskThr = if ($Thresholds.ContainsKey('disk_usage_pct')) { [double]$Thresholds['disk_usage_pct'] } else { 0.0 }
@@ -932,7 +934,7 @@ function New-PerfHtmlReport {
             $d = $diskDrives[$i]
             $diskUsageDatasets += @{
                 Label = $d
-                Data  = (Get-ChartValsForDrive $d)
+                Data  = @(Get-ChartValsForDrive $d)
                 Color = $diskUsagePalette[$i % $diskUsagePalette.Count]
                 Fill  = $false
             }
