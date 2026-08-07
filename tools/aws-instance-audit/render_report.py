@@ -17,6 +17,14 @@ def he(v) -> str:
     return html.escape(str(v))
 
 
+def fmt(v) -> str:
+    """配列は Python のリスト表記ではなくカンマ区切りで見せる。
+    PowerShell ネイティブレンダラー側の出力と揃えるため。"""
+    if isinstance(v, (list, tuple)):
+        return ', '.join(str(x) for x in v)
+    return '' if v is None else str(v)
+
+
 def load(path: str) -> dict:
     with open(path, encoding='utf-8-sig') as f:
         return json.load(f)
@@ -199,7 +207,7 @@ ul{{margin-left:20px}}
   <div class="meta-item">Instance<span>{he(meta.get('instance_id'))}</span></div>
   <div class="meta-item">Region<span>{he(meta.get('region'))}</span></div>
   <div class="meta-item">Collected<span>{he(meta.get('collected_at'))}</span></div>
-  <div class="meta-item">Categories<span>{he(meta.get('categories'))}</span></div>
+  <div class="meta-item">Categories<span>{he(fmt(meta.get('categories')))}</span></div>
 </div>
 {body}
 <div class="footer">aws_instance_audit &bull; {he(gen)}</div>

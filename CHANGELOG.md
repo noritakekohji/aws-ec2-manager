@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.16.0] - 2026-08-06
+
+### Changed
+- **`aws-instance-audit` の HTML レポート(Windows)を python3 不要にした**。
+  `Get-AwsInstanceAudit.ps1` は `-HtmlReport` 指定時に python3 が無いと `exit 10` で
+  止まっていた。`render_report.py` と同等の HTML を出力する PowerShell ネイティブ
+  レンダラーを実装し、python3 があればそちらを優先(プラットフォーム間で出力が
+  揃うため)、無ければ自動フォールバックするようにした。これで
+  **launch.bat の GUI から SSM 経由で実行する 9 ツールすべてが、Windows 対象なら
+  python3 なしで HTML レポートを生成できる**。
+  Windows Store のダミー python のように「見つかるが実行できない」ケース
+  (exit 9009 等)でも PS ネイティブへ倒す。
+  なお Linux 版 `aws_instance_audit.sh` の `--html` は従来どおり python3 が必要。
+- `aws-instance-audit/render_report.py`: メタ情報の `categories` を Python の
+  リスト表記(`['instance', 'iam']`)ではなくカンマ区切り(`instance, iam`)で表示する
+  ようにした。PowerShell ネイティブレンダラーと出力を揃えるため
+
+### Added
+- `tests/AwsInstanceAudit.HtmlRender.Tests.ps1`: PATH から python を隠した状態で
+  HTML レポートを生成し、PS ネイティブレンダラーへフォールバックして全セクション
+  (instance / IAM / SG / network)が出力されること、ポート範囲・全ポート表記、
+  JSON 由来値の HTML エスケープを担保するテストを追加。python3 がある環境では
+  両レンダラーの表示内容が完全一致することも検証する
+
 ## [2.15.0] - 2026-08-06
 
 ### Changed

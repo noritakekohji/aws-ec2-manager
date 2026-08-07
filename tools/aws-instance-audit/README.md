@@ -35,7 +35,7 @@ tools/aws-instance-audit/
 |---|---|
 | 実行場所 | **EC2 インスタンス上**（IMDS `169.254.169.254` に到達できること） |
 | 必須 | AWS CLI v2 |
-| 任意 | `python3`（**HTML レポート `--html` / `-HtmlReport` を出すときだけ** 必要。JSON 出力には不要） |
+| 任意 | `python3`（Windows: 常に任意。Linux: **HTML レポート `--html` を出すときだけ** 必要） |
 | Linux | Bash 4.4+、`curl` |
 | Windows | PowerShell 5.1+ |
 | IAM 権限 | インスタンスプロファイルのロールに読み取り権限が必要：<br>`ec2:DescribeSecurityGroups`, `ec2:DescribeVpcs`, `ec2:DescribeSubnets`, `ec2:DescribeNetworkInterfaces`, `ec2:DescribeRouteTables`, `ec2:DescribeTags`, `iam:GetRole`, `iam:ListAttachedRolePolicies`, `iam:ListRolePolicies`, `sts:GetCallerIdentity` |
@@ -44,8 +44,12 @@ tools/aws-instance-audit/
 
 > **JSON 出力は python3 / jq に依存しません。** Linux 版は `aws --query`（JMESPath）+
 > `--output text` で値を抽出し、Windows 版は `ConvertFrom-Json` / `ConvertTo-Json` で
-> 組み立てます。python3 が制限される環境でも JSON 棚卸しはそのまま使えます
-> （`--html` / `-HtmlReport` を付けたときだけ python3 が必要）。
+> 組み立てます。python3 が制限される環境でも JSON 棚卸しはそのまま使えます。
+
+> **Windows 版は HTML レポートも python3 不要です。** python3 があれば
+> `render_report.py`（プラットフォーム間で出力が揃う）を使い、無ければ
+> PowerShell ネイティブレンダラーへ自動でフォールバックします（出力内容は同一）。
+> Linux 版（`--html`）は現時点で python3 が必要です。
 
 ---
 
@@ -84,7 +88,7 @@ aws_instance_audit.bat -Category iam,sg -HtmlReport audit.html
 過去に保存した監査 JSON を読み込み、aws CLI を呼ばずに HTML レポートを再生成できます。
 
 ```powershell
-# HTML レポートを生成（python3 が必要）
+# HTML レポートを生成（python3 は任意）
 .\Get-AwsInstanceAudit.ps1 -FromJson saved.json -HtmlReport report.html
 
 # JSON を別パスへコピー
@@ -138,7 +142,7 @@ HTML レポート（`--html` / `-HtmlReport`）は同じ内容を表形式で見
 | 1  | 引数不正 |
 | 2  | IMDS 到達不可（EC2 外 or IMDS 無効）|
 | 5  | 出力書き込み / HTML 生成失敗 |
-| 10 | 前提コマンド不在（aws CLI / `--html` 指定時のみ python3）|
+| 10 | 前提コマンド不在（aws CLI / Linux で `--html` 指定時のみ python3）|
 | 20 | AWS 認証・権限エラー |
 
 ---

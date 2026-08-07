@@ -8,8 +8,9 @@
 .DESCRIPTION
     tools/ 配下の自己完結スクリプト（lib 非依存）。EC2 インスタンス上で実行する
     ことを前提とし、IMDSv2 で自分のメタデータを取得し、aws CLI で詳細を引く。
-    JSON 組み立ては PowerShell ネイティブ（ConvertTo-Json）で行うため python3 は
-    不要。HTML レポート（-HtmlReport）を生成するときだけ python3 が必要。
+    JSON 組み立ても HTML レポート生成も PowerShell ネイティブで行うため python3 は
+    不要。python3 がある場合のみ render_report.py を使う（プラットフォーム間で
+    出力が揃うため）。
 
 .PARAMETER Category
     収集カテゴリ。all / instance / iam / sg / network（カンマ区切り可）。既定: all
@@ -18,7 +19,7 @@
     JSON 出力先。既定: aws_audit_<instance-id>_<ts>.json
 
 .PARAMETER HtmlReport
-    HTML レポート出力先（python3 が必要）。
+    HTML レポート出力先（python3 は任意）。
 
 .PARAMETER Region
     リージョン上書き（既定: IMDS から自動取得）。
@@ -29,7 +30,7 @@
 
 .NOTES
     終了コード: 0 成功 / 1 引数不正 / 2 IMDS 到達不可 / 5 出力失敗 /
-                10 aws CLI 不在（HTML 指定時は python3 不在）/ 20 認証・権限エラー
+                10 aws CLI 不在 / 20 認証・権限エラー
 #>
 [CmdletBinding()]
 param(
@@ -68,6 +69,289 @@ function Get-Prop($obj, [string]$name) {
     return $null
 }
 
+# ══════════════════════════════════════════════════════════════
+# HTML レポート生成
+#   python3 があれば render_report.py（プラットフォーム間で出力が揃う）を使い、
+#   無ければ以下の PowerShell ネイティブレンダラーで同等の HTML を生成する。
+#   python3 が使えない業務端末でも HTML レポートを作れるようにするため、
+#   python3 は必須ではない。
+# ══════════════════════════════════════════════════════════════
+
+function ConvertTo-AuditHtmlText($Value) {
+    # JSON 由来の値をそのまま HTML に埋め込むとインジェクションになるためエスケープする
+    if ($null -eq $Value) { return '' }
+    $s = [string]$Value
+    return ($s -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;' -replace '"', '&quot;')
+}
+
+function Format-AuditValue($Value) {
+    if ($null -eq $Value) { return '' }
+    # 配列は python 版と同様にカンマ区切りの 1 行へ畳む（文字列は列挙しない）
+    if ($Value -is [System.Collections.IEnumerable] -and $Value -isnot [string]) {
+        return ((@($Value) | ForEach-Object { [string]$_ }) -join ', ')
+    }
+    return [string]$Value
+}
+
+function New-AuditKvRows($Obj, [string[]]$ExcludeNames = @()) {
+    if ($null -eq $Obj) { return '' }
+    $rows = ''
+    foreach ($p in $Obj.PSObject.Properties) {
+        if ($ExcludeNames -contains $p.Name) { continue }
+        $k = ConvertTo-AuditHtmlText $p.Name
+        $v = ConvertTo-AuditHtmlText (Format-AuditValue $p.Value)
+        $rows += "<tr><td class='k'>$k</td><td>$v</td></tr>"
+    }
+    return $rows
+}
+
+function New-AuditKvTable($Obj, [string[]]$ExcludeNames = @()) {
+    $rows = New-AuditKvRows $Obj $ExcludeNames
+    if (-not $rows) { return '' }
+    return "<table class='kv'><tbody>$rows</tbody></table>"
+}
+
+function New-AuditSection([string]$Title, [string]$Body) {
+    if (-not $Body) { return '' }
+    return @"
+
+<div class="section">
+  <div class="section-title">$(ConvertTo-AuditHtmlText $Title)</div>
+  $Body
+</div>
+"@
+}
+
+function New-AuditInstanceSection($Inst) {
+    if ($null -eq $Inst) { return '' }
+    $body = New-AuditKvTable $Inst @('tags')
+    $tags = Get-Prop $Inst 'tags'
+    if ($null -ne $tags) {
+        $tagRows = New-AuditKvRows $tags
+        if ($tagRows) {
+            $body += "<div class='subtitle'>Tags</div><table class='kv'><tbody>$tagRows</tbody></table>"
+        }
+    }
+    return New-AuditSection 'インスタンス' $body
+}
+
+function New-AuditIamSection($Iam) {
+    if ($null -eq $Iam) { return '' }
+    $roleName = ConvertTo-AuditHtmlText (Get-Prop $Iam 'role_name')
+    $roleArn  = ConvertTo-AuditHtmlText (Get-Prop $Iam 'role_arn')
+    $body = "<table class='kv'><tbody><tr><td class='k'>role_name</td><td>$roleName</td></tr>" +
+            "<tr><td class='k'>role_arn</td><td>$roleArn</td></tr></tbody></table>"
+
+    # Where-Object の結果が 1 件だと配列がスカラーへアンラップされ、StrictMode 下で
+    # .Count 参照が例外になる。外側を @() で包んで必ず配列にする。
+    $attached = @(@(Get-Prop $Iam 'attached_policies') | Where-Object { $null -ne $_ })
+    if ($attached.Count -gt 0) {
+        $rows = ''
+        foreach ($p in $attached) {
+            $n = ConvertTo-AuditHtmlText (Get-Prop $p 'name')
+            $a = ConvertTo-AuditHtmlText (Get-Prop $p 'arn')
+            $rows += "<tr><td>$n</td><td class='mono'>$a</td></tr>"
+        }
+        $body += "<div class='subtitle'>Attached managed policies</div>" +
+                 "<table><thead><tr><th>Name</th><th>ARN</th></tr></thead><tbody>$rows</tbody></table>"
+    }
+
+    $inline = @(@(Get-Prop $Iam 'inline_policies') | Where-Object { $null -ne $_ })
+    if ($inline.Count -gt 0) {
+        $items = ''
+        foreach ($n in $inline) { $items += "<li>$(ConvertTo-AuditHtmlText $n)</li>" }
+        $body += "<div class='subtitle'>Inline policies</div><ul>$items</ul>"
+    }
+
+    if ($attached.Count -eq 0 -and $inline.Count -eq 0) {
+        $body += "<p class='muted'>（アタッチされたポリシーなし、または取得権限なし）</p>"
+    }
+    return New-AuditSection 'IAM ロール / ポリシー' $body
+}
+
+function New-AuditPermRows($Perms) {
+    $rows = ''
+    foreach ($p in @($Perms)) {
+        if ($null -eq $p) { continue }
+        $proto = ConvertTo-AuditHtmlText (Get-Prop $p 'protocol')
+        $frm = Get-Prop $p 'from_port'
+        $to  = Get-Prop $p 'to_port'
+        if ($null -eq $frm -and $null -eq $to) {
+            $port = 'all'
+        } elseif ([string]$frm -eq [string]$to) {
+            $port = [string]$frm
+        } else {
+            $port = "$frm-$to"
+        }
+        $targets = @()
+        foreach ($c in @(Get-Prop $p 'cidrs'))   { if ($null -ne $c) { $targets += [string]$c } }
+        foreach ($s in @(Get-Prop $p 'sg_refs')) { if ($null -ne $s) { $targets += [string]$s } }
+        $tgt = if ($targets.Count -gt 0) { $targets -join ', ' } else { '-' }
+        $rows += "<tr><td>$proto</td><td>$(ConvertTo-AuditHtmlText $port)</td>" +
+                 "<td class='mono'>$(ConvertTo-AuditHtmlText $tgt)</td></tr>"
+    }
+    if (-not $rows) { $rows = "<tr><td colspan='3' class='muted'>(なし)</td></tr>" }
+    return $rows
+}
+
+function New-AuditSgSection($Sgs) {
+    $groups = @(@($Sgs) | Where-Object { $null -ne $_ })
+    if ($groups.Count -eq 0) { return '' }
+    $blocks = ''
+    foreach ($g in $groups) {
+        $head = "<table class='kv'><tbody>"
+        foreach ($k in 'group_id', 'group_name', 'description', 'vpc_id') {
+            $head += "<tr><td class='k'>$k</td><td>$(ConvertTo-AuditHtmlText (Get-Prop $g $k))</td></tr>"
+        }
+        $head += "</tbody></table>"
+        $ingress = "<div class='subtitle'>Ingress</div>" +
+                   "<table><thead><tr><th>Proto</th><th>Port</th><th>Source</th></tr></thead>" +
+                   "<tbody>$(New-AuditPermRows (Get-Prop $g 'ingress'))</tbody></table>"
+        $egress  = "<div class='subtitle'>Egress</div>" +
+                   "<table><thead><tr><th>Proto</th><th>Port</th><th>Destination</th></tr></thead>" +
+                   "<tbody>$(New-AuditPermRows (Get-Prop $g 'egress'))</tbody></table>"
+        $blocks += "<div class='card'>$head$ingress$egress</div>"
+    }
+    return New-AuditSection "Security Groups ($($groups.Count))" $blocks
+}
+
+function New-AuditNetworkSection($Net) {
+    if ($null -eq $Net) { return '' }
+    $body = ''
+    $vpc = Get-Prop $Net 'vpc'
+    if ($null -ne $vpc) {
+        $t = New-AuditKvTable $vpc
+        if ($t) { $body += "<div class='subtitle'>VPC</div>$t" }
+    }
+    $subnet = Get-Prop $Net 'subnet'
+    if ($null -ne $subnet) {
+        $t = New-AuditKvTable $subnet
+        if ($t) { $body += "<div class='subtitle'>Subnet</div>$t" }
+    }
+
+    $enis = @(@(Get-Prop $Net 'enis') | Where-Object { $null -ne $_ })
+    if ($enis.Count -gt 0) {
+        $rows = ''
+        foreach ($e in $enis) {
+            $sgList = ((@(Get-Prop $e 'groups') | Where-Object { $null -ne $_ }) -join ', ')
+            $rows += "<tr><td class='mono'>$(ConvertTo-AuditHtmlText (Get-Prop $e 'eni_id'))</td>" +
+                     "<td>$(ConvertTo-AuditHtmlText (Get-Prop $e 'private_ip'))</td>" +
+                     "<td class='mono'>$(ConvertTo-AuditHtmlText $sgList)</td>" +
+                     "<td>$(ConvertTo-AuditHtmlText (Get-Prop $e 'description'))</td></tr>"
+        }
+        $body += "<div class='subtitle'>ENIs</div>" +
+                 "<table><thead><tr><th>ENI</th><th>Private IP</th><th>SGs</th><th>Desc</th></tr></thead>" +
+                 "<tbody>$rows</tbody></table>"
+    }
+
+    foreach ($rt in @(Get-Prop $Net 'route_tables')) {
+        if ($null -eq $rt) { continue }
+        $rows = ''
+        foreach ($r in @(Get-Prop $rt 'routes')) {
+            if ($null -eq $r) { continue }
+            $rows += "<tr><td class='mono'>$(ConvertTo-AuditHtmlText (Get-Prop $r 'dest'))</td>" +
+                     "<td class='mono'>$(ConvertTo-AuditHtmlText (Get-Prop $r 'target'))</td></tr>"
+        }
+        $body += "<div class='subtitle'>Route table $(ConvertTo-AuditHtmlText (Get-Prop $rt 'route_table_id'))</div>" +
+                 "<table><thead><tr><th>Destination</th><th>Target</th></tr></thead><tbody>$rows</tbody></table>"
+    }
+
+    return New-AuditSection 'ネットワーク (VPC / Subnet / ENI / Route)' $body
+}
+
+function New-AuditHtmlDocument($Data) {
+    $meta = Get-Prop $Data 'meta'
+    $gen  = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+    $body = (New-AuditInstanceSection (Get-Prop $Data 'instance')) +
+            (New-AuditIamSection      (Get-Prop $Data 'iam')) +
+            (New-AuditSgSection       (Get-Prop $Data 'security_groups')) +
+            (New-AuditNetworkSection  (Get-Prop $Data 'network'))
+
+    $mHost  = ConvertTo-AuditHtmlText (Get-Prop $meta 'hostname')
+    $mInst  = ConvertTo-AuditHtmlText (Get-Prop $meta 'instance_id')
+    $mRegn  = ConvertTo-AuditHtmlText (Get-Prop $meta 'region')
+    $mColl  = ConvertTo-AuditHtmlText (Get-Prop $meta 'collected_at')
+    $mCats  = ConvertTo-AuditHtmlText (Format-AuditValue (Get-Prop $meta 'categories'))
+    $genEnc = ConvertTo-AuditHtmlText $gen
+
+    return @"
+<!DOCTYPE html>
+<html lang="ja"><head><meta charset="UTF-8">
+<title>AWS Instance Audit Report</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;background:#f0f2f5;color:#222}
+.header{background:#232f3e;color:#fff;padding:20px 24px}
+.header h1{font-size:20px;font-weight:700}
+.header .sub{font-size:12px;color:#ff9900;margin-top:4px}
+.meta-bar{display:flex;gap:14px;padding:12px 24px;flex-wrap:wrap;background:#fff;border-bottom:1px solid #e2e8f0}
+.meta-item{font-size:12px;color:#475569}.meta-item span{font-weight:600;color:#1e293b;margin-left:4px}
+.section{padding:16px 24px}
+.section-title{font-size:15px;font-weight:700;color:#1e293b;margin-bottom:12px;padding-left:8px;border-left:3px solid #ff9900}
+.subtitle{font-size:12px;font-weight:700;color:#475569;margin:12px 0 6px}
+.card{background:#fff;border-radius:8px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:8px}
+th{background:#f1f5f9;padding:7px 10px;text-align:left;font-weight:600;color:#475569;font-size:12px;border-bottom:2px solid #e2e8f0}
+td{padding:6px 10px;border-bottom:1px solid #f1f5f9;font-size:12px;vertical-align:top;word-break:break-all}
+tr:last-child td{border-bottom:none}
+td.k{font-weight:600;color:#475569;width:200px}
+.mono{font-family:Consolas,monospace;font-size:11px}
+.muted{color:#94a3b8}
+ul{margin-left:20px}
+.footer{text-align:center;padding:16px;font-size:11px;color:#94a3b8}
+</style></head><body>
+<div class="header">
+  <h1>&#9729; AWS Instance Audit Report</h1>
+  <div class="sub">Generated: $genEnc</div>
+</div>
+<div class="meta-bar">
+  <div class="meta-item">Host<span>$mHost</span></div>
+  <div class="meta-item">Instance<span>$mInst</span></div>
+  <div class="meta-item">Region<span>$mRegn</span></div>
+  <div class="meta-item">Collected<span>$mColl</span></div>
+  <div class="meta-item">Categories<span>$mCats</span></div>
+</div>
+$body
+<div class="footer">aws_instance_audit &bull; $genEnc</div>
+</body></html>
+"@
+}
+
+function Invoke-AuditHtmlRender([string]$JsonPath, [string]$HtmlPath) {
+    $htmlDir = Split-Path -Parent $HtmlPath
+    if ($htmlDir -and -not (Test-Path $htmlDir)) {
+        New-Item -ItemType Directory -Path $htmlDir -Force | Out-Null
+    }
+
+    # 1) python3 が使えるなら render_report.py を優先
+    if (Test-Path -LiteralPath $renderPy) {
+        $py = Get-Command python3 -ErrorAction SilentlyContinue
+        if (-not $py) { $py = Get-Command python -ErrorAction SilentlyContinue }
+        if (-not $py) { $py = Get-Command py     -ErrorAction SilentlyContinue }
+        if ($py) {
+            & $py.Source $renderPy $JsonPath $HtmlPath
+            if ($LASTEXITCODE -eq 0) { return $true }
+            # Windows Store のダミー python は見つかっても実行できず exit 9009 を返す
+            Write-Log 'WARN' "render_report.py exited with $LASTEXITCODE; falling back to the PowerShell renderer"
+            $global:LASTEXITCODE = 0
+        } else {
+            Write-Log 'INFO' 'python3 not found - using the PowerShell HTML renderer'
+        }
+    }
+
+    # 2) PowerShell ネイティブレンダラー
+    try {
+        $data = Get-Content -LiteralPath $JsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        $doc  = New-AuditHtmlDocument $data
+        $utf8NoBomHtml = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText($HtmlPath, $doc, $utf8NoBomHtml)
+        return $true
+    } catch {
+        Write-Log 'ERROR' "HTML render failed: $($_.Exception.Message)"
+        return $false
+    }
+}
+
 # ── FromJson: 保存済み JSON からレポートを再生成（収集・aws CLI 不要）──
 if ($FromJson) {
     if (-not (Test-Path -LiteralPath $FromJson)) {
@@ -85,14 +369,9 @@ if ($FromJson) {
         exit 1
     }
 
-    # HTML レポート（python3 + render_report.py、入力は FromJson 自身）
+    # HTML レポート（入力は FromJson 自身。python3 があれば使い、無ければ PS ネイティブ）
     if ($HtmlReport) {
-        $pyCmd = Get-Command python3 -ErrorAction SilentlyContinue
-        if (-not $pyCmd) { $pyCmd = Get-Command python -ErrorAction SilentlyContinue }
-        if (-not $pyCmd) { Write-Log 'ERROR' 'python3 not found (required for HTML report)'; exit 10 }
-        if (-not (Test-Path $renderPy)) { Write-Log 'ERROR' "render_report.py not found: $renderPy"; exit 5 }
-        & $pyCmd.Source $renderPy $FromJson $HtmlReport
-        if ($LASTEXITCODE -ne 0) { Write-Log 'ERROR' 'HTML render failed'; exit 5 }
+        if (-not (Invoke-AuditHtmlRender $FromJson $HtmlReport)) { exit 5 }
         Write-Log 'INFO' "HTML report: $HtmlReport"
     }
 
@@ -119,13 +398,8 @@ if ($FromJson) {
 $awsCmd = Get-Command aws -ErrorAction SilentlyContinue
 if (-not $awsCmd) { Write-Log 'ERROR' 'aws CLI not found in PATH'; exit 10 }
 
-# python3 は HTML レポート生成にのみ使用する。JSON 出力だけなら不要。
-$pyCmd = $null
-if ($HtmlReport) {
-    $pyCmd = Get-Command python3 -ErrorAction SilentlyContinue
-    if (-not $pyCmd) { $pyCmd = Get-Command python -ErrorAction SilentlyContinue }
-    if (-not $pyCmd) { Write-Log 'ERROR' 'python3 not found (required for HTML report)'; exit 10 }
-}
+# HTML レポートは python3 があれば render_report.py、無ければ PowerShell ネイティブ
+# レンダラーで生成するため、python3 の事前チェックは不要。
 
 # ── AWS CLI 挙動の安定化 ───────────────────────────────────────
 # AWS_PAGER='' : v2 のページャー入力待ちで固まるのを防ぐ
@@ -404,15 +678,10 @@ try {
     [System.IO.File]::WriteAllText($OutputPath, $json, $utf8NoBom)
     Write-Log 'INFO' "JSON written: $OutputPath"
 
-    # ── HTML レポート（python3 + render_report.py）─────────────
+    # ── HTML レポート（python3 があれば使い、無ければ PS ネイティブ）─────
     if ($HtmlReport) {
-        if (Test-Path $renderPy) {
-            & $pyCmd.Source $renderPy $OutputPath $HtmlReport
-            if ($LASTEXITCODE -ne 0) { Write-Log 'ERROR' 'HTML render failed'; exit 5 }
-            Write-Log 'INFO' "HTML report: $HtmlReport"
-        } else {
-            Write-Log 'ERROR' "render_report.py not found: $renderPy"; exit 5
-        }
+        if (-not (Invoke-AuditHtmlRender $OutputPath $HtmlReport)) { exit 5 }
+        Write-Log 'INFO' "HTML report: $HtmlReport"
     }
 
     Write-Host ''
