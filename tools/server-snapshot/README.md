@@ -85,7 +85,8 @@ tools/server-snapshot/
 ```powershell
 # Windows
 .\server_snapshot.bat compare -BeforePath before.json -AfterPath after.json
-.\server_snapshot.bat compare -BeforePath before.json -AfterPath after.json -HtmlReport diff.html -DiffOnly
+.\server_snapshot.bat compare -BeforePath before.json -AfterPath after.json -HtmlReport diff.html
+.\server_snapshot.bat compare -BeforePath before.json -AfterPath after.json -HtmlReport full.html -IncludeSame
 ```
 
 ```bash
@@ -285,8 +286,19 @@ hash    = true
 
 before/after 比較では、`target.key` + `rel_path` をキーに突き合わせ、以下いずれかが変化したエントリを `CHANGED` とします:
 
-- `type` / `size` / `mtime` / `mode` / `uid` / `gid` / `owner` / `group` / `acl`
-- `sha256`（双方で `hash_enabled = true` のときのみ）
+- `type` / `mode` / `owner` / `group`
+- ファイル内容は、双方に `sha256` があれば SHA-256、片方でもなければ `size` で比較
+- `mtime`（更新日時）および他カテゴリの日時系フィールドは表示専用で、差分判定には使いません
+
+比較レポートとコンソールは標準で差分行だけを表示します。一致行も確認する場合は、Windows は
+`-IncludeSame`、Python 比較器は `--include-same` を指定してください。旧 `-DiffOnly` は互換のため
+受け付けますが、指定不要です。
+
+### 比較対象の方針
+
+比較では、環境定義を表す値だけを対象にします。収集時点で変わり得るサービス稼働状態、RDP/SSH
+サービス状態、NTP 同期状態・選択中の同期先、再起動保留、タスクの Ready/Running 状態、
+ミドルウェアの稼働状態・接続可否プローブ、各種日時はスナップショットに残しますが差分には出しません。
 
 対象キー自体の追加・削除は `ADDED` / `REMOVED` セクションとして表示され、
 `truncated=true` の対象はレポートに警告付きで表示されます。

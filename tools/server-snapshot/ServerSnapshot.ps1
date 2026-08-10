@@ -28,7 +28,8 @@ param(
     [string]$BeforePath = '',
     [string]$AfterPath = '',
     [string]$HtmlReport = '',
-    [switch]$DiffOnly
+    [switch]$DiffOnly,
+    [switch]$IncludeSame
 )
 
 $ErrorActionPreference = 'Stop'
@@ -1353,9 +1354,16 @@ function Obj-To-Dict([object]$obj) {
 function Compare-Os($b, $a) {
     # Exclude instantaneous/volatile metrics — they fluctuate between any two
     # snapshots and do not indicate a meaningful configuration change.
-    $volatile = @('free_memory_gb','used_memory_gb','swap_free_gb')
+    $volatile = @('free_memory_gb','used_memory_gb','swap_free_gb','last_boot','install_date','reboot_pending')
     $bd = Obj-To-Dict $b; $ad = Obj-To-Dict $a
     foreach ($k in $volatile) { $bd.Remove($k) | Out-Null; $ad.Remove($k) | Out-Null }
+    foreach ($d in @($bd, $ad)) {
+        if ($d.ContainsKey('hardware')) {
+            $hardware = Obj-To-Dict $d['hardware']
+            $hardware.Remove('bios_date') | Out-Null
+            $d['hardware'] = $hardware
+        }
+    }
     Compare-Dict $bd $ad 'os'
 }
 
@@ -1366,15 +1374,8 @@ function Compare-Network($b, $a) {
     $results.Add((Compare-List (& $conv $b 'routes')      (& $conv $a 'routes')      'destination' @('gateway','interface')               'network/routes'))
     $results.Add((Compare-List (& $conv $b 'dns_servers') (& $conv $a 'dns_servers') 'interface'   @('servers')                           'network/dns'))
     $results.Add((Compare-List (& $conv $b 'hosts')       (& $conv $a 'hosts')       'ip'          @('hostnames')                         'network/hosts'))
-    # time_sync: strip _volatile before comparing
-    $bTs = Get-Prop $b 'time_sync'; $aTs = Get-Prop $a 'time_sync'
-    if ($null -ne $bTs -or $null -ne $aTs) {
-        $bd = if ($null -ne $bTs) { Obj-To-Dict $bTs } else { @{} }
-        $ad = if ($null -ne $aTs) { Obj-To-Dict $aTs } else { @{} }
-        $bd.Remove('_volatile') | Out-Null
-        $ad.Remove('_volatile') | Out-Null
-        $results.Add((Compare-Dict $bd $ad 'network/time_sync'))
-    }
+    # time_sync is health/runtime data (selected source and sync state), not
+    # stable configuration. Keep it in snapshots but do not compare it.
     # proxy
     $bP = Get-Prop $b 'proxy'; $aP = Get-Prop $a 'proxy'
     if ($null -ne $bP -or $null -ne $aP) {
@@ -1388,7 +1389,7 @@ function Compare-Network($b, $a) {
 function Compare-Services($b, $a) {
     $bl = @(As-Array $b | ForEach-Object { Obj-To-Dict $_ })
     $al = @(As-Array $a | ForEach-Object { Obj-To-Dict $_ })
-    Compare-List $bl $al 'name' @('status','start_type','service_type','start_name','path_name','description') 'services'
+    Compare-List $bl $al 'name' @('start_type','service_type','start_name','path_name') 'services'
 }
 
 function Compare-RemoteAccess($b, $a) {
@@ -1402,7 +1403,7 @@ function Compare-RemoteAccess($b, $a) {
     }
     $bs = @(As-Array (Get-Prop $b 'services') | ForEach-Object { Obj-To-Dict $_ })
     $as = @(As-Array (Get-Prop $a 'services') | ForEach-Object { Obj-To-Dict $_ })
-    $results.Add((Compare-List $bs $as 'name' @('status','start_type','start_name','path_name') 'remote_access/services'))
+    $results.Add((Compare-List $bs $as 'name' @('start_type','start_name','path_name') 'remote_access/services'))
     $bf = @(As-Array (Get-Prop $b 'firewall_rules') | ForEach-Object { Obj-To-Dict $_ })
     $af = @(As-Array (Get-Prop $a 'firewall_rules') | ForEach-Object { Obj-To-Dict $_ })
     $results.Add((Compare-List $bf $af 'name' @('direction','action','profile') 'remote_access/firewall_rules'))
@@ -1464,7 +1465,9 @@ function Compare-Security($b, $a) {
 function Compare-Patches($b, $a) {
     $bl = @(As-Array $b | ForEach-Object { Obj-To-Dict $_ })
     $al = @(As-Array $a | ForEach-Object { Obj-To-Dict $_ })
-    Compare-List $bl $al 'id' @('description','installed_on') 'patches'
+    # KB identity is the configuration-relevant value. Descriptions vary by
+    # locale and Windows metadata updates, so additions/removals are enough.
+    Compare-List $bl $al 'id' @() 'patches'
 }
 
 function Compare-Tuning($b, $a) {
@@ -1476,7 +1479,7 @@ function Compare-Scheduled($b, $a) {
     $results = [System.Collections.Generic.List[CategoryResult]]::new()
     $bt = @(As-Array (Get-Prop $b 'scheduled_tasks') | ForEach-Object { Obj-To-Dict $_ })
     $at = @(As-Array (Get-Prop $a 'scheduled_tasks') | ForEach-Object { Obj-To-Dict $_ })
-    $results.Add((Compare-List $bt $at 'name' @('state','path') 'scheduled/tasks'))
+    $results.Add((Compare-List $bt $at 'name' @('path') 'scheduled/tasks'))
     $bs = @(As-Array (Get-Prop $b 'startup') | ForEach-Object { Obj-To-Dict $_ })
     $as = @(As-Array (Get-Prop $a 'startup') | ForEach-Object { Obj-To-Dict $_ })
     $results.Add((Compare-List $bs $as 'name' @('command','scope') 'scheduled/startup'))
@@ -1488,10 +1491,10 @@ function Compare-Middleware($b, $a) {
     $bd = Obj-To-Dict $b; $ad = Obj-To-Dict $a
     # product -> (key builder, scalar value fields, config field name)
     $specs = @(
-        @{ prod='hana';      key={ param($x) "$($x['sid'])" };                          vals=@('version','instance_no','state'); cfg='config_files' },
-        @{ prod='sap';       key={ param($x) "$($x['sid'])/$($x['instance'])" };        vals=@('kernel_version','type','state'); cfg='profiles' },
-        @{ prod='sqlserver'; key={ param($x) "$($x['instance_name'])" };                vals=@('version','edition','state','port','sp_configure_available'); cfg='config_files' },
-        @{ prod='tomcat';    key={ param($x) "$($x['name'])@$($x['catalina_base'])" };  vals=@('version','java_version','state'); cfg='config_files' }
+        @{ prod='hana';      key={ param($x) "$($x['sid'])" };                          vals=@('version','instance_no'); cfg='config_files' },
+        @{ prod='sap';       key={ param($x) "$($x['sid'])/$($x['instance'])" };        vals=@('kernel_version','type'); cfg='profiles' },
+        @{ prod='sqlserver'; key={ param($x) "$($x['instance_name'])" };                vals=@('version','edition','port'); cfg='config_files' },
+        @{ prod='tomcat';    key={ param($x) "$($x['name'])@$($x['catalina_base'])" };  vals=@('version','java_version'); cfg='config_files' }
     )
     foreach ($s in $specs) {
         $bl = @(As-Array $bd[$s.prod] | ForEach-Object { Obj-To-Dict $_ })
@@ -1542,50 +1545,32 @@ function Compare-Filelist($b, $a) {
         $bt = $bByKey[$key]
         $at = $aByKey[$key]
 
-        $bHash = if ($bt) { [bool]$bt['hash_enabled'] } else { $false }
-        $aHash = if ($at) { [bool]$at['hash_enabled'] } else { $false }
-        $bothHash = $bHash -and $aHash
-
-        # Field set — sha256 only when both sides opted in (per spec §5)
-        $fields = @('type','size','mtime','mode','owner','group')
-        if ($bothHash) { $fields += 'sha256' }
-
+        # File contents use sha256 when both entries have a hash.  If either
+        # side lacks one, fall back to size.  Timestamps are display-only.
+        $fields = @('type','content_check','mode','owner','group')
         $bEntries = if ($bt) { $bt['entries'] } else { @() }
         $aEntries = if ($at) { $at['entries'] } else { @() }
-
-        # Project entries to comparable rows keyed by rel_path.
-        # Use Get-Prop rather than Obj-To-Dict on individual entries — Obj-To-Dict
-        # turns null values into empty hashtables, which string-coerce to
-        # "System.Collections.Hashtable" and mask the true (null) value in diffs.
-        $bRows = @()
-        foreach ($e in (As-Array $bEntries)) {
-            $h = @{ name = "$(Get-Prop $e 'rel_path')" }
-            foreach ($f in $fields) {
-                $v = Get-Prop $e $f
-                # Obj-To-Dict (applied earlier at target level) turns null values into
-                # empty hashtables; treat those as null so the compared string is ''.
-                if ($null -eq $v -or ($v -is [System.Collections.IDictionary] -and $v.Count -eq 0)) {
-                    $h[$f] = ''
-                } else {
-                    $h[$f] = "$v"
-                }
+        $bByPath = @{}
+        foreach ($e in (As-Array $bEntries)) { $bByPath["$(Get-Prop $e 'rel_path')"] = $e }
+        $aByPath = @{}
+        foreach ($e in (As-Array $aEntries)) { $aByPath["$(Get-Prop $e 'rel_path')"] = $e }
+        $bRows = @(); $aRows = @()
+        foreach ($path in (@($bByPath.Keys) + @($aByPath.Keys) | Sort-Object -Unique)) {
+            $be = $bByPath[$path]; $ae = $aByPath[$path]
+            $bShaRaw = if ($null -ne $be) { Get-Prop $be 'sha256' } else { $null }
+            $aShaRaw = if ($null -ne $ae) { Get-Prop $ae 'sha256' } else { $null }
+            $bSha = if ($null -eq $bShaRaw -or ($bShaRaw -is [System.Collections.IDictionary] -and $bShaRaw.Count -eq 0)) { '' } else { "$bShaRaw" }
+            $aSha = if ($null -eq $aShaRaw -or ($aShaRaw -is [System.Collections.IDictionary] -and $aShaRaw.Count -eq 0)) { '' } else { "$aShaRaw" }
+            $useHash = $bSha -and $aSha
+            foreach ($side in @(@{ entry = $be; is_before = $true; hash = $bSha }, @{ entry = $ae; is_before = $false; hash = $aSha })) {
+                if ($null -eq $side.entry) { continue }
+                $row = @{ name = $path }
+                foreach ($f in @('type','mode','owner','group')) { $row[$f] = "$(Get-Prop $side.entry $f)" }
+                $row['content_check'] = if ((Get-Prop $side.entry 'type') -eq 'file') {
+                    if ($useHash) { "sha256=$($side.hash)" } else { "size=$(Get-Prop $side.entry 'size')" }
+                } else { '' }
+                if ($side.is_before) { $bRows += ,$row } else { $aRows += ,$row }
             }
-            $bRows += ,$h
-        }
-        $aRows = @()
-        foreach ($e in (As-Array $aEntries)) {
-            $h = @{ name = "$(Get-Prop $e 'rel_path')" }
-            foreach ($f in $fields) {
-                $v = Get-Prop $e $f
-                # Obj-To-Dict (applied earlier at target level) turns null values into
-                # empty hashtables; treat those as null so the compared string is ''.
-                if ($null -eq $v -or ($v -is [System.Collections.IDictionary] -and $v.Count -eq 0)) {
-                    $h[$f] = ''
-                } else {
-                    $h[$f] = "$v"
-                }
-            }
-            $aRows += ,$h
         }
 
         $results.Add((Compare-List $bRows $aRows 'name' $fields $catName))
@@ -1622,7 +1607,7 @@ function Write-CategoryConsole([CategoryResult]$r, [bool]$diffOnly) {
 # ============================================================
 
 function New-HtmlReport {
-    param([hashtable]$bMeta, [hashtable]$aMeta, [System.Collections.Generic.List[CategoryResult]]$AllResults)
+    param([hashtable]$bMeta, [hashtable]$aMeta, [System.Collections.Generic.List[CategoryResult]]$AllResults, [switch]$IncludeSame)
 
     $totalSame    = ($AllResults | Measure-Object SameCount    -Sum).Sum
     $totalChanged = ($AllResults | Measure-Object ChangedCount -Sum).Sum
@@ -1635,13 +1620,13 @@ function New-HtmlReport {
     $bT = if ($bMeta) { $bMeta['collected_at'] } else { '' }
     $aT = if ($aMeta) { $aMeta['collected_at'] } else { '' }
 
-    $navLinks = ($AllResults | ForEach-Object { "<a href='#$($_.Name.Replace('/','_'))'>$($_.Name)</a>" }) -join ' | '
-
     $catHtml = foreach ($r in $AllResults) {
         $anchorId  = $r.Name.Replace('/','_')
         $diffCount = $r.ChangedCount + $r.RemovedCount + $r.AddedCount
         $badge     = if ($diffCount -gt 0) { "<span class='badge badge-diff'>$diffCount diff</span>" } else { "<span class='badge badge-ok'>OK</span>" }
-        $rows = foreach ($item in $r.Items) {
+        $items = if ($IncludeSame) { @($r.Items) } else { @($r.Items | Where-Object { $_.State -ne 'same' }) }
+        if ($items.Count -eq 0) { continue }
+        $rows = foreach ($item in $items) {
             $bvE = [System.Net.WebUtility]::HtmlEncode($item.BeforeValue)
             $avE = [System.Net.WebUtility]::HtmlEncode($item.AfterValue)
             $kE  = [System.Net.WebUtility]::HtmlEncode($item.Key)
@@ -1656,6 +1641,9 @@ function New-HtmlReport {
 </section>
 "@
     }
+    $navLinks = ($AllResults | Where-Object {
+        $IncludeSame -or ($_.ChangedCount + $_.RemovedCount + $_.AddedCount) -gt 0
+    } | ForEach-Object { "<a href='#$($_.Name.Replace('/','_'))'>$($_.Name)</a>" }) -join ' | '
 
     $gen = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
     return @"
@@ -1718,11 +1706,11 @@ td.key{width:28%;font-weight:500}td.val-before,td.val-after{width:36%}
 </div>
 <div class="filter-bar">
   <label>Show:</label>
-  <button class="active" onclick="filterRows('all',this)">All</button>
+  <button class="active" onclick="filterRows('diff',this)">Differences only</button>
+  <button onclick="filterRows('all',this)">All</button>
   <button onclick="filterRows('changed',this)">Changed</button>
   <button onclick="filterRows('removed',this)">Removed</button>
   <button onclick="filterRows('added',this)">Added</button>
-  <button onclick="filterRows('diff',this)">Differences only</button>
 </div>
 $($catHtml -join "`n")
 <div class="footer">ServerSnapshot.ps1 &bull; $gen</div>
@@ -1770,7 +1758,7 @@ function Invoke-Compare {
         if ($py) {
             $pyArgs = @($pythonComparator, $Bf, $Af)
             if ($Html)     { $pyArgs += @('--html', $Html) }
-            if ($OnlyDiff) { $pyArgs += '--diff-only' }
+            if ($IncludeSame) { $pyArgs += '--include-same' }
             $pyArgs += '--no-color'
             & $py.Source @pyArgs
             if ($LASTEXITCODE -eq 0) { return }
@@ -1827,7 +1815,10 @@ function Invoke-Compare {
     Write-Host "║  After  : $($aMeta['hostname'])  ($($aMeta['collected_at']))" -ForegroundColor Cyan
     Write-Host '╚══════════════════════════════════════════╝' -ForegroundColor Cyan
 
-    foreach ($r in $allResults) { Write-CategoryConsole $r $OnlyDiff.IsPresent }
+    foreach ($r in $allResults) {
+        $diffCount = $r.ChangedCount + $r.RemovedCount + $r.AddedCount
+        if ($IncludeSame -or $diffCount -gt 0) { Write-CategoryConsole $r (-not $IncludeSame.IsPresent) }
+    }
 
     $totalDiff = ($allResults | ForEach-Object { $_.ChangedCount + $_.RemovedCount + $_.AddedCount } | Measure-Object -Sum).Sum
     Write-Host "`n=== SUMMARY ===" -ForegroundColor Cyan
@@ -1845,7 +1836,7 @@ function Invoke-Compare {
         if ($htmlDir -and -not (Test-Path $htmlDir)) {
             New-Item -ItemType Directory -Path $htmlDir -Force | Out-Null
         }
-        $htmlContent = New-HtmlReport -bMeta $bMeta -aMeta $aMeta -AllResults $allResults
+        $htmlContent = New-HtmlReport -bMeta $bMeta -aMeta $aMeta -AllResults $allResults -IncludeSame:$IncludeSame
         [System.IO.File]::WriteAllText($Html, $htmlContent, [System.Text.Encoding]::UTF8)
         Write-Host "  HTML report: $Html" -ForegroundColor Green
     }
@@ -1924,12 +1915,12 @@ try {
                 Write-Host "  Using before snapshot: $BeforePath" -ForegroundColor DarkGray
             }
 
-            Invoke-Compare -Bf $BeforePath -Af $outFile -Html $HtmlReport -Categories $Category -OnlyDiff:$DiffOnly
+            Invoke-Compare -Bf $BeforePath -Af $outFile -Html $HtmlReport -Categories $Category -OnlyDiff:$DiffOnly -IncludeSame:$IncludeSame
         }
         'compare' {
             if (-not $BeforePath) { [Console]::Error.WriteLine('[ERROR] -BeforePath is required for compare'); exit 1 }
             if (-not $AfterPath)  { [Console]::Error.WriteLine('[ERROR] -AfterPath is required for compare');  exit 1 }
-            Invoke-Compare -Bf $BeforePath -Af $AfterPath -Html $HtmlReport -Categories $Category -OnlyDiff:$DiffOnly
+            Invoke-Compare -Bf $BeforePath -Af $AfterPath -Html $HtmlReport -Categories $Category -OnlyDiff:$DiffOnly -IncludeSame:$IncludeSame
         }
         'list' {
             Invoke-List

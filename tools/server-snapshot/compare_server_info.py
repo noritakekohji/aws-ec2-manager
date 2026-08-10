@@ -11,7 +11,7 @@ compare_server_info.py
 使い方:
     python3 compare_server_info.py <before.json> <after.json>
                                    [--html <out.html>] [--hostname <name>]
-                                   [--diff-only] [--no-color]
+                                   [--include-same] [--no-color]
 """
 from __future__ import annotations
 import argparse, json, os, sys
@@ -27,7 +27,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument('after',  help='Path to the "after"  JSON snapshot')
     p.add_argument('--html',     default='', help='Output HTML report path')
     p.add_argument('--hostname', default='', help='Override host name in report')
-    p.add_argument('--diff-only', action='store_true', help='Console: skip unchanged rows')
+    p.add_argument('--diff-only', action='store_true', help='Deprecated: unchanged rows are hidden by default')
+    p.add_argument('--include-same', action='store_true', help='Include unchanged rows in console and HTML output')
     p.add_argument('--no-color',  action='store_true', help='Console: disable ANSI colors')
     return p.parse_args()
 
@@ -81,25 +82,35 @@ def compare_list(bl, al, key_field, val_fields):
 #   volatile （計測時刻で揺れる値）は除外する。ServerSnapshot.ps1 の
 #   PS ネイティブ比較器（Compare-*）と同一フィールド・同一除外で動くこと。
 #   除外ルール:
-#     - os:           free_memory_gb / used_memory_gb / swap_free_gb
+#     - os:           free_memory_gb / used_memory_gb / swap_free_gb / last_boot /
+#                     install_date / reboot_pending / hardware.bios_date
 #     - filesystem:   used_gb / free_gb / used_pct（drives。mount_options は
 #                     PS が比較しないため対象外）
 #     - network:      time_sync の _volatile キー（last_sync 等）
 # ────────────────────────────────────────────────────────────────
-_VOLATILE_OS = {'free_memory_gb', 'used_memory_gb', 'swap_free_gb'}
+_VOLATILE_OS = {
+    'free_memory_gb', 'used_memory_gb', 'swap_free_gb', 'last_boot',
+    'install_date', 'reboot_pending',
+}
+
+def _without_datetime_fields(os_info):
+    out = {k: v for k, v in (os_info or {}).items() if k not in _VOLATILE_OS}
+    hardware = out.get('hardware')
+    if isinstance(hardware, dict):
+        out['hardware'] = {k: v for k, v in hardware.items() if k != 'bios_date'}
+    return out
 
 def cat_os(b, a):
-    bd = {k: v for k, v in (b.get('os') or {}).items() if k not in _VOLATILE_OS}
-    ad = {k: v for k, v in (a.get('os') or {}).items() if k not in _VOLATILE_OS}
+    bd = _without_datetime_fields(b.get('os'))
+    ad = _without_datetime_fields(a.get('os'))
     return compare_dicts(bd, ad)
 
 def cat_services(b, a):
     return compare_list(b.get('services', []), a.get('services', []),
-                        'name', ['status', 'start_type', 'service_type',
-                                 'start_name', 'path_name', 'description',
+                        'name', ['start_type', 'service_type',
+                                 'start_name', 'path_name',
                                  'unit_file_state', 'fragment_path', 'exec_start',
-                                 'user', 'group', 'restart', 'load_state',
-                                 'active_state', 'sub_state'])
+                                 'user', 'group', 'restart', 'load_state'])
 
 def cat_remote_access(b, a):
     out = []
@@ -109,7 +120,7 @@ def cat_remote_access(b, a):
         for state, item_key, bv, av in compare_dicts(br.get(key) or {}, ar.get(key) or {}):
             out.append((state, f'{key}.{item_key}', bv, av))
     out += compare_list(br.get('services', []), ar.get('services', []),
-                        'name', ['status', 'start_type', 'start_name', 'path_name'])
+                        'name', ['start_type', 'start_name', 'path_name'])
     out += compare_list(br.get('firewall_rules', []), ar.get('firewall_rules', []),
                         'name', ['direction', 'action', 'profile'])
     return out
@@ -159,13 +170,8 @@ def cat_network(b, a):
                         'interface', ['servers'])
     out += compare_list(bn.get('hosts', []),       an.get('hosts', []),
                         'ip', ['hostnames'])
-    # time_sync: scalar dict, but drop _volatile (last-sync timestamps etc.)
-    # before comparing — same exclusion as PS Compare-Network.
-    bts = bn.get('time_sync'); ats = an.get('time_sync')
-    if bts is not None or ats is not None:
-        btd = {k: v for k, v in (bts or {}).items() if k != '_volatile'}
-        atd = {k: v for k, v in (ats or {}).items() if k != '_volatile'}
-        out += compare_dicts(btd, atd)
+    # time_sync contains health/runtime data (selected source and sync state).
+    # Keep it in snapshots but do not treat it as configuration.
     # proxy: scalar dict, compared as-is when present in either snapshot.
     bp = bn.get('proxy'); ap = an.get('proxy')
     if bp is not None or ap is not None:
@@ -184,7 +190,7 @@ def cat_security(b, a):
 
 def cat_patches(b, a):
     return compare_list(b.get('patches', []), a.get('patches', []),
-                        'id', ['description', 'installed_on'])
+                        'id', [])
 
 def cat_tuning(b, a):
     return compare_dicts(b.get('tuning') or {}, a.get('tuning') or {})
@@ -192,7 +198,7 @@ def cat_tuning(b, a):
 def cat_scheduled(b, a):
     bs = (b.get('scheduled') or {}); as_ = (a.get('scheduled') or {})
     out = compare_list(bs.get('scheduled_tasks', []), as_.get('scheduled_tasks', []),
-                       'name', ['state', 'path'])
+                       'name', ['path'])
     out += compare_list(bs.get('startup', []),        as_.get('startup', []),
                         'name', ['command', 'scope'])
     return out
@@ -205,13 +211,13 @@ def cat_scheduled(b, a):
 _MW_SPECS = [
     # (product, key-builder, scalar value fields, config-files field name)
     ('hana',      lambda x: f"{x.get('sid','')}",
-                  ['version', 'instance_no', 'state'], 'config_files'),
+                  ['version', 'instance_no'], 'config_files'),
     ('sap',       lambda x: f"{x.get('sid','')}/{x.get('instance','')}",
-                  ['kernel_version', 'type', 'state'], 'profiles'),
+                  ['kernel_version', 'type'], 'profiles'),
     ('sqlserver', lambda x: f"{x.get('instance_name','')}",
-                  ['version', 'edition', 'state', 'port', 'sp_configure_available'], 'config_files'),
+                  ['version', 'edition', 'port'], 'config_files'),
     ('tomcat',    lambda x: f"{x.get('name','')}@{x.get('catalina_base','')}",
-                  ['version', 'java_version', 'state'], 'config_files'),
+                  ['version', 'java_version'], 'config_files'),
 ]
 
 def cat_middleware(b, a):
@@ -247,8 +253,8 @@ def cat_filelist(b, a):
     """Compare filelist categories. Returns [(state, key, before, after)].
 
     key format: '<target_key>::<rel_path>' (mirrors cat_middleware's file-key
-    convention). sha256 is compared only when hash_enabled is true on BOTH
-    sides.
+    convention). For files, sha256 is used when both entries have one;
+    otherwise the comparison falls back to size.  mtime is display-only.
     """
     bl = b.get('filelist') or []
     al = a.get('filelist') or []
@@ -262,25 +268,31 @@ def cat_filelist(b, a):
         at = a_by.get(key)
         b_entries = (bt or {}).get('entries') or []
         a_entries = (at or {}).get('entries') or []
-        b_hash = bool((bt or {}).get('hash_enabled'))
-        a_hash = bool((at or {}).get('hash_enabled'))
-        fields = ['type','size','mtime','mode','owner','group']
-        if b_hash and a_hash:
-            fields.append('sha256')
-
-        def _rows(entries, target_key):
-            rows = []
-            for e in entries:
-                if not isinstance(e, dict):
+        fields = ['type', 'content_check', 'mode', 'owner', 'group']
+        b_by_path = {e.get('rel_path'): e for e in b_entries
+                     if isinstance(e, dict) and e.get('rel_path') is not None}
+        a_by_path = {e.get('rel_path'): e for e in a_entries
+                     if isinstance(e, dict) and e.get('rel_path') is not None}
+        b_rows, a_rows = [], []
+        for rel_path in sorted(set(b_by_path) | set(a_by_path)):
+            be, ae = b_by_path.get(rel_path), a_by_path.get(rel_path)
+            b_sha = str((be or {}).get('sha256') or '')
+            a_sha = str((ae or {}).get('sha256') or '')
+            use_hash = bool(b_sha and a_sha)
+            for entry, rows, sha in ((be, b_rows, b_sha), (ae, a_rows, a_sha)):
+                if entry is None:
                     continue
-                row = {'name': f"{target_key}::{e.get('rel_path')}"}
-                for f in fields:
-                    row[f] = e.get(f)
-                rows.append(row)
-            return rows
-
-        b_rows = _rows(b_entries, key)
-        a_rows = _rows(a_entries, key)
+                content_check = ''
+                if entry.get('type') == 'file':
+                    content_check = f"sha256={sha}" if use_hash else f"size={entry.get('size')}"
+                rows.append({
+                    'name': f"{key}::{rel_path}",
+                    'type': entry.get('type'),
+                    'content_check': content_check,
+                    'mode': entry.get('mode'),
+                    'owner': entry.get('owner'),
+                    'group': entry.get('group'),
+                })
         out += compare_list(b_rows, a_rows, 'name', fields)
     return out
 
@@ -313,7 +325,7 @@ def _colors(enable: bool) -> dict:
         'GRAY':  '\033[90m',
     }
 
-def print_console(cat_results, b_meta, a_meta, bf, af, diff_only, color_enable):
+def print_console(cat_results, b_meta, a_meta, bf, af, include_same, color_enable):
     C = _colors(color_enable)
     total_added = total_removed = total_changed = 0
     for _, changes in cat_results:
@@ -331,10 +343,12 @@ def print_console(cat_results, b_meta, a_meta, bf, af, diff_only, color_enable):
 
     for cat_name, changes in cat_results:
         diff = [c for c in changes if c[0] in ('added','removed','changed')]
+        if not include_same and not diff:
+            continue
         color = C['YELLOW'] if diff else C['GREEN']
         print(f"\n{color}=== {cat_name.upper()}  [{len(diff)} change(s)] ==={C['RESET']}")
         for state, key, bv, av in changes:
-            if state == 'same' and diff_only:
+            if state == 'same' and not include_same:
                 continue
             key_w = key[:42].ljust(42)
             if state == 'added':
@@ -361,25 +375,30 @@ def print_console(cat_results, b_meta, a_meta, bf, af, diff_only, color_enable):
 # ────────────────────────────────────────────────────────────────
 # 出力（HTML）
 # ────────────────────────────────────────────────────────────────
-def write_html(path, cat_results, totals, b_meta, a_meta, bf, af, generated):
+def write_html(path, cat_results, totals, b_meta, a_meta, bf, af, generated, include_same):
     def he(s):
         return (str(s).replace('&','&amp;').replace('<','&lt;')
                        .replace('>','&gt;').replace('"','&quot;'))
     total_diff, total_added, total_removed, total_changed = totals
     rows_html = []
+    rendered_categories = []
     for cat_name, changes in cat_results:
         diff = [c for c in changes if c[0] in ('added','removed','changed')]
         diff_count = len(diff)
         badge = (f"<span class='badge bdiff'>{diff_count} diff</span>" if diff_count
                  else "<span class='badge bok'>OK</span>")
+        visible_changes = changes if include_same else [c for c in changes if c[0] != 'same']
+        if not visible_changes:
+            continue
         rows = []
-        for state, key, bv, av in changes:
+        for state, key, bv, av in visible_changes:
             cls = {'added':'r-added','removed':'r-removed',
                    'changed':'r-changed','same':'r-same'}.get(state, '')
             rows.append(f"<tr class='{cls}'><td class='key'>{he(key)}</td>"
                         f"<td class='bv'>{he(bv)}</td>"
                         f"<td class='av'>{he(av)}</td></tr>")
         total_in_cat = len(changes); same_count = total_in_cat - diff_count
+        rendered_categories.append(cat_name)
         rows_html.append(f"""
 <section id="{cat_name}" class="cat">
   <h2>{he(cat_name)} {badge}
@@ -388,7 +407,7 @@ def write_html(path, cat_results, totals, b_meta, a_meta, bf, af, generated):
   <table><thead><tr><th>Key / Name</th><th>Before</th><th>After</th></tr></thead>
   <tbody>{''.join(rows)}</tbody></table>
 </section>""")
-    nav = ' | '.join(f"<a href='#{cn}'>{cn}</a>" for cn, _ in cat_results)
+    nav = ' | '.join(f"<a href='#{cn}'>{cn}</a>" for cn in rendered_categories)
     html = f"""<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
 <title>Change Detection Report</title>
 <style>
@@ -450,8 +469,8 @@ td.key{{width:30%;font-weight:500}}td.bv,td.av{{width:35%}}
 </div>
 <div class="filter-bar">
   <label>Show:</label>
-  <button class="active" onclick="filterAll(this)">All</button>
-  <button onclick="filterDiff(this)">Changes only</button>
+  <button class="active" onclick="filterDiff(this)">Changes only</button>
+  <button onclick="filterAll(this)">All</button>
   <button onclick="filterState('r-added',this)">Added</button>
   <button onclick="filterState('r-removed',this)">Removed</button>
   <button onclick="filterState('r-changed',this)">Changed</button>
@@ -506,11 +525,12 @@ def main() -> int:
 
     totals = print_console(cat_results, b_meta, a_meta,
                            args.before, args.after,
-                           args.diff_only, not args.no_color)
+                           args.include_same, not args.no_color)
     if args.html:
         write_html(args.html, cat_results, totals, b_meta, a_meta,
                    args.before, args.after,
-                   generated=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                   generated=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                   include_same=args.include_same)
     return 0
 
 if __name__ == '__main__':
