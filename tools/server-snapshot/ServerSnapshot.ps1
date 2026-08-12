@@ -1624,7 +1624,7 @@ function New-HtmlReport {
         $anchorId  = $r.Name.Replace('/','_')
         $diffCount = $r.ChangedCount + $r.RemovedCount + $r.AddedCount
         $badge     = if ($diffCount -gt 0) { "<span class='badge badge-diff'>$diffCount diff</span>" } else { "<span class='badge badge-ok'>OK</span>" }
-        $items = if ($IncludeSame) { @($r.Items) } else { @($r.Items | Where-Object { $_.State -ne 'same' }) }
+        $items = @(if ($IncludeSame) { @($r.Items) } else { @($r.Items | Where-Object { $_.State -ne 'same' }) })
         if ($items.Count -eq 0) { continue }
         $rows = foreach ($item in $items) {
             $bvE = [System.Net.WebUtility]::HtmlEncode($item.BeforeValue)

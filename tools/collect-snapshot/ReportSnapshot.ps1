@@ -22,8 +22,8 @@
 .PARAMETER OutputDir
     レポート出力先ディレクトリ。既定は入力ファイルと同じディレクトリ。
 
-.PARAMETER DiffOnly
-    Compare モードで差分のみ表示する。
+.PARAMETER IncludeSame
+    Compare モードで一致行も表示する。既定は差分のみ。
 
 .PARAMETER KeepExtracted
     解凍したファイルを削除せず残す。
@@ -32,7 +32,7 @@
     .\ReportSnapshot.ps1 -ZipPath .\snapshots\host_label_20260617.zip
     .\ReportSnapshot.ps1 -ZipPath before.zip -CompareWith after.zip
     .\ReportSnapshot.ps1 -ZipPath .\snapshots\server-snapshot.json
-    .\ReportSnapshot.ps1 -ZipPath before.json -CompareWith after.json -DiffOnly
+    .\ReportSnapshot.ps1 -ZipPath before.json -CompareWith after.json -IncludeSame
 
 .NOTES
     Exit codes:
@@ -52,6 +52,7 @@ param(
     [string]$CompareWith = '',
     [string]$OutputDir   = '',
     [switch]$DiffOnly,
+    [switch]$IncludeSame,
     [switch]$KeepExtracted
 )
 
@@ -652,7 +653,7 @@ function Invoke-CompareReport {
         [string]$BeforeJson,
         [string]$AfterJson,
         [string]$HtmlPath,
-        [bool]$OnlyDiff
+        [bool]$IncludeSame
     )
 
     $pyScript = Join-Path $ToolsDir 'server-snapshot\compare_server_info.py'
@@ -668,7 +669,7 @@ function Invoke-CompareReport {
         if ($python) {
             $pyArgs = @($pyScript, $BeforeJson, $AfterJson)
             if ($HtmlPath)  { $pyArgs += '--html';      $pyArgs += $HtmlPath }
-            if ($OnlyDiff)  { $pyArgs += '--diff-only' }
+            if ($IncludeSame)  { $pyArgs += '--include-same' }
 
             Write-Host "[report-snapshot] Running compare_server_info.py ..."
             & $python @pyArgs
@@ -700,7 +701,7 @@ function Invoke-CompareReport {
         AfterPath  = $AfterJson
     }
     if ($HtmlPath) { $psParams['HtmlReport'] = $HtmlPath }
-    if ($OnlyDiff) { $psParams['DiffOnly']   = $true }
+    if ($IncludeSame) { $psParams['IncludeSame'] = $true }
 
     Write-Host "[report-snapshot] Running ServerSnapshot.ps1 compare (PowerShell native) ..."
     # ネイティブ exe と違い、PowerShell スクリプトは正常終了時に $LASTEXITCODE を
@@ -776,7 +777,7 @@ try {
         $htmlPath = Join-Path $OutputDir $htmlName
 
         $ec = Invoke-CompareReport -BeforeJson $serverJson1 -AfterJson $serverJson2 `
-                                   -HtmlPath $htmlPath -OnlyDiff $DiffOnly.IsPresent
+                                   -HtmlPath $htmlPath -IncludeSame $IncludeSame.IsPresent
         if ($ec -ne 0) { exit $ec }
 
         Write-Host "[report-snapshot] Compare report: $htmlPath" -ForegroundColor Green

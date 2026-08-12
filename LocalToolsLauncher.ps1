@@ -1373,7 +1373,10 @@ function Get-SnapshotReportArguments {
     Add-ArgumentValue -Arguments $argList -Name '-ZipPath' -Value $zipPath
     Add-ArgumentValue -Arguments $argList -Name '-CompareWith' -Value $SnapshotCompareZipTextBox.Text
     Add-ArgumentValue -Arguments $argList -Name '-OutputDir' -Value $artifacts
-    Add-SwitchValue -Arguments $argList -Name '-DiffOnly' -Enabled ([bool]$SnapshotDiffOnlyCheckBox.IsChecked)
+    # The comparator now hides unchanged rows by default.  Preserve the UI's
+    # "Differences only" meaning by explicitly requesting unchanged rows only
+    # when the check box is cleared.
+    Add-SwitchValue -Arguments $argList -Name '-IncludeSame' -Enabled (-not [bool]$SnapshotDiffOnlyCheckBox.IsChecked)
     return $argList.ToArray()
 }
 

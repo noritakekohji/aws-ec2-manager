@@ -67,7 +67,7 @@ BeforeAll {
     # HidePython 指定時は PATH を Windows 標準ディレクトリだけに絞り、
     # python3 / python / py が見つからない状況を再現する。
     function Invoke-CompareRun {
-        param([string]$OutputDir, [switch]$HidePython)
+        param([string]$OutputDir, [switch]$HidePython, [switch]$IncludeSame)
         $savedPath = $env:PATH
         if ($HidePython) {
             $env:PATH = @(
@@ -77,10 +77,13 @@ BeforeAll {
             ) -join ';'
         }
         try {
-            $stdout = & $script:PowerShellExe -NoProfile -ExecutionPolicy Bypass `
-                -File $script:ReportSnapshot `
-                -ZipPath $script:BeforeJson -CompareWith $script:AfterJson `
-                -OutputDir $OutputDir 2>&1 | Out-String
+            $invokeArgs = @(
+                '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $script:ReportSnapshot,
+                '-ZipPath', $script:BeforeJson, '-CompareWith', $script:AfterJson,
+                '-OutputDir', $OutputDir
+            )
+            if ($IncludeSame) { $invokeArgs += '-IncludeSame' }
+            $stdout = & $script:PowerShellExe @invokeArgs 2>&1 | Out-String
             $exitCode = $LASTEXITCODE
         } finally {
             $env:PATH = $savedPath
@@ -105,6 +108,7 @@ AfterAll {
 Describe 'ReportSnapshot compare (python3 なし)' {
     BeforeAll {
         $script:NoPy = Invoke-CompareRun -OutputDir (Join-Path $script:WorkDir 'out-nopy') -HidePython
+        $script:NoPyIncludeSame = Invoke-CompareRun -OutputDir (Join-Path $script:WorkDir 'out-nopy-all') -HidePython -IncludeSame
     }
 
     It 'PS ネイティブ比較エンジンへフォールバックする' {
@@ -127,11 +131,16 @@ Describe 'ReportSnapshot compare (python3 なし)' {
     It '変更されたパッケージバージョンを差分として検出する' {
         $script:NoPy.Html | Should -Match '1\.3\.0'
     }
+
+    It 'IncludeSame 指定時は一致行も HTML に含める' {
+        $script:NoPyIncludeSame.Html | Should -Match "<tr class='same'>"
+    }
 }
 
 Describe 'ReportSnapshot compare (python3 あり)' -Skip:(-not $PythonAvailable) {
     BeforeAll {
         $script:WithPy = Invoke-CompareRun -OutputDir (Join-Path $script:WorkDir 'out-py')
+        $script:WithPyIncludeSame = Invoke-CompareRun -OutputDir (Join-Path $script:WorkDir 'out-py-all') -IncludeSame
     }
 
     It 'compare_server_info.py を使う' {
@@ -142,5 +151,10 @@ Describe 'ReportSnapshot compare (python3 あり)' -Skip:(-not $PythonAvailable)
         $script:WithPy.ExitCode | Should -Be 0
         $script:WithPy.Html | Should -Match 'NewSvc'
         $script:WithPy.Html | Should -Match '1\.3\.0'
+    }
+
+    It '既定では一致行を含めず、IncludeSame 指定時だけ含める' {
+        $script:WithPy.Html | Should -Not -Match "<tr class='r-same'>"
+        $script:WithPyIncludeSame.Html | Should -Match "<tr class='r-same'>"
     }
 }

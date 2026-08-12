@@ -117,10 +117,10 @@ tools:
         type: hidden
         argument: -OutputDir
         value: "{ArtifactsDir}"
-      - key: diffOnly
-        label: 差分のみ
+      - key: includeSame
+        label: 一致行も含める
         type: checkbox
-        argument: -DiffOnly
+        argument: -IncludeSame
         default: false
 
   - id: log-collector

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- `collect-snapshot`: Snapshot Report の「差分のみ」チェックを比較器の既定動作に合わせ、チェック時は差分のみ、未チェック時は一致行も含めるように修正しました。
 - `server-snapshot`: 比較レポートを標準で差分行のみの表示にし、`-IncludeSame` / `--include-same` を指定した場合だけ一致行を出力するように変更。HTML では差分のあるカテゴリだけを展開するため、大量のファイル・サービスがある環境でも確認しやすくなりました。
 - `server-snapshot`: filelist のファイル内容は、双方に SHA-256 があればハッシュ、片方でも無ければファイルサイズで比較するように変更。更新日時 (`mtime`) は差分判定から除外しました。
 - `server-snapshot`: OS の最終起動時刻・BIOS 日付、パッチのインストール日、時刻同期の最終同期時刻など、日時系フィールドを差分判定から除外しました。収集データ自体には保持します。

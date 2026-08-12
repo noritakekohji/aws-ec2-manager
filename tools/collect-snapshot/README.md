@@ -124,8 +124,8 @@ ZIP ファイル名: `<hostname>_<label>_<timestamp>.zip`（ラベルなし時: 
 # JSON 同士の差分レポート
 .\ReportSnapshot.ps1 -ZipPath before.json -CompareWith after.json
 
-# 差分のみ表示
-.\ReportSnapshot.ps1 -ZipPath before.zip -CompareWith after.zip -DiffOnly
+# 一致行も含める
+.\ReportSnapshot.ps1 -ZipPath before.zip -CompareWith after.zip -IncludeSame
 ```
 
 ### オプション
@@ -135,7 +135,7 @@ ZIP ファイル名: `<hostname>_<label>_<timestamp>.zip`（ラベルなし時: 
 | `-ZipPath` | 対象 ZIP または `server-snapshot` JSON ファイルパス（必須） |
 | `-CompareWith` | 比較対象の ZIP または JSON。指定すると差分レポートモード |
 | `-OutputDir` | レポート出力先。既定は入力ファイルと同じディレクトリ |
-| `-DiffOnly` | Compare モードで差分のみ表示 |
+| `-IncludeSame` | Compare モードで一致行も表示（既定は差分のみ） |
 | `-KeepExtracted` | 解凍ファイルを削除せず残す |
 
 ### レポート出力例
