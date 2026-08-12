@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `server-snapshot`: 環境定義と無関係な実行状態を比較対象から除外しました。サービス/RDP・SSH の稼働状態、NTP の同期状態・選択中サーバー、再起動保留、タスク状態、ミドルウェアの稼働状態・接続可否、OS インストール日、パッチ説明を収集値としては保持します。
 
 ### Fixed
+- RDP/SSH 先のサーバで SSO ログインがブラウザ起動待ちのまま進まない状態を避けるため、ログイン用ウィンドウでは `aws sso login --no-browser --profile ...` を実行し、手元ブラウザで開く URL とコードを表示するようにしました。
 - SSO ログインをログ付きの PowerShell ウィンドウで起動するようにし、AWS CLI が即時エラー終了しても画面にエラー内容が残り、`sso-login-*.log` に出力を保存できるようにしました。
 
 ## [2.16.0] - 2026-08-06

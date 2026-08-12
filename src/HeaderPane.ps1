@@ -97,10 +97,13 @@ Write-Host "AWS SSO Login" -ForegroundColor Cyan
 Write-Host "Profile : `$profileName"
 Write-Host "Log     : `$logPath"
 Write-Host ""
-Write-Host "Running : aws sso login --profile `$profileName"
+Write-Host "このサーバ上ではブラウザを自動起動せず、手元のブラウザで認証する方式で進めます。" -ForegroundColor Yellow
+Write-Host "次に表示される URL とコードを使って SSO 認証してください。" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "Running : aws sso login --no-browser --profile `$profileName"
 Write-Host ""
 
-& aws sso login --profile `$profileName
+& aws sso login --no-browser --profile `$profileName
 `$exitCode = `$LASTEXITCODE
 Write-Host ""
 if (`$exitCode -eq 0) {
