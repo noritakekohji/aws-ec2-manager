@@ -15,6 +15,119 @@ $openSsoButton = Find-Control -Name 'OpenSsoButton'
 $logButton = Find-Control -Name 'LogButton'
 $settingsButton = Find-Control -Name 'SettingsButton'
 
+function ConvertTo-PsSingleQuotedLiteral {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [string]$Value
+    )
+
+    if ($null -eq $Value) { return "''" }
+    return "'" + $Value.Replace("'", "''") + "'"
+}
+
+function Get-SafeFileNamePart {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [string]$Value
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Value)) { return 'profile' }
+    $safe = [regex]::Replace($Value, '[^A-Za-z0-9_.-]+', '_')
+    $safe = $safe.Trim('_')
+    if ([string]::IsNullOrWhiteSpace($safe)) { return 'profile' }
+    return $safe
+}
+
+function ConvertTo-ProcessArgument {
+    [CmdletBinding()]
+    param(
+        [AllowNull()]
+        [string]$Value
+    )
+
+    if ($null -eq $Value) { return '""' }
+    return '"' + $Value.Replace('"', '\"') + '"'
+}
+
+function New-SsoLoginWrapperScript {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'Creates an app-owned temporary helper script for visible SSO login diagnostics.')]
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ProfileName
+    )
+
+    $logDir = Get-AppLogDirectory
+    if (-not (Test-Path -LiteralPath $logDir)) {
+        New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+    }
+
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $safeProfile = Get-SafeFileNamePart -Value $ProfileName
+    $logPath = Join-Path $logDir "sso-login-$safeProfile-$stamp.log"
+    $scriptPath = Join-Path $logDir "sso-login-$safeProfile-$stamp.ps1"
+    $profileLiteral = ConvertTo-PsSingleQuotedLiteral -Value $ProfileName
+    $logLiteral = ConvertTo-PsSingleQuotedLiteral -Value $logPath
+
+    $scriptText = @"
+`$ErrorActionPreference = 'Continue'
+`$profileName = $profileLiteral
+`$logPath = $logLiteral
+try {
+    `$logDir = Split-Path -Parent `$logPath
+    if (-not [string]::IsNullOrWhiteSpace(`$logDir) -and -not (Test-Path -LiteralPath `$logDir)) {
+        New-Item -ItemType Directory -Path `$logDir -Force | Out-Null
+    }
+}
+catch {
+    Write-Host "ログディレクトリ作成エラー: `$(`$_.Exception.Message)" -ForegroundColor Yellow
+}
+
+try {
+    Start-Transcript -Path `$logPath -Append | Out-Null
+}
+catch {
+    Write-Host "Transcript 開始エラー: `$(`$_.Exception.Message)" -ForegroundColor Yellow
+}
+
+Write-Host ""
+Write-Host "AWS SSO Login" -ForegroundColor Cyan
+Write-Host "Profile : `$profileName"
+Write-Host "Log     : `$logPath"
+Write-Host ""
+Write-Host "Running : aws sso login --profile `$profileName"
+Write-Host ""
+
+& aws sso login --profile `$profileName
+`$exitCode = `$LASTEXITCODE
+Write-Host ""
+if (`$exitCode -eq 0) {
+    Write-Host "SSO login completed successfully. ExitCode=`$exitCode" -ForegroundColor Green
+}
+else {
+    Write-Host "SSO login failed. ExitCode=`$exitCode" -ForegroundColor Red
+    Write-Host "上のエラー内容とログファイルを確認してください。" -ForegroundColor Yellow
+}
+Write-Host ""
+Write-Host "Log: `$logPath"
+try {
+    Stop-Transcript | Out-Null
+}
+catch {
+}
+Write-Host ""
+Write-Host "確認が終わったら、このウィンドウを閉じてください。"
+"@
+
+    Set-Content -LiteralPath $scriptPath -Value $scriptText -Encoding UTF8
+    return [PSCustomObject]@{
+        ScriptPath = $scriptPath
+        LogPath    = $logPath
+    }
+}
+
 function Update-ProfileComboBox {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification = 'UI helper.')]
     [CmdletBinding()]
@@ -300,13 +413,22 @@ $ssoLoginButton.Add_Click({
                 Set-StatusText -Message 'プロファイル未選択'
                 return
             }
-            # aws sso login はブラウザを開いてユーザー入力を待つので、別コンソールで起動して GUI をブロックしない
-            Start-Process -FilePath 'aws' -ArgumentList @('sso', 'login', '--profile', $selected) | Out-Null
-            Set-StatusText -Message "SSO ログインを別ウィンドウで開きました: $selected （ブラウザで承認後「トークン確認」を押してください）"
-            Write-AppLog -Level 'INFO' -Message "SSO ログイン開始: $selected"
+            $login = New-SsoLoginWrapperScript -ProfileName ([string]$selected)
+            $scriptFileArgument = ConvertTo-ProcessArgument -Value $login.ScriptPath
+            Start-Process -FilePath 'powershell.exe' -ArgumentList @(
+                '-NoExit',
+                '-NoProfile',
+                '-ExecutionPolicy',
+                'Bypass',
+                '-File',
+                $scriptFileArgument
+            ) | Out-Null
+            Set-StatusText -Message "SSO ログインを別ウィンドウで開きました: $selected （ログ: $($login.LogPath)）"
+            Write-AppLog -Level 'INFO' -Message "SSO ログイン開始: $selected Log=$($login.LogPath)"
         }
         catch {
             Set-StatusText -Message "エラー: $($_.Exception.Message)"
+            Write-AppLog -Level 'ERROR' -Message "SSO ログイン起動エラー: $($_.Exception.Message)"
             return
         }
     })
