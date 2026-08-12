@@ -121,6 +121,25 @@ else {
     Write-Host ""
 }
 
+`$profileCaBundle = (& aws configure get ca_bundle --profile `$profileName 2>`$null)
+Write-Host "TLS CA bundle:"
+Write-Host "  profile ca_bundle : `$profileCaBundle"
+Write-Host "  AWS_CA_BUNDLE     : `$env:AWS_CA_BUNDLE"
+Write-Host "  REQUESTS_CA_BUNDLE: `$env:REQUESTS_CA_BUNDLE"
+`$effectiveCaBundle = `$env:AWS_CA_BUNDLE
+if ([string]::IsNullOrWhiteSpace(`$effectiveCaBundle)) {
+    `$effectiveCaBundle = `$profileCaBundle
+}
+if ([string]::IsNullOrWhiteSpace(`$effectiveCaBundle)) {
+    Write-Host "社内プロキシ等で SSL インスペクションを行っている環境では、社内ルート CA の PEM ファイルを AWS CLI に設定してください。" -ForegroundColor Yellow
+    Write-Host "例: aws configure set ca_bundle C:\path\corp-root-ca.pem --profile `$profileName" -ForegroundColor Yellow
+}
+elseif (-not (Test-Path -LiteralPath `$effectiveCaBundle)) {
+    Write-Host "設定済み CA bundle が見つかりません: `$effectiveCaBundle" -ForegroundColor Red
+    Write-Host "ca_bundle / AWS_CA_BUNDLE のパスを確認してください。" -ForegroundColor Yellow
+}
+Write-Host ""
+
 Write-Host "Running : aws --cli-connect-timeout 10 --cli-read-timeout 120 sso login --no-browser --profile `$profileName"
 Write-Host ""
 
@@ -133,6 +152,7 @@ if (`$exitCode -eq 0) {
 else {
     Write-Host "SSO login failed. ExitCode=`$exitCode" -ForegroundColor Red
     Write-Host "上のエラー内容とログファイルを確認してください。" -ForegroundColor Yellow
+    Write-Host "SSL validation failed / self-signed certificate in certificate chain の場合は、社内ルート CA の PEM を ca_bundle または AWS_CA_BUNDLE に設定してください。" -ForegroundColor Yellow
 }
 Write-Host ""
 Write-Host "Log: `$logPath"

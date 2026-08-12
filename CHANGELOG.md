@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `server-snapshot`: 環境定義と無関係な実行状態を比較対象から除外しました。サービス/RDP・SSH の稼働状態、NTP の同期状態・選択中サーバー、再起動保留、タスク状態、ミドルウェアの稼働状態・接続可否、OS インストール日、パッチ説明を収集値としては保持します。
 
 ### Fixed
+- SSO ログインウィンドウに `ca_bundle` / `AWS_CA_BUNDLE` / `REQUESTS_CA_BUNDLE` の表示とパス確認を追加し、社内プロキシ等による自己署名 CA チェーンで SSL 検証に失敗した場合の設定案内を出すようにしました。
 - SSO ログイン前に AWS OIDC エンドポイント (`oidc.<region>.amazonaws.com:443`) への接続確認を表示し、接続できない場合はプロキシ、ファイアウォール、NAT/Internet Gateway、DNS、HTTPS(443) の確認ポイントをログインウィンドウとログに残すようにしました。
 - RDP/SSH 先のサーバで SSO ログインがブラウザ起動待ちのまま進まない状態を避けるため、ログイン用ウィンドウでは `aws sso login --no-browser --profile ...` を実行し、手元ブラウザで開く URL とコードを表示するようにしました。
 - SSO ログインをログ付きの PowerShell ウィンドウで起動するようにし、AWS CLI が即時エラー終了しても画面にエラー内容が残り、`sso-login-*.log` に出力を保存できるようにしました。
