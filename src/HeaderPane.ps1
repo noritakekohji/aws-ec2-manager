@@ -100,10 +100,31 @@ Write-Host ""
 Write-Host "このサーバ上ではブラウザを自動起動せず、手元のブラウザで認証する方式で進めます。" -ForegroundColor Yellow
 Write-Host "次に表示される URL とコードを使って SSO 認証してください。" -ForegroundColor Yellow
 Write-Host ""
-Write-Host "Running : aws sso login --no-browser --profile `$profileName"
+
+`$ssoRegion = (& aws configure get sso_region --profile `$profileName 2>`$null)
+if ([string]::IsNullOrWhiteSpace(`$ssoRegion)) {
+    `$ssoRegion = (& aws configure get region --profile `$profileName 2>`$null)
+}
+if (-not [string]::IsNullOrWhiteSpace(`$ssoRegion) -and (Get-Command Test-NetConnection -ErrorAction SilentlyContinue)) {
+    `$oidcEndpoint = "oidc.`$ssoRegion.amazonaws.com"
+    Write-Host "Network check : `${oidcEndpoint}:443"
+    `$canConnect = Test-NetConnection -ComputerName `$oidcEndpoint -Port 443 -InformationLevel Quiet -WarningAction SilentlyContinue
+    if (-not `$canConnect) {
+        Write-Host "AWS OIDC エンドポイントへ接続できません。" -ForegroundColor Red
+        Write-Host "プロキシ設定、ファイアウォール、NAT/Internet Gateway、DNS、HTTPS(443) の送信許可を確認してください。" -ForegroundColor Yellow
+        Write-Host "必要な接続先: https://`$oidcEndpoint/client/register" -ForegroundColor Yellow
+        Write-Host ""
+    }
+}
+else {
+    Write-Host "Network check : sso_region を取得できない、または Test-NetConnection が利用できないためスキップします。" -ForegroundColor Yellow
+    Write-Host ""
+}
+
+Write-Host "Running : aws --cli-connect-timeout 10 --cli-read-timeout 120 sso login --no-browser --profile `$profileName"
 Write-Host ""
 
-& aws sso login --no-browser --profile `$profileName
+& aws --cli-connect-timeout 10 --cli-read-timeout 120 sso login --no-browser --profile `$profileName
 `$exitCode = `$LASTEXITCODE
 Write-Host ""
 if (`$exitCode -eq 0) {
