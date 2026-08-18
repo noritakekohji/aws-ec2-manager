@@ -66,15 +66,26 @@ Describe 'Compare-Filelist' {
         ($r | Where-Object { $_.Name -eq 'filelist/t' }).ChangedCount | Should -Be 1
     }
 
-    It 'uses hash before size when both entries have one' {
+    It 'uses matching hashes before file size' {
         $b = @(@{ key='t'; path='/x'; os_matched=$true; exists=$true; hash_enabled=$false;
-                  entries=@(@{ rel_path='a.txt'; type='file'; size=1; mtime='2026-01-01T00:00:00Z'; owner='root'; sha256='aaa' });
+                  entries=@(@{ rel_path='a.txt'; type='file'; size=1; mtime='2026-01-01T00:00:00Z'; mode='0644'; owner='root'; group='users'; sha256='aaa' });
                   truncated=$false })
         $a = @(@{ key='t'; path='/x'; os_matched=$true; exists=$true; hash_enabled=$true;
-                  entries=@(@{ rel_path='a.txt'; type='file'; size=999; mtime='2026-02-01T00:00:00Z'; owner='root'; sha256='aaa' });
+                  entries=@(@{ rel_path='a.txt'; type='file'; size=999; mtime='2026-02-01T00:00:00Z'; mode='0644'; owner='root'; group='users'; sha256='aaa' });
                   truncated=$false })
         $r = @(Compare-Filelist $b $a)
         ($r | Where-Object { $_.Name -eq 'filelist/t' }).ChangedCount | Should -Be 0
+    }
+
+    It 'detects metadata changes even when file hashes match' {
+        $b = @(@{ key='t'; path='/x'; os_matched=$true; exists=$true; hash_enabled=$true;
+                  entries=@(@{ rel_path='a.txt'; type='file'; size=1; mode='0644'; owner='root'; group='users'; sha256='aaa' });
+                  truncated=$false })
+        $a = @(@{ key='t'; path='/x'; os_matched=$true; exists=$true; hash_enabled=$true;
+                  entries=@(@{ rel_path='a.txt'; type='file'; size=1; mode='0600'; owner='admin'; group='admins'; sha256='aaa' });
+                  truncated=$false })
+        $r = @(Compare-Filelist $b $a)
+        ($r | Where-Object { $_.Name -eq 'filelist/t' }).ChangedCount | Should -Be 1
     }
 
     It 'falls back to size and ignores mtime when either hash is absent' {

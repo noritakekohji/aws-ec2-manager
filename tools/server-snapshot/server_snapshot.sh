@@ -191,25 +191,57 @@ def collect_os():
     info['timezone'] = tz
     info['locale'] = run("locale | grep '^LANG=' | cut -d= -f2 | tr -d '\"'", '')
     info['last_boot'] = run("who -b 2>/dev/null | awk '{print $3, $4}'", run('uptime -s 2>/dev/null', ''))
-    # CPU info via lscpu
+    # CPU info: lscpu's human-readable labels vary by locale and SUSE release.
+    # Use its parseable topology output first, then retain the label-based and
+    # kernel-topology fallbacks for older installations.
     def _mhz(s):
         try: return int(float(s))
         except: return 0
+    topology = []
+    for line in run('lscpu -p=CPU,CORE,SOCKET 2>/dev/null', '').splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'): continue
+        parts = [p.strip() for p in line.split(',')]
+        if len(parts) != 3: continue
+        try:
+            cpu, core, socket_id = [int(p) for p in parts]
+        except ValueError:
+            continue
+        if cpu >= 0: topology.append((cpu, core, socket_id))
+    if topology:
+        info['cpu_logical_procs'] = len(set(item[0] for item in topology))
+        core_pairs = {(core, socket_id) for _, core, socket_id in topology
+                      if core >= 0 and socket_id >= 0}
+        sockets = {socket_id for _, _, socket_id in topology if socket_id >= 0}
+        if core_pairs: info['cpu_cores'] = len(core_pairs)
+        if sockets: info['cpu_sockets'] = len(sockets)
     cpu_cores_per_socket = 0
     for line in run('lscpu 2>/dev/null', '').splitlines():
         if ':' not in line: continue
         k, _, v = line.partition(':'); k, v = k.strip(), v.strip()
         if   k == 'Model name':         info['cpu_model'] = v
-        elif k == 'Socket(s)':          info['cpu_sockets'] = int(v) if v.isdigit() else 0
+        elif k == 'Socket(s)' and not info['cpu_sockets']: info['cpu_sockets'] = int(v) if v.isdigit() else 0
         elif k == 'Core(s) per socket': cpu_cores_per_socket = int(v) if v.isdigit() else 0
-        elif k == 'CPU(s)':             info['cpu_logical_procs'] = int(v) if v.isdigit() else 0
+        elif k == 'CPU(s)' and not info['cpu_logical_procs']: info['cpu_logical_procs'] = int(v) if v.isdigit() else 0
         elif k == 'CPU max MHz':        info['cpu_speed_mhz'] = _mhz(v)
         elif k == 'CPU MHz' and not info['cpu_speed_mhz']: info['cpu_speed_mhz'] = _mhz(v)
-    if info['cpu_sockets'] and cpu_cores_per_socket:
+    if not info['cpu_cores'] and info['cpu_sockets'] and cpu_cores_per_socket:
         info['cpu_cores'] = info['cpu_sockets'] * cpu_cores_per_socket
+    if not info['cpu_cores']:
+        try:
+            import glob
+            core_pairs = set()
+            for cpu_dir in glob.glob('/sys/devices/system/cpu/cpu[0-9]*'):
+                core_id = Path(cpu_dir, 'topology/core_id').read_text().strip()
+                socket_id = Path(cpu_dir, 'topology/physical_package_id').read_text().strip()
+                core_pairs.add((core_id, socket_id))
+            if core_pairs: info['cpu_cores'] = len(core_pairs)
+        except Exception: pass
     if not info['cpu_logical_procs']:
         n = run('grep -c "^processor" /proc/cpuinfo 2>/dev/null', '0')
         info['cpu_logical_procs'] = int(n) if n.isdigit() else 0
+    if not info['cpu_cores']:
+        info['cpu_cores'] = info['cpu_logical_procs']
     # Memory from /proc/meminfo
     try:
         meminfo = {}

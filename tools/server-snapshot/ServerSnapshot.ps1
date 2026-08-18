@@ -87,10 +87,30 @@ function Get-OsInfo {
 
     $totalMemGb  = if ($cs) { [math]::Round($cs.TotalPhysicalMemory / 1GB, 2) } else { 0.0 }
     $freeMemGb   = if ($os) { [math]::Round($os.FreePhysicalMemory * 1KB / 1GB, 2) } else { 0.0 }
-    $cpuModel    = if ($cpus) { $cpus[0].Name.Trim() } else { '' }
-    $cpuCores    = if ($cpus) { [int]($cpus | Measure-Object NumberOfCores             -Sum).Sum } else { 0 }
-    $cpuLogical  = if ($cpus) { [int]($cpus | Measure-Object NumberOfLogicalProcessors -Sum).Sum } else { 0 }
-    $cpuSpeedMhz = if ($cpus) { [int]$cpus[0].MaxClockSpeed } else { 0 }
+    $cpuModel    = if ($cpus -and $cpus[0].Name) { $cpus[0].Name.Trim() } else { '' }
+    $cpuCores    = 0
+    $cpuLogical  = 0
+    foreach ($cpu in $cpus) {
+        # Some Windows/AWS WMI providers omit NumberOfCores but expose
+        # NumberOfEnabledCore. Prefer the physical-core value when present.
+        $cores = 0
+        foreach ($property in @('NumberOfCores', 'NumberOfEnabledCore')) {
+            try { $candidate = [int]$cpu.$property } catch { $candidate = 0 }
+            if ($candidate -gt 0) { $cores = $candidate; break }
+        }
+        $cpuCores += $cores
+        try { $logical = [int]$cpu.NumberOfLogicalProcessors } catch { $logical = 0 }
+        if ($logical -gt 0) { $cpuLogical += $logical }
+    }
+    # Win32_ComputerSystem is the reliable aggregate fallback when individual
+    # processor records are incomplete on older Windows AMIs.
+    if ($cpuLogical -le 0 -and $cs) {
+        try { $cpuLogical = [int]$cs.NumberOfLogicalProcessors } catch { $cpuLogical = 0 }
+    }
+    if ($cpuLogical -le 0) {
+        try { $cpuLogical = [int]$env:NUMBER_OF_PROCESSORS } catch { $cpuLogical = 0 }
+    }
+    $cpuSpeedMhz = if ($cpus -and $cpus[0].MaxClockSpeed) { [int]$cpus[0].MaxClockSpeed } else { 0 }
 
     @{
         hostname          = $env:COMPUTERNAME
@@ -1545,8 +1565,9 @@ function Compare-Filelist($b, $a) {
         $bt = $bByKey[$key]
         $at = $aByKey[$key]
 
-        # File contents use sha256 when both entries have a hash.  If either
-        # side lacks one, fall back to size.  Timestamps are display-only.
+        # File contents use sha256 when both entries have a hash. If either
+        # side lacks one, fall back to size. Ownership and mode are compared
+        # independently. Timestamps are display-only.
         $fields = @('type','content_check','mode','owner','group')
         $bEntries = if ($bt) { $bt['entries'] } else { @() }
         $aEntries = if ($at) { $at['entries'] } else { @() }

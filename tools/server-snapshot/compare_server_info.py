@@ -254,7 +254,8 @@ def cat_filelist(b, a):
 
     key format: '<target_key>::<rel_path>' (mirrors cat_middleware's file-key
     convention). For files, sha256 is used when both entries have one;
-    otherwise the comparison falls back to size.  mtime is display-only.
+    otherwise the comparison falls back to size. Ownership/mode metadata is
+    compared independently. mtime is display-only.
     """
     bl = b.get('filelist') or []
     al = a.get('filelist') or []
