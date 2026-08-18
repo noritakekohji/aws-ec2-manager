@@ -156,7 +156,11 @@ output_path = os.environ.get('_OPS_OUTPUT', '')
 
 def run(cmd, default=''):
     try:
-        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=10)
+        env = os.environ.copy()
+        env['LC_ALL'] = 'C'
+        env['LANG'] = 'C'
+        r = subprocess.run(cmd, shell=True, capture_output=True, text=True,
+                           errors='replace', timeout=10, env=env)
         return r.stdout.strip() if r.returncode == 0 else default
     except Exception:
         return default
@@ -177,11 +181,23 @@ def collect_os():
     }
     os_release = Path('/etc/os-release')
     if os_release.exists():
-        for line in os_release.read_text().splitlines():
+        for line in os_release.read_text(errors='replace').splitlines():
             if line.startswith('PRETTY_NAME='):
                 info['os_name'] = line.split('=',1)[1].strip().strip('"')
             elif line.startswith('VERSION_ID='):
                 info['os_version'] = line.split('=',1)[1].strip().strip('"')
+    if info['os_name'] == platform.system():
+        for release_file in ('/etc/redhat-release', '/etc/SuSE-release', '/etc/SUSE-brand'):
+            try:
+                value = Path(release_file).read_text(errors='replace').strip()
+                if value:
+                    info['os_name'] = value
+                    if not info['os_version']:
+                        match = re.search(r'(\d+(?:\.\d+)+|\d+)', value)
+                        if match: info['os_version'] = match.group(1)
+                    break
+            except Exception:
+                pass
     info['os_build'] = run('uname -r', platform.release())
     tz = run('timedatectl show -p Timezone --value 2>/dev/null', '')
     if not tz: tz = run('cat /etc/timezone 2>/dev/null', '')
@@ -231,11 +247,14 @@ def collect_os():
         try:
             import glob
             core_pairs = set()
+            socket_ids = set()
             for cpu_dir in glob.glob('/sys/devices/system/cpu/cpu[0-9]*'):
                 core_id = Path(cpu_dir, 'topology/core_id').read_text().strip()
                 socket_id = Path(cpu_dir, 'topology/physical_package_id').read_text().strip()
                 core_pairs.add((core_id, socket_id))
+                socket_ids.add(socket_id)
             if core_pairs: info['cpu_cores'] = len(core_pairs)
+            if socket_ids and not info['cpu_sockets']: info['cpu_sockets'] = len(socket_ids)
         except Exception: pass
     if not info['cpu_logical_procs']:
         n = run('grep -c "^processor" /proc/cpuinfo 2>/dev/null', '0')
@@ -294,6 +313,16 @@ def collect_network():
         m2 = re.match(r'\s+inet\s+(\d+\.\d+\.\d+\.\d+)/(\d+)', line)
         if m2 and current and not current.startswith('lo'):
             interfaces.append({'name': current, 'address': m2.group(1), 'prefix': int(m2.group(2))})
+    if not interfaces:
+        current = None
+        for line in run('ifconfig -a 2>/dev/null', '').splitlines():
+            m = re.match(r'^(\S+?)(?::|\s)', line)
+            if m and not line.startswith((' ', '\t')):
+                current = m.group(1)
+            m2 = re.search(r'inet (?:addr:)?(\d+\.\d+\.\d+\.\d+)(?:/(\d+))?', line)
+            if m2 and current and current != 'lo':
+                prefix = int(m2.group(2)) if m2.group(2) else 0
+                interfaces.append({'name': current, 'address': m2.group(1), 'prefix': prefix})
     for line in run_lines('ip -4 route show 2>/dev/null'):
         parts = line.split()
         entry = {'destination': parts[0], 'gateway': '', 'interface': ''}
@@ -301,6 +330,11 @@ def collect_network():
             if p == 'via' and i+1 < len(parts): entry['gateway'] = parts[i+1]
             if p == 'dev' and i+1 < len(parts): entry['interface'] = parts[i+1]
         routes.append(entry)
+    if not routes:
+        for line in run_lines('route -n 2>/dev/null'):
+            parts = line.split()
+            if len(parts) >= 8 and re.match(r'^\d+\.\d+\.\d+\.\d+$', parts[0]):
+                routes.append({'destination': parts[0], 'gateway': parts[1], 'interface': parts[-1]})
     resolv = Path('/etc/resolv.conf')
     if resolv.exists():
         servers = [l.split()[1] for l in resolv.read_text().splitlines()
@@ -413,6 +447,19 @@ def collect_services():
         if cfg_files:
             entry['config_files'] = cfg_files
         services.append(entry)
+    if not services:
+        for line in run('chkconfig --list 2>/dev/null', '').splitlines():
+            parts = line.split()
+            if not parts: continue
+            name = parts[0].rstrip(':')
+            levels = ' '.join(parts[1:])
+            start_type = 'enabled' if re.search(r'\b[35]:on\b', levels) else 'disabled'
+            services.append({
+                'name': name, 'display_name': name, 'status': '', 'start_type': start_type,
+                'description': '', 'unit_file_state': '', 'fragment_path': '', 'exec_start': '',
+                'user': '', 'group': '', 'service_type': 'sysv', 'restart': '',
+                'load_state': '', 'active_state': '', 'sub_state': '',
+            })
     return sorted(services, key=lambda x: x['name'])
 
 def _service_summary(unit_names):
@@ -462,14 +509,15 @@ def collect_remote_access():
     }
 
 def collect_packages():
+    import shutil
     pkgs = []
-    if Path('/usr/bin/dpkg').exists():
+    if shutil.which('dpkg-query'):
         out = run("dpkg-query -W -f='${Package}\t${Version}\t${Maintainer}\n' 2>/dev/null", '')
         for line in out.splitlines():
             parts = line.split('\t')
             if len(parts) >= 2:
                 pkgs.append({'name': parts[0], 'version': parts[1], 'vendor': parts[2] if len(parts) > 2 else ''})
-    elif Path('/usr/bin/rpm').exists():
+    elif shutil.which('rpm'):
         out = run("rpm -qa --queryformat '%{NAME}\t%{VERSION}-%{RELEASE}\t%{VENDOR}\n' 2>/dev/null", '')
         for line in out.splitlines():
             parts = line.split('\t')
@@ -514,6 +562,19 @@ def collect_filesystem():
             'used_gb': to_gb(parts[3]), 'free_gb': to_gb(parts[4]), 'total_gb': to_gb(parts[5]),
             'used_pct': float(parts[6].replace('%','')) if parts[6].replace('%','').replace('.','').isdigit() else 0.0,
         })
+    if not drives:
+        for line in run('df -P -k 2>/dev/null | tail -n +2', '').splitlines():
+            parts = line.split()
+            if len(parts) < 6: continue
+            try:
+                total, used, free = [round(int(v) / 1048576, 2) for v in parts[1:4]]
+            except ValueError:
+                continue
+            drives.append({
+                'drive': parts[5], 'root': parts[5], 'device': parts[0], 'fstype': '',
+                'used_gb': used, 'free_gb': free, 'total_gb': total,
+                'used_pct': float(parts[4].rstrip('%')) if parts[4].rstrip('%').isdigit() else 0.0,
+            })
     # Physical disk layout via lsblk
     disks = []
     lsblk_raw = run('lsblk -J -b -o NAME,SIZE,TYPE,MODEL,MOUNTPOINT 2>/dev/null', '')
@@ -536,6 +597,17 @@ def collect_filesystem():
             for dev in lsblk_data.get('blockdevices', []):
                 _add_dev(dev)
         except Exception: pass
+    if not disks:
+        for line in run('lsblk -b -dn -o NAME,SIZE,TYPE,MODEL,MOUNTPOINT 2>/dev/null', '').splitlines():
+            parts = line.split(None, 4)
+            if len(parts) < 3 or parts[2] not in ('disk', 'part'): continue
+            try: size_gb = round(int(parts[1]) / 1073741824, 2)
+            except ValueError: size_gb = 0.0
+            disks.append({
+                'name': parts[0], 'size_gb': size_gb, 'type': parts[2],
+                'model': parts[3].strip() if len(parts) > 3 else '',
+                'mountpoint': parts[4].strip() if len(parts) > 4 else '',
+            })
     fstab = []
     try:
         for line in Path('/etc/fstab').read_text().splitlines():

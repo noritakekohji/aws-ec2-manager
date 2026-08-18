@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `server-snapshot`: 環境定義と無関係な実行状態を比較対象から除外しました。サービス/RDP・SSH の稼働状態、NTP の同期状態・選択中サーバー、再起動保留、タスク状態、ミドルウェアの稼働状態・接続可否、OS インストール日、パッチ説明を収集値としては保持します。
 
 ### Fixed
+- `server-snapshot`: RHEL／SUSE の世代差・ロケール差に対応し、リリース情報、CPU、ネットワーク、サービス、パッケージ、ファイルシステムの Linux 取得を旧来コマンドへフォールバックできるようにした。
 - `server-snapshot`: SUSE のロケール差異に左右されない CPU トポロジ収集と、Windows AMI の不完全な WMI CPU プロパティのフォールバックを追加し、コア数・論理プロセッサ数を正しく記録するようにした。
 - `server-snapshot`: filelist は両スナップショットの SHA-256 が一致するとき、サイズではなくハッシュを内容比較に用いるようにした。所有者・グループ・モードは引き続き個別に差分検出する。
 - SSO ログインウィンドウに `ca_bundle` / `AWS_CA_BUNDLE` / `REQUESTS_CA_BUNDLE` の表示とパス確認を追加し、社内プロキシ等による自己署名 CA チェーンで SSL 検証に失敗した場合の設定案内を出すようにしました。
