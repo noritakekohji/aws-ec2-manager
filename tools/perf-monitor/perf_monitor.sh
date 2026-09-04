@@ -145,12 +145,59 @@ _mem_stat() {
 }
 
 # ディスク: /proc/diskstats から主要ブロックデバイスの累積セクター数 (読み,書き)
-_disk_stat() {
+_disk_device_names() {
+    local lsblk_out=""
+    if [[ -n "${PERF_MONITOR_LSBLK_OUTPUT:-}" ]]; then
+        lsblk_out="${PERF_MONITOR_LSBLK_OUTPUT}"
+    elif [[ "${PERF_MONITOR_SKIP_LSBLK:-0}" != "1" ]] && command -v lsblk >/dev/null 2>&1; then
+        lsblk_out=$(lsblk -ndo NAME,TYPE 2>/dev/null || true)
+    fi
+
+    if [[ -n "$lsblk_out" ]]; then
+        local names
+        names=$(printf '%s\n' "$lsblk_out" | awk '$2 ~ /^(disk|mpath|raid[0-9]*)$/ {print $1}')
+        if [[ -z "$names" ]]; then
+            names=$(printf '%s\n' "$lsblk_out" | awk '$2 ~ /^(lvm|crypt)$/ {print $1}')
+        fi
+        if [[ -n "$names" ]]; then
+            printf '%s\n' "$names"
+            return
+        fi
+    fi
+
     awk '
-    /^[[:space:]]*[0-9]+ [0-9]+ (sd[a-z]+|nvme[0-9]+n[0-9]+|xvd[a-z]+|vd[a-z]+|hd[a-z]+) /{
+    /^[[:space:]]*[0-9]+ [0-9]+ / {
+        name=$3
+        if (name ~ /^(sd[a-z]+|xvd[a-z]+|vd[a-z]+|hd[a-z]+)$/ ||
+            name ~ /^nvme[0-9]+n[0-9]+$/ ||
+            name ~ /^dm-[0-9]+$/ ||
+            name ~ /^md[0-9]+$/ ||
+            name ~ /^mmcblk[0-9]+$/ ||
+            name ~ /^dasd[a-z]+$/ ||
+            name ~ /^cciss\/c[0-9]+d[0-9]+$/) {
+            print name
+        }
+    }' "${PERF_MONITOR_DISKSTATS:-/proc/diskstats}" 2>/dev/null
+}
+
+_disk_stat() {
+    local diskstats="${PERF_MONITOR_DISKSTATS:-/proc/diskstats}"
+    local devices
+    devices=$(_disk_device_names | awk 'NF{printf "%s%s", (NR==1?"":" "), $1}')
+    if [[ -z "$devices" ]]; then
+        echo "0 0"
+        return
+    fi
+
+    awk -v devices="$devices" '
+    BEGIN {
+        split(devices, d, " ")
+        for (i in d) wanted[d[i]]=1
+    }
+    wanted[$3] {
         rs+=$6; ws+=$10
     }
-    END{print rs+0, ws+0}' /proc/diskstats
+    END{print rs+0, ws+0}' "$diskstats"
 }
 
 # ディスク使用率: df の Capacity 列(%)をマウントポイントごとに JSON オブジェクト中身として出力する。
@@ -158,9 +205,13 @@ _disk_stat() {
 # フォールバックして /proc, /sys, /dev, /run 配下のマウントポイントのみ除外する。
 _disk_usage_json() {
     local out
-    out=$(df -P -x tmpfs -x devtmpfs -x squashfs -x overlay -x proc -x sysfs \
-             -x tracefs -x cgroup -x cgroup2 -x devpts -x mqueue -x securityfs \
-             -x pstore -x debugfs -x autofs -x binfmt_misc 2>/dev/null)
+    if [[ -n "${PERF_MONITOR_DF_OUTPUT:-}" ]]; then
+        out="${PERF_MONITOR_DF_OUTPUT}"
+    else
+        out=$(df -P -x tmpfs -x devtmpfs -x squashfs -x overlay -x proc -x sysfs \
+                 -x tracefs -x cgroup -x cgroup2 -x devpts -x mqueue -x securityfs \
+                 -x pstore -x debugfs -x autofs -x binfmt_misc 2>/dev/null)
+    fi
     if [[ -z "$out" ]]; then
         out=$(df -P 2>/dev/null)
     fi
@@ -168,6 +219,7 @@ _disk_usage_json() {
     BEGIN{n=0}
     NR>1 && NF>=6 {
         pct=$5; sub(/%$/,"",pct)
+        if (pct !~ /^[0-9]+([.][0-9]+)?$/) next
         mnt=$NF
         if (mnt ~ /^\/(proc|sys|dev|run)(\/|$)/) next
         gsub(/\\/,"\\\\",mnt); gsub(/"/,"\\\"",mnt)
@@ -246,9 +298,9 @@ collect_sample() {
             local pr pw cr cw
             read -r pr pw <<< "$prev_disk"
             read -r cr cw <<< "$curr_disk"
-            # 1セクター = 512 バイト
-            disk_read_mbps=$(awk  "BEGIN{printf \"%.2f\",($cr-$pr)*512/1048576/$interval}")
-            disk_write_mbps=$(awk "BEGIN{printf \"%.2f\",($cw-$pw)*512/1048576/$interval}")
+            # 1セクター = 512 バイト。カウンターリセット時は負数にせず 0 とする。
+            disk_read_mbps=$(awk  "BEGIN{d=$cr-$pr; if(d<0)d=0; printf \"%.2f\",d*512/1048576/$interval}")
+            disk_write_mbps=$(awk "BEGIN{d=$cw-$pw; if(d<0)d=0; printf \"%.2f\",d*512/1048576/$interval}")
         fi
         disk_usage_json="{$(_disk_usage_json)}"
     fi
@@ -659,6 +711,10 @@ cmd_list() {
 # ════════════════════════════════════════════════════════════
 # エントリポイント
 # ════════════════════════════════════════════════════════════
+if [[ "${PERF_MONITOR_SOURCE_ONLY:-0}" == "1" ]]; then
+    return 0 2>/dev/null || exit 0
+fi
+
 case "${1:-}" in
     start)  shift; cmd_start  "$@" ;;
     stop)   shift; cmd_stop   "${1:-}" ;;

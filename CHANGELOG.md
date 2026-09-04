@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `perf-monitor`: 複数セッションの `data.jsonl` をGUIで選択し、必要な指標だけをサーバー別系列で比較グラフ化する単独スクリプト `Compare-PerfMonitor.ps1` を追加しました。選択した指標は同時に `timestamp,server,metricLabel,metric,value,unit,source_file` 形式のCSVへ抽出できます。
+
 ### Changed
 - `collect-snapshot`: Snapshot Report の「差分のみ」チェックを比較器の既定動作に合わせ、チェック時は差分のみ、未チェック時は一致行も含めるように修正しました。
 - `server-snapshot`: 比較レポートを標準で差分行のみの表示にし、`-IncludeSame` / `--include-same` を指定した場合だけ一致行を出力するように変更。HTML では差分のあるカテゴリだけを展開するため、大量のファイル・サービスがある環境でも確認しやすくなりました。
@@ -15,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `server-snapshot`: 環境定義と無関係な実行状態を比較対象から除外しました。サービス/RDP・SSH の稼働状態、NTP の同期状態・選択中サーバー、再起動保留、タスク状態、ミドルウェアの稼働状態・接続可否、OS インストール日、パッチ説明を収集値としては保持します。
 
 ### Fixed
+- `perf-monitor`: Linux の Disk I/O 収集で、SUSE や旧世代 RHEL 系の `dm-*` / `cciss/c*d*` / `dasd*` / `mmcblk*` などを検出対象に追加し、対象デバイス名が既存パターン外の環境で Read/Write が 0 のままになる問題を修正しました。
+- `perf-monitor`: Linux の `df` 出力で使用率が数値ではないマウントを `disk_usage_pct` JSON から除外し、Windows 側 PowerShell レンダラーでも壊れた JSON 行を警告付きで読み飛ばしてレポート化できるようにしました。
 - `server-snapshot`: RHEL／SUSE の世代差・ロケール差に対応し、リリース情報、CPU、ネットワーク、サービス、パッケージ、ファイルシステムの Linux 取得を旧来コマンドへフォールバックできるようにした。
 - `server-snapshot`: SUSE のロケール差異に左右されない CPU トポロジ収集と、Windows AMI の不完全な WMI CPU プロパティのフォールバックを追加し、コア数・論理プロセッサ数を正しく記録するようにした。
 - `server-snapshot`: filelist は両スナップショットの SHA-256 が一致するとき、サイズではなくハッシュを内容比較に用いるようにした。所有者・グループ・モードは引き続き個別に差分検出する。

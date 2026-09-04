@@ -5,6 +5,9 @@
 
 ディスク使用率は検出された全ドライブ（Windows は固定ディスクのみ、Linux は仮想 FS を除く
 全マウントポイント）を自動収集し、レポートではドライブごとの系列としてグラフ化されます。
+Linux の Disk I/O は `lsblk` と `/proc/diskstats` を併用して、`sd*` / `xvd*` / `vd*` /
+`nvme*` に加え、SUSE や旧世代 RHEL で見られる `dm-*` / `cciss/c*d*` / `dasd*` /
+`mmcblk*` もフォールバック検出します。
 
 **このフォルダ一式をコピーすれば動きます。**
 
@@ -14,6 +17,7 @@ tools/perf-monitor/
 ├── perf_monitor.bat       # Windows 起動用バッチ
 ├── perf_monitor.sh        # Linux 本体（コレクタ + レポート生成）
 ├── perf_monitor.conf      # 既定設定（しきい値・収集間隔など）
+├── Compare-PerfMonitor.ps1 # 複数セッションの比較グラフ / CSV 抽出 GUI
 └── render_report.py       # python3 製の HTML レポート生成器（共通）
 ```
 
@@ -63,6 +67,33 @@ perf_monitor.bat report .\perf_20260518-100000
 :: 特定の時間帯だけレポート化（片方のみの指定も可）
 perf_monitor.bat report .\perf_20260518-100000 -From "2026-05-18T10:15:00" -To "2026-05-18T10:30:00"
 perf_monitor.bat list
+```
+
+### 複数セッションの比較グラフ / CSV 抽出
+
+複数サーバーで取得した `data.jsonl` をGUIで選び、必要な指標だけを比較グラフ化できます。
+同時に、選択した指標だけを縦持ちCSVとして出力します。
+
+```powershell
+.\Compare-PerfMonitor.ps1
+```
+
+GUIで複数の `data.jsonl` を追加すると、入力データから利用可能な指標が自動検出されます。
+例として `CPU 使用率` を選ぶと、1つのグラフ内にサーバーA、サーバーBの系列が重ねて表示されます。
+ディスク使用率は `ディスク使用率 (C:)` のようにドライブ/マウントごとの指標として選択できます。
+
+出力先フォルダーには次の2ファイルが作成されます。
+
+```text
+performance-comparison-YYYYMMDD-HHMMSS.html
+performance-comparison-YYYYMMDD-HHMMSS.csv
+```
+
+HTMLはブラウザで開き、サーバー系列の表示/非表示、マウスホイールによる横軸ズーム、
+ドラッグによる横移動、Resetによる全体表示ができます。CSVは以下の列で出力されます。
+
+```text
+timestamp,server,metricLabel,metric,value,unit,source_file
 ```
 
 ### Linux
@@ -150,6 +181,10 @@ perf_YYYYMMDD-HHMMSS/
 
 エンタープライズ Windows で GPO / AppLocker が厳格な場合、以下のコマンドが利用できないことがあります。
 PerfMonitor.ps1 はこれらをすべて代替実装で回避しています。
+
+Linux で取得した `data.jsonl` を Windows 側で `PerfMonitor.ps1 report <session>` する場合、
+古い収集結果に壊れた JSON 行が混ざっていても、その行を警告付きで読み飛ばし、
+有効なサンプルからレポートを生成します。
 
 | 制限されることがあるコマンド | 代替手段 |
 |---|---|

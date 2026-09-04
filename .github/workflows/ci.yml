@@ -14,6 +14,9 @@ jobs:
       - name: Smoke test (local-tools-launcher.sh)
         run: bash tests/linux-launcher-smoke.sh
 
+      - name: Smoke test (perf_monitor.sh)
+        run: bash tests/perf-monitor-linux-smoke.sh
+
   test:
     runs-on: windows-latest
     steps:

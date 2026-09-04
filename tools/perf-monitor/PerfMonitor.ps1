@@ -566,12 +566,25 @@ function New-PerfHtmlReport {
     )
     $enc = [System.Text.UTF8Encoding]::new($false)
 
-    # データ読み込み
-    $allRecords = @(
-        Get-Content $DataFile -Encoding utf8 |
-        Where-Object { $_.Trim() } |
-        ForEach-Object { ConvertFrom-Json $_ }
-    )
+    # データ読み込み。Linux 側の古い収集結果に壊れた JSON 行が混ざっても、
+    # レポート全体を止めず、読めるサンプルだけで生成する。
+    $allRecordsList = New-Object System.Collections.Generic.List[object]
+    $lineNo = 0
+    $badJsonCount = 0
+    Get-Content -LiteralPath $DataFile -Encoding utf8 | ForEach-Object {
+        $lineNo++
+        if (-not $_.Trim()) { return }
+        try {
+            [void]$allRecordsList.Add(($_ | ConvertFrom-Json))
+        } catch {
+            $badJsonCount++
+            Write-Log 'WARN' "Invalid JSON line skipped: $DataFile line $lineNo"
+        }
+    }
+    if ($badJsonCount -gt 0) {
+        Write-Log 'WARN' "Invalid JSON lines skipped: $badJsonCount"
+    }
+    $allRecords = @($allRecordsList.ToArray())
     if ($allRecords.Count -eq 0) { Write-Log 'ERROR' "No records in $DataFile"; return $false }
 
     # ── 時間範囲フィルタ(-From/-To。片方のみの指定も可) ─────────────
